@@ -20,6 +20,10 @@ npm run assets:download
 
 O Cristal de Zuna não vem de pacote nenhum: é modelado no próprio baker (`packages/baker/src/shapes.ts`), com a forma da gema do logo.
 
+## Marca
+
+A logo (`assets/brand/zuna-logo.png`) foi fornecida pelo Gabriel. Dela saem a logo do menu e do painel, os ícones do navegador e a imagem de prévia dos links — todos gerados por `npm run brand`. O fundo da imagem de prévia (`assets/brand/og-background.jpg`) é uma cena do próprio jogo. **Se a logo foi gerada por IA, confirme os direitos de uso comercial e o registro da marca antes do lançamento.**
+
 ## Interface
 
 O kit de interface (`assets/ui/hud-kit.png`) foi fornecido pelo Gabriel e parece ter sido gerado por IA. As peças recortadas ficam em `packages/client/public/ui/`, geradas a partir dele. **Confirme os direitos de uso comercial desse kit antes do lançamento**: o resto da arte é CC0, com uso comercial garantido.

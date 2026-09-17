@@ -309,38 +309,23 @@ input:focus {
   line-height: 0;
 }
 
-.logo svg {
+/* A arte já vem com brilho: aqui ele só respira devagar. */
+.logo img {
   display: block;
   width: 100%;
   height: auto;
-  overflow: visible;
+  animation: logo-breathe 4.8s ease-in-out infinite;
 }
 
-.logo-crest {
-  fill: url(#logo-crest);
-  stroke: url(#logo-rim);
-  stroke-width: 5;
-  stroke-linejoin: round;
-}
-
-.logo-gem {
-  animation: gem-float 3.2s ease-in-out infinite;
-}
-
-@keyframes gem-float {
-  50% {
-    transform: translateY(-3px);
+@keyframes logo-breathe {
+  0%,
+  100% {
+    filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 14px rgba(94, 240, 143, 0.16));
   }
-}
 
-.logo-word {
-  fill: url(#logo-stone);
-  stroke: #0a0916;
-  stroke-width: 13px;
-  stroke-linejoin: round;
-  paint-order: stroke;
-  font: 400 128px var(--font-logo);
-  letter-spacing: 3px;
+  50% {
+    filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 26px rgba(94, 240, 143, 0.4));
+  }
 }
 
 #menu.wide .logo {
@@ -1706,7 +1691,7 @@ input:focus {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .logo-gem,
+  .logo img,
   #menu-features {
     animation: none;
   }

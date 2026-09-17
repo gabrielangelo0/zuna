@@ -117,10 +117,17 @@ npm run db:generate -w @zuna/server
 
 ## Identidade visual
 
-- Logo, frase e cores vêm do pôster do Zuna: azul-noite com verde esmeralda. O dourado aparece só no ouro. As cores são variáveis no topo de `packages/client/src/style.css`.
-- Fontes empacotadas no cliente (Fontsource, sem Google Fonts): Lilita One no logo e nos títulos, Permanent Marker na frase e Montserrat no resto, inclusive nos nomes dentro do jogo.
+- A logo é a arte em `assets/brand/zuna-logo.png`: a palavra em pedra com a gema esmeralda em cima e embaixo. Ela aparece no menu do jogo e no topo do painel.
+- Frase e cores vêm do mesmo pôster: azul-noite com verde esmeralda. O dourado aparece só no ouro. As cores são variáveis no topo de `packages/client/src/style.css`.
+- Fontes empacotadas no cliente (Fontsource, sem Google Fonts): Lilita One nos títulos, Permanent Marker na frase e Montserrat no resto, inclusive nos nomes dentro do jogo.
 - A HUD usa o kit de interface em `assets/ui/hud-kit.png`, recortado em peças em `packages/client/public/ui/` (orbes de vida e mana, molduras de barra, slots das magias, painéis, chat e minimapa). Veja a ressalva de licença em [assets/CREDITS.md](assets/CREDITS.md).
-- Ícones e prévia de link ficam em `packages/client/public/`: `favicon.svg`, `icon-192.png`, `icon-512.png`, `apple-touch-icon.png`, `og-image.jpg` (1200×630, montada com o mapa e os sprites do jogo) e `site.webmanifest`.
+- Tudo o que deriva da logo sai de um comando só:
+
+```bash
+npm run brand
+```
+
+  Ele lê `assets/brand/` e escreve em `packages/client/public/`: `brand/zuna-logo.png` (a logo sem o fundo preto, 1024px), os ícones `favicon.png`, `icon-192.png`, `icon-512.png` e `apple-touch-icon.png` (a gema sobre o azul-noite) e a `og-image.jpg` de 1200×630 para a prévia dos links. Precisa do ImageMagick (`brew install imagemagick`); só roda quando a arte muda.
 
 ## Arte (sprites)
 

@@ -394,7 +394,7 @@ A armadura não muda o visual (o corpo vem do outfit). Isso reduz muito o trabal
 
 ### 9.4 Onde investir dinheiro
 
-- **Antes do lançamento:** packs premium consistentes + freelancer para logo, UI, ícones e arte de divulgação.
+- **Antes do lançamento:** packs premium consistentes + freelancer para UI, ícones e arte de divulgação. A logo já existe (`assets/brand/zuna-logo.png`, gera menu, ícones e prévia de link por `npm run brand`); falta confirmar os direitos comerciais dela e do kit de interface.
 - **Depois da receita:** artista fixo para montarias, asas, auras e outfits, que são o que vende.
 
 ### 9.5 Customização (já no protótipo)
