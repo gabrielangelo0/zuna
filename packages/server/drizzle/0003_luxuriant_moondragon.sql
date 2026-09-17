@@ -1,0 +1,1 @@
+ALTER TABLE "characters" ADD COLUMN "shortcuts" text DEFAULT '' NOT NULL;

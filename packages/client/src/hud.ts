@@ -1,8 +1,8 @@
 import {
-  SPELLS,
-  SPELL_LIST,
+  SHORTCUT_KEYS,
+  SHORTCUT_SLOTS,
   levelProgress,
-  spellUnlocked,
+  spellById,
   type ChatEvent,
   type PlayerData,
   type SpellId,
@@ -33,6 +33,7 @@ export class Hud {
   private readonly online = element("#hud-online");
   private readonly wardrobeButton = element<HTMLButtonElement>("#hud-wardrobe");
   private readonly rankingButton = element<HTMLButtonElement>("#hud-ranking");
+  private readonly powersButton = element<HTMLButtonElement>("#hud-powers");
   private readonly mountButton = element<HTMLButtonElement>("#hud-mount");
   private readonly mountLabel = element("#hud-mount-label");
   private readonly targetPanel = element("#target-panel");
@@ -51,6 +52,9 @@ export class Hud {
 
   private chatHandler: ((text: string) => void) | null = null;
   private spellHandler: ((id: SpellId) => void) | null = null;
+  private emptySlotHandler: (() => void) | null = null;
+  private shortcuts: string[] = Array.from({ length: SHORTCUT_SLOTS }, () => "");
+  private lastMana = -1;
   private readonly cooldownUntil = new Map<SpellId, number>();
   private lastTargetKey = "";
   private lastLevel = 0;
@@ -73,32 +77,51 @@ export class Hud {
     this.buildSpells();
   }
 
-  /** Um botão por poder, na ordem em que são liberados. */
+  /** A barra segue os atalhos do jogador: um botão por tecla. */
   private buildSpells() {
-    for (const spell of SPELL_LIST) {
+    this.spellButtons.length = 0;
+    const buttons = this.shortcuts.map((id, index) => {
+      const spell = id ? spellById(id) : undefined;
       const button = document.createElement("button");
       button.type = "button";
       button.className = "spell";
-      button.dataset.spell = spell.id;
-      button.title = `${spell.name} — ${spell.description} · ${spell.mana} de mana`;
+      button.classList.toggle("free", !spell);
+      button.dataset.spell = spell?.id ?? "";
+      button.title = spell
+        ? `${spell.name} — ${spell.description} · ${spell.mana} de mana`
+        : "Atalho livre: abra os poderes (P) para escolher um";
 
       const key = document.createElement("kbd");
-      key.textContent = spell.key;
+      key.textContent = SHORTCUT_KEYS[index];
       const name = document.createElement("span");
-      name.textContent = spell.short;
-      const lock = document.createElement("b");
-      lock.textContent = `Nível ${spell.minLevel}`;
+      name.textContent = spell?.short ?? "+";
       const cooldown = document.createElement("i");
       cooldown.className = "cooldown";
 
-      button.append(key, name, lock, cooldown);
+      button.append(key, name, cooldown);
       button.addEventListener("click", () => {
-        this.spellHandler?.(spell.id);
+        if (spell) this.spellHandler?.(spell.id);
+        else this.emptySlotHandler?.();
         button.blur();
       });
-      this.spellbar.append(button);
-      this.spellButtons.push(button);
-    }
+      return button;
+    });
+    this.spellButtons.push(...buttons);
+    this.spellbar.replaceChildren(...buttons);
+    this.lastMana = -1;
+  }
+
+  /** Poder de cada tecla, na ordem: vazio quando a vaga está livre. */
+  setShortcuts(slots: string[]) {
+    if (slots.join(",") === this.shortcuts.join(",")) return;
+    this.shortcuts = [...slots];
+    this.buildSpells();
+  }
+
+  /** Id do poder numa tecla ("1" a "6"), se houver. */
+  spellForKey(key: string): SpellId | null {
+    const index = SHORTCUT_KEYS.indexOf(key);
+    return index === -1 ? null : this.shortcuts[index] || null;
   }
 
   show() {
@@ -121,6 +144,14 @@ export class Hud {
       handler();
       this.wardrobeButton.blur();
     });
+  }
+
+  onPowers(handler: () => void) {
+    this.powersButton.addEventListener("click", () => {
+      handler();
+      this.powersButton.blur();
+    });
+    this.emptySlotHandler = handler;
   }
 
   onRanking(handler: () => void) {
@@ -160,12 +191,12 @@ export class Hud {
     this.mountButton.title = player.mount ? "" : "Equipe uma montaria no guarda-roupa";
     this.mountLabel.textContent = player.mounted ? "Desmontar" : "Montar";
 
-    for (const button of this.spellButtons) {
-      const spell = SPELLS[button.dataset.spell as SpellId];
-      const locked = !spellUnlocked(spell, player.level);
-      button.classList.toggle("locked", locked);
-      button.classList.toggle("no-mana", !locked && player.mana < spell.mana);
-      button.disabled = locked;
+    if (player.mana !== this.lastMana) {
+      this.lastMana = player.mana;
+      for (const button of this.spellButtons) {
+        const spell = button.dataset.spell ? spellById(button.dataset.spell) : undefined;
+        button.classList.toggle("no-mana", spell !== undefined && player.mana < spell.mana);
+      }
     }
   }
 

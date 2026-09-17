@@ -40,7 +40,7 @@ export class Wardrobe {
   private readonly handlers: WardrobeHandlers;
   private tab: Tab = "visual";
   private player: PlayerData | null = null;
-  private profile: ProfileEvent = { diamonds: 0, unlocks: [] };
+  private profile: ProfileEvent = { diamonds: 0, unlocks: [], shortcuts: [] };
   private unlocks = new Set<string>();
   private editor: AppearanceEditor | null = null;
   private tryOn: CatalogItem | null = null;

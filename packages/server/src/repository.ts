@@ -121,6 +121,8 @@ export interface CharacterSnapshot {
   id: number;
   level: number;
   kills: number;
+  /** Ids dos poderes na barra, na ordem das teclas. */
+  shortcuts: string[];
   xp: number;
   hp: number;
   mana: number;
@@ -144,6 +146,7 @@ export async function saveCharacter(snapshot: CharacterSnapshot) {
       mana: snapshot.mana,
       gold: snapshot.gold,
       kills: snapshot.kills,
+      shortcuts: snapshot.shortcuts.join(","),
       x: snapshot.x,
       y: snapshot.y,
       skin: appearance.skin,

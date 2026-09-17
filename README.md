@@ -25,7 +25,7 @@ Abra http://localhost:5173, crie uma conta e um personagem. Para ver o multiplay
 |---|---|
 | Andar | Clique no chão, `WASD` ou setas |
 | Atacar | Clique no monstro · `Tab` ataca o mais próximo · `Esc` para |
-| Poderes | `1` a `5` (abrem por nível: Cura 1, Golpe Giratório 4, Raio Flamejante 8, Tremor 14, Drenar Vida 20) |
+| Poderes | `1` a `6` (atalhos) · `P` abre o grimório |
 | Guarda-roupa e loja | `O` |
 | Ranking | `R` |
 | Mapa grande | `N` |
@@ -37,6 +37,14 @@ Abra http://localhost:5173, crie uma conta e um personagem. Para ver o multiplay
 
 - `/ajuda`, `/online`
 - Só para testes: `/evento xp`, `/evento invasao`, `/xp 500`, `/ouro 2000`, `/diamantes 1000`
+
+## Poderes
+
+- São seis famílias, liberadas por nível: Cura (1), Golpe Giratório (4), Raio Flamejante (8), Tremor (14), Drenar Vida (20) e Tempestade (30).
+- Cada família ganha um **grau novo** de tantos em tantos níveis (Cura a cada 6, Raio a cada 8, Tempestade a cada 12, e assim por diante). O grau sobe a força em 18% e a mana em 15%, sem teto: no nível 100 já existe um Raio Flamejante XII.
+- O jogador tem **6 atalhos** (teclas `1` a `6`) e escolhe quais poderes ficam neles no grimório (`P`): clica no poder e depois no atalho. Dá para trocar a qualquer momento, e os atalhos ficam salvos no personagem.
+- Quando abre um grau melhor, o atalho sobe sozinho (Raio II vira Raio III), e poder novo entra numa vaga livre.
+- As famílias e os números de cada uma estão em `packages/shared/src/spells.ts`.
 
 ## Drops e ranking
 

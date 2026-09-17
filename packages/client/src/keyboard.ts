@@ -7,6 +7,7 @@ export interface KeyboardHandlers {
   toggleWardrobe(): void;
   toggleMount(): void;
   toggleRanking(): void;
+  togglePowers(): void;
   toggleMap(): void;
 }
 
@@ -75,6 +76,9 @@ export class KeyboardInput {
         return;
       case "r":
         this.handlers.toggleRanking();
+        return;
+      case "p":
+        this.handlers.togglePowers();
         return;
       case "n":
         this.handlers.toggleMap();

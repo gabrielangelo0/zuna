@@ -98,7 +98,7 @@
             <li><kbd>Clique</kbd> andar ou atacar um monstro</li>
             <li><kbd>WASD</kbd> ou <kbd>Setas</kbd> andar</li>
             <li><kbd>Tab</kbd> atacar o mais próximo · <kbd>Esc</kbd> parar</li>
-            <li><kbd>1</kbd> a <kbd>5</kbd> poderes (abrem conforme o nível)</li>
+            <li><kbd>1</kbd> a <kbd>6</kbd> poderes · <kbd>P</kbd> grimório</li>
             <li><kbd>O</kbd> guarda-roupa e loja · <kbd>M</kbd> montar</li>
             <li><kbd>Enter</kbd> chat · <kbd>Roda do mouse</kbd> zoom</li>
           </ul>
@@ -174,6 +174,7 @@
           <div class="hud-actions">
             <button id="hud-wardrobe" type="button"><kbd>O</kbd> Visual</button>
             <button id="hud-mount" type="button"><kbd>M</kbd> <span id="hud-mount-label">Montar</span></button>
+            <button id="hud-powers" type="button"><kbd>P</kbd> Poderes</button>
             <button id="hud-ranking" type="button"><kbd>R</kbd> Ranking</button>
           </div>
         </div>
@@ -243,6 +244,16 @@
           <div id="wardrobe-content"></div>
         </div>
         <p id="wardrobe-status" class="status" hidden></p>
+      </section>
+
+      <section id="grimoire" class="card kit-panel" hidden>
+        <header class="panel-header">
+          <h2>Poderes</h2>
+          <button id="grimoire-close" class="icon" type="button" aria-label="Fechar">✕</button>
+        </header>
+        <p id="grimoire-hint" class="lead"></p>
+        <div id="grimoire-slots"></div>
+        <div id="grimoire-list"></div>
       </section>
 
       <section id="ranking" class="card kit-panel" hidden>

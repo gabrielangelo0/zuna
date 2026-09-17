@@ -57,6 +57,8 @@ export const characters = pgTable(
     gold: bigint("gold", { mode: "number" }).notNull().default(0),
     /** Monstros derrubados: entra no ranking de caçadas. */
     kills: integer("kills").notNull().default(0),
+    /** Poderes na barra de atalhos, separados por vírgula (slot vazio = nada). */
+    shortcuts: text("shortcuts").notNull().default(""),
     x: smallint("x").notNull(),
     y: smallint("y").notNull(),
     skin: smallint("skin").notNull(),

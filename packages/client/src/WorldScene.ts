@@ -6,8 +6,8 @@ import {
   LOOT,
   MONSTERS,
   Obj,
-  SPELLS,
   ServerMsg,
+  spellById,
   spellUnlocked,
   spellsUnlockedAt,
   TEMPLE_X,
@@ -38,6 +38,7 @@ import { GAME_FONT } from "./canvas.ts";
 import { element } from "./dom.ts";
 import { Hud } from "./hud.ts";
 import { screenToTile, tileToScreen } from "./iso.ts";
+import { Grimoire } from "./grimoire.ts";
 import { LootLayer } from "./loot.ts";
 import { Minimap } from "./minimap.ts";
 import { Ranking } from "./ranking.ts";
@@ -106,6 +107,7 @@ export class WorldScene extends Phaser.Scene {
   private lootLayer!: LootLayer;
   private minimap!: Minimap;
   private readonly ranking = new Ranking();
+  private readonly grimoire = new Grimoire((slots) => this.room?.send(ClientMsg.Shortcuts, { slots }));
   private nextMinimapAt = 0;
   private corpses: Actor[] = [];
   private readonly waterBobs: { bob: Phaser.GameObjects.Bob; offset: number }[] = [];
@@ -200,6 +202,8 @@ export class WorldScene extends Phaser.Scene {
     room.onMessage(ServerMsg.Announce, (event: AnnounceEvent) => this.hud.showBanner(event.text));
     room.onMessage(ServerMsg.Profile, (event: ProfileEvent) => {
       this.hud.setDiamonds(event.diamonds);
+      this.hud.setShortcuts(event.shortcuts);
+      this.grimoire.setShortcuts(event.shortcuts);
       this.wardrobe.setProfile(event);
     });
     room.onMessage(ServerMsg.Purchase, (event: PurchaseEvent) => this.onPurchase(event));
@@ -213,16 +217,19 @@ export class WorldScene extends Phaser.Scene {
     this.hud.onSpell((id) => this.castSpell(id));
     this.hud.onWardrobe(() => this.wardrobe.toggle());
     this.hud.onRanking(() => this.ranking.toggle());
+    this.hud.onPowers(() => this.grimoire.toggle());
     this.hud.onMount(() => room.send(ClientMsg.ToggleMount));
     this.keyboard = new KeyboardInput({
       move: (dx, dy) => room.send(ClientMsg.Move, { dx, dy }),
       spell: (key) => {
-        const spell = Object.values(SPELLS).find((s) => s.key === key);
-        if (spell) this.castSpell(spell.id);
+        const id = this.hud.spellForKey(key);
+        if (id) this.castSpell(id);
+        else if (key <= "6") this.grimoire.open();
       },
       targetNearest: () => this.targetNearest(),
       escape: () => {
-        if (this.ranking.isOpen) this.ranking.close();
+        if (this.grimoire.isOpen) this.grimoire.close();
+        else if (this.ranking.isOpen) this.ranking.close();
         else if (this.wardrobe.isOpen) this.wardrobe.close();
         else if (element("#minimap").classList.contains("expanded")) this.toggleMap();
         else room.send(ClientMsg.Target, { id: "" });
@@ -234,6 +241,7 @@ export class WorldScene extends Phaser.Scene {
       toggleWardrobe: () => this.wardrobe.toggle(),
       toggleMount: () => room.send(ClientMsg.ToggleMount),
       toggleRanking: () => this.ranking.toggle(),
+      togglePowers: () => this.grimoire.toggle(),
       toggleMap: () => this.toggleMap(),
     });
   }
@@ -351,6 +359,7 @@ export class WorldScene extends Phaser.Scene {
     actor.sync();
     if (actor.id !== this.localId) return;
     this.hud.updatePlayer(actor.data as PlayerData);
+    this.grimoire.setLevel((actor.data as PlayerData).level);
     this.wardrobe.setPlayer(actor.data as PlayerData);
     this.ranking.setMyName((actor.data as PlayerData).name);
   }
@@ -447,8 +456,8 @@ export class WorldScene extends Phaser.Scene {
 
   private castSpell(id: SpellId) {
     const local = this.actors.get(this.localId);
-    if (!this.room || !local || this.hud.isOnCooldown(id)) return;
-    const spell = SPELLS[id];
+    const spell = spellById(id);
+    if (!this.room || !local || !spell || this.hud.isOnCooldown(id)) return;
     const player = local.data as PlayerData;
     this.room.send(ClientMsg.Spell, { id });
 
@@ -462,7 +471,11 @@ export class WorldScene extends Phaser.Scene {
     const aimed =
       target !== undefined && !target.dead && chebyshev(target.tileX, target.tileY, local.tileX, local.tileY) <= spell.range;
     const hasTargets =
-      id === "whirl" || id === "quake" ? monstersInRange(spell.range) : id === "bolt" || id === "drain" ? aimed : true;
+      spell.kind === "melee" || spell.kind === "area"
+        ? monstersInRange(spell.range)
+        : spell.kind === "target" || spell.kind === "leech"
+          ? aimed
+          : true;
 
     if (spellUnlocked(spell, player.level) && player.mana >= spell.mana && hasTargets) {
       this.hud.startCooldown(id, spell.cooldownMs);
@@ -540,7 +553,7 @@ export class WorldScene extends Phaser.Scene {
 
     if (event.id !== this.localId) return;
     for (const spell of spellsUnlockedAt(event.level)) {
-      this.hud.showBanner(`Novo poder: ${spell.name} · tecla ${spell.key}`);
+      this.hud.showBanner(`Novo poder: ${spell.name}`);
       this.floatingText(x, actor.headY - 64, `NOVO PODER: ${spell.name.toUpperCase()}`, "#5ef08f", 16, 70, 2600);
       this.burst(x, y - 30, { tints: [0x5ef08f, 0xffffff, 0x7dd3fc], count: 40, speed: 200, gravityY: -60, lifespan: 1200 });
     }
@@ -611,7 +624,7 @@ export class WorldScene extends Phaser.Scene {
     const at = tileToScreen(event.x, event.y);
     const local = event.caster === this.localId;
 
-    switch (event.spell) {
+    switch (spellById(event.spell)?.family) {
       case "heal":
         this.burst(from.x, from.y - 30, { tints: [0x7dff9b, 0xc8ffd4, 0x34d399], count: 26, speed: 70, gravityY: -140, lifespan: 900 });
         return;
@@ -643,6 +656,18 @@ export class WorldScene extends Phaser.Scene {
       case "drain":
         this.spellBeam(at.x, at.y - 20, from.x, from.y - 26, 0xa78bfa);
         this.burst(at.x, at.y - 16, { tints: [0xa78bfa, 0x7c3aed, 0xe9d5ff], count: 24, speed: 120, gravityY: -120, lifespan: 800 });
+        return;
+
+      case "storm":
+        this.spellRing(from.x, from.y, 80, 520, 0x8ec5ff, 700);
+        for (let i = 0; i < 5; i++) {
+          const offset = { x: from.x + (Math.random() - 0.5) * 320, y: from.y + (Math.random() - 0.5) * 170 };
+          this.time.delayedCall(i * 90, () => {
+            this.spellBeam(offset.x, offset.y - 320, offset.x, offset.y, 0xbfe0ff);
+            this.burst(offset.x, offset.y, { tints: [0xffffff, 0x8ec5ff], count: 14, speed: 160, lifespan: 500 });
+          });
+        }
+        if (local) this.cameras.main.shake(420, 0.005);
         return;
     }
   }

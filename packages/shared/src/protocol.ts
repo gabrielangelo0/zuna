@@ -86,6 +86,11 @@ export interface BuyMessage {
   id: string;
 }
 
+/** Troca os atalhos da barra de poderes: uma lista com SHORTCUT_SLOTS ids (vazio = slot livre). */
+export interface ShortcutsMessage {
+  slots: string[];
+}
+
 // ---------------------------------------------------------------- ranking
 
 export type RankingBoard = "level" | "gold" | "kills";
@@ -118,6 +123,7 @@ export const ClientMsg = {
   Appearance: "appearance",
   Equip: "equip",
   Buy: "buy",
+  Shortcuts: "shortcuts",
   ToggleMount: "toggleMount",
 } as const;
 
@@ -192,6 +198,8 @@ export interface AnnounceEvent {
 export interface ProfileEvent {
   diamonds: number;
   unlocks: string[];
+  /** Poderes na barra de atalhos, na ordem das teclas. */
+  shortcuts: string[];
 }
 
 export interface PurchaseEvent {

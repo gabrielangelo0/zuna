@@ -13,7 +13,6 @@ import {
   MONSTERS,
   PLAYER_ATTACK_MS,
   PLAYER_STEP_MS,
-  SPELLS,
   ServerMsg,
   TEMPLE_X,
   TEMPLE_Y,
@@ -33,6 +32,8 @@ import {
   playerStats,
   randInt,
   rollDrops,
+  sanitizeShortcuts,
+  spellById,
   spellUnlocked,
   spellsUnlockedAt,
   stepDuration,
@@ -64,6 +65,7 @@ import {
   type SpellEffectEvent,
   type SpellId,
   type SpellMessage,
+  type ShortcutsMessage,
   type TargetMessage,
   type XpEvent,
 } from "@zuna/shared";
@@ -88,15 +90,6 @@ import { generateSpawns } from "./spawns.ts";
 const XP_RATE = Number(process.env.XP_RATE) || 1;
 /** Comandos de teste no chat (/evento, /xp, /ouro, /diamantes). Ligados só fora de produção; DEV_COMMANDS=0 ou 1 força. */
 const DEV_COMMANDS = process.env.DEV_COMMANDS ? process.env.DEV_COMMANDS !== "0" : process.env.NODE_ENV !== "production";
-/** Dano de cada poder, em múltiplos do dano máximo do golpe normal. */
-const SPELL_POWER: Record<SpellId, { min: number; max: number }> = {
-  heal: { min: 0, max: 0 },
-  whirl: { min: 0.8, max: 1.5 },
-  bolt: { min: 1.6, max: 2.4 },
-  quake: { min: 1, max: 1.7 },
-  drain: { min: 1.2, max: 1.9 },
-};
-
 const AUTOSAVE_MS = 60_000;
 const MAX_TEST_GRANT = 100_000_000;
 
@@ -124,6 +117,8 @@ interface PlayerSim {
   diamonds: number;
   /** Monstros derrubados (o golpe final vale para quem mais causou dano). */
   kills: number;
+  /** Poderes na barra, na ordem das teclas. */
+  shortcuts: string[];
   path: Point[];
   moveDir: Point | null;
   nextStepAt: number;
@@ -215,6 +210,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     this.onMessage(ClientMsg.Equip, (client, message: EquipMessage) => this.handleEquip(client, message));
     this.onMessage(ClientMsg.Buy, (client, message: BuyMessage) => this.handleBuy(client, message));
     this.onMessage(ClientMsg.ToggleMount, (client) => this.handleToggleMount(client));
+    this.onMessage(ClientMsg.Shortcuts, (client, message: ShortcutsMessage) => this.handleShortcuts(client, message));
 
     this.setPatchRate(TICK_MS);
     this.setSimulationInterval(() => this.tick(), TICK_MS);
@@ -288,6 +284,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       unlocks,
       diamonds: account?.diamonds ?? 0,
       kills: row.kills,
+      shortcuts: sanitizeShortcuts(row.shortcuts ? row.shortcuts.split(",") : [], row.level),
       path: [],
       moveDir: null,
       nextStepAt: 0,
@@ -411,6 +408,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       mana: s.mana,
       gold: s.gold,
       kills: player.kills,
+      shortcuts: player.shortcuts,
       x: s.x,
       y: s.y,
       appearance: {
@@ -484,7 +482,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
   private handleSpell(client: Client, message: SpellMessage) {
     const player = this.players.get(client.sessionId);
-    const spell = SPELLS[message?.id];
+    const spell = spellById(String(message?.id ?? ""));
     if (!player || !spell) return;
 
     const now = Date.now();
@@ -502,13 +500,13 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     // Cada poder escolhe seus alvos antes de gastar mana: sem alvo, nada é cobrado.
     let targets: MonsterSim[] = [];
     let at: Point = s;
-    if (spell.id === "whirl" || spell.id === "quake") {
+    if (spell.kind === "melee" || spell.kind === "area") {
       targets = this.monstersAround(s, spell.range);
       if (targets.length === 0) {
         this.sendChat(client, "system", "Nenhum monstro ao seu redor.");
         return;
       }
-    } else if (spell.id === "bolt" || spell.id === "drain") {
+    } else if (spell.kind === "target" || spell.kind === "leech") {
       const target = s.target ? this.monsters.get(s.target) : undefined;
       if (!target || chebyshev(s.x, s.y, target.state.x, target.state.y) > spell.range) {
         this.sendChat(client, "system", "Escolha um alvo dentro do alcance (Tab mira no mais próximo).");
@@ -522,23 +520,23 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     player.spellReadyAt.set(spell.id, now + spell.cooldownMs);
     this.broadcast(ServerMsg.SpellEffect, { caster: player.id, spell: spell.id, x: at.x, y: at.y } satisfies SpellEffectEvent);
 
-    if (spell.id === "heal") {
-      const healed = Math.min(healAmount(s.level) + randInt(Math.random, 0, 10), s.maxHp - s.hp);
+    if (spell.kind === "heal") {
+      const amount = Math.round(healAmount(s.level) * spell.power) + randInt(Math.random, 0, 10);
+      const healed = Math.min(amount, s.maxHp - s.hp);
       s.hp += healed;
       this.broadcastHit(player.id, player.id, healed, "heal");
       return;
     }
 
     const { maxDamage } = playerStats(s.level);
-    const power = SPELL_POWER[spell.id];
     let dealt = 0;
     for (const monster of targets) {
-      const roll = Math.round(maxDamage * (power.min + Math.random() * (power.max - power.min)));
+      const roll = Math.round(maxDamage * spell.power * (0.85 + Math.random() * 0.3));
       dealt += Math.max(0, roll - monster.def.armor);
       this.damageMonster(monster, player, roll - monster.def.armor);
     }
 
-    if (spell.id === "drain" && dealt > 0) {
+    if (spell.kind === "leech" && dealt > 0) {
       const healed = Math.min(Math.round(dealt / 2), s.maxHp - s.hp);
       if (healed > 0) {
         s.hp += healed;
@@ -559,6 +557,16 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       }
     }
     return found;
+  }
+
+  /** O jogador arrumou a barra de poderes. */
+  private handleShortcuts(client: Client, message: ShortcutsMessage) {
+    const player = this.players.get(client.sessionId);
+    if (!player) return;
+    const slots = Array.isArray(message?.slots) ? message.slots.map((slot) => String(slot ?? "")) : [];
+    player.shortcuts = sanitizeShortcuts(slots, player.state.level);
+    this.sendProfile(player);
+    void this.persist(player);
   }
 
   private handleChat(client: Client, message: ChatMessage) {
@@ -1069,8 +1077,14 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     this.sendChat(player.client, "system", `Você avançou do nível ${oldLevel} para o nível ${newLevel}.`);
     for (let level = oldLevel + 1; level <= newLevel; level++) {
       for (const spell of spellsUnlockedAt(level)) {
-        this.sendChat(player.client, "event", `Novo poder: ${spell.name} (tecla ${spell.key}) — ${spell.description}.`);
+        this.sendChat(player.client, "event", `Novo poder: ${spell.name} — ${spell.description}.`);
       }
+    }
+    // Graus antigos sobem sozinhos, e poder novo entra numa vaga livre da barra.
+    const shortcuts = sanitizeShortcuts(player.shortcuts, s.level);
+    if (shortcuts.join(",") !== player.shortcuts.join(",")) {
+      player.shortcuts = shortcuts;
+      this.sendProfile(player);
     }
     if (Math.floor(newLevel / 10) > Math.floor(oldLevel / 10)) {
       this.broadcastChat("event", `${s.name} alcançou o nível ${newLevel}!`);
@@ -1281,7 +1295,11 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
   private sendProfile(player: PlayerSim) {
     if (!this.players.has(player.id)) return;
-    player.client.send(ServerMsg.Profile, { diamonds: player.diamonds, unlocks: [...player.unlocks] } satisfies ProfileEvent);
+    player.client.send(ServerMsg.Profile, {
+      diamonds: player.diamonds,
+      unlocks: [...player.unlocks],
+      shortcuts: player.shortcuts,
+    } satisfies ProfileEvent);
   }
 
   private sendPurchase(player: PlayerSim, ok: boolean, id: string, message: string) {
