@@ -179,7 +179,7 @@ No protótipo, um evento aleatório dispara a cada 20 min (`EVENT_INTERVAL_MIN`)
 ### 5.1 Combate
 
 - **Movimento em grid** (tiles isométricos, 8 direções): clique para andar (A\*) + WASD.
-- **Auto-ataque no alvo** + **4 a 6 skills** com cooldown (teclas 1–6).
+- **Auto-ataque no alvo** + **4 a 6 skills** com cooldown (teclas 1–6). No protótipo já são 5 poderes, liberados por nível: Cura (1), Golpe Giratório (4), Raio Flamejante (8), Tremor (14) e Drenar Vida (20).
 - **Bosses com áreas de aviso** no chão: a habilidade está no posicionamento.
 - **Servidor a ~10 ticks/s**, com o cliente interpolando.
 - Funciona bem com lag de navegador, facilita o anti-cheat e é simples de programar sozinho.
@@ -507,7 +507,7 @@ game/
 
 | Fase | Duração* | Entregas | Critério para avançar |
 |---|---|---|---|
-| **0 · Protótipo técnico** ✅ | 3–4 sem. | Feito: mapa isométrico no Phaser; andar por clique e WASD; multiplayer via Colyseus; 7 monstros com IA; combate; XP fixa por monstro; níveis; morte; chat; 2 magias; eventos XP em Dobro e Invasão; contas e personagens salvos em Postgres; criação de personagem; guarda-roupa e loja com roupas, mascotes e montarias | "É gostoso matar esse monstro?" |
+| **0 · Protótipo técnico** ✅ | 3–4 sem. | Feito: mapa isométrico no Phaser; andar por clique e WASD; multiplayer via Colyseus; 7 monstros com IA; combate; XP fixa por monstro; níveis; morte; chat; 5 poderes liberados por nível; eventos XP em Dobro e Invasão; contas e personagens salvos em Postgres; criação de personagem; guarda-roupa e loja com roupas, mascotes e montarias | "É gostoso matar esse monstro?" |
 | **1 · Core + progressão** | 8 sem. | Combate e skills das 3 classes; nível ilimitado + atributos; loot; 8 slots; refino; gemas; Poder de Combate; 1 cidade + 4 mapas | "Ver o Poder subir é viciante?" |
 | **2 · Loja e VIP** | 5–6 sem. | Diamantes + Pix/cartão; primeira recarga; VIP; Patrono; Fundo de Crescimento; ofertas; painel admin | Compra real de ponta a ponta, sem erro de entrega |
 | **3 · Social e endgame** | 6 sem. | Party; chat; anúncios; bosses; Torre Infinita; arena; rankings; auto-caça e offline; diárias; login; Web Push | Jogadores de teste voltam sozinhos no dia seguinte |

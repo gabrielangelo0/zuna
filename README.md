@@ -25,7 +25,7 @@ Abra http://localhost:5173, crie uma conta e um personagem. Para ver o multiplay
 |---|---|
 | Andar | Clique no chão, `WASD` ou setas |
 | Atacar | Clique no monstro · `Tab` ataca o mais próximo · `Esc` para |
-| Magias | `1` Cura · `2` Golpe Giratório |
+| Poderes | `1` a `5` (abrem por nível: Cura 1, Golpe Giratório 4, Raio Flamejante 8, Tremor 14, Drenar Vida 20) |
 | Guarda-roupa e loja | `O` |
 | Ranking | `R` |
 | Mapa grande | `N` |

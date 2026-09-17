@@ -8,6 +8,8 @@ import {
   Obj,
   SPELLS,
   ServerMsg,
+  spellUnlocked,
+  spellsUnlockedAt,
   TEMPLE_X,
   TEMPLE_Y,
   catalogItem,
@@ -450,11 +452,21 @@ export class WorldScene extends Phaser.Scene {
     const player = local.data as PlayerData;
     this.room.send(ClientMsg.Spell, { id });
 
-    const hasNeighbor = [...this.monsterIds].some((monsterId) => {
-      const actor = this.actors.get(monsterId);
-      return actor !== undefined && !actor.dead && chebyshev(actor.tileX, actor.tileY, local.tileX, local.tileY) <= 1;
-    });
-    if (player.mana >= spell.mana && (id !== "whirl" || hasNeighbor)) this.hud.startCooldown(id, spell.cooldownMs);
+    // O tempo de recarga só começa quando o lançamento tinha tudo para dar certo.
+    const monstersInRange = (range: number) =>
+      [...this.monsterIds].some((monsterId) => {
+        const actor = this.actors.get(monsterId);
+        return actor !== undefined && !actor.dead && chebyshev(actor.tileX, actor.tileY, local.tileX, local.tileY) <= range;
+      });
+    const target = player.target ? this.actors.get(player.target) : undefined;
+    const aimed =
+      target !== undefined && !target.dead && chebyshev(target.tileX, target.tileY, local.tileX, local.tileY) <= spell.range;
+    const hasTargets =
+      id === "whirl" || id === "quake" ? monstersInRange(spell.range) : id === "bolt" || id === "drain" ? aimed : true;
+
+    if (spellUnlocked(spell, player.level) && player.mana >= spell.mana && hasTargets) {
+      this.hud.startCooldown(id, spell.cooldownMs);
+    }
   }
 
   // ------------------------------------------------------------ efeitos
@@ -525,6 +537,13 @@ export class WorldScene extends Phaser.Scene {
       angle: { min: 230, max: 310 },
     });
     this.floatingText(x, actor.headY - 34, `NÍVEL ${event.level}!`, "#ffd35c", 22, 56, 2000);
+
+    if (event.id !== this.localId) return;
+    for (const spell of spellsUnlockedAt(event.level)) {
+      this.hud.showBanner(`Novo poder: ${spell.name} · tecla ${spell.key}`);
+      this.floatingText(x, actor.headY - 64, `NOVO PODER: ${spell.name.toUpperCase()}`, "#5ef08f", 16, 70, 2600);
+      this.burst(x, y - 30, { tints: [0x5ef08f, 0xffffff, 0x7dd3fc], count: 40, speed: 200, gravityY: -60, lifespan: 1200 });
+    }
   }
 
   private onPurchase(event: PurchaseEvent) {
@@ -588,29 +607,82 @@ export class WorldScene extends Phaser.Scene {
     const now = this.time.now;
     const caster = this.actors.get(event.caster);
     caster?.play(event.spell === "heal" ? "cast" : "attack", now);
-    const { x, y } = caster ? caster.position(now) : tileToScreen(event.x, event.y);
+    const from = caster ? caster.position(now) : tileToScreen(event.x, event.y);
+    const at = tileToScreen(event.x, event.y);
+    const local = event.caster === this.localId;
 
-    if (event.spell === "heal") {
-      this.burst(x, y - 30, { tints: [0x7dff9b, 0xc8ffd4, 0x34d399], count: 26, speed: 70, gravityY: -140, lifespan: 900 });
-      return;
+    switch (event.spell) {
+      case "heal":
+        this.burst(from.x, from.y - 30, { tints: [0x7dff9b, 0xc8ffd4, 0x34d399], count: 26, speed: 70, gravityY: -140, lifespan: 900 });
+        return;
+
+      case "whirl":
+        this.spellRing(from.x, from.y, 40, 190, 0xfff1c1, 380);
+        this.burst(from.x, from.y - 20, { tints: [0xffffff, 0xffe08a], count: 22, speed: 280, gravityY: 0, lifespan: 420 });
+        return;
+
+      case "quake":
+        this.spellRing(from.x, from.y, 60, 380, 0xffb057, 620);
+        this.spellRing(from.x, from.y, 30, 260, 0xffe3b0, 480);
+        this.burst(from.x, from.y, {
+          tints: [0xb98a52, 0x7a5a34, 0xd9c7a8],
+          count: 40,
+          speed: 240,
+          gravityY: 420,
+          lifespan: 900,
+          angle: { min: 200, max: 340 },
+        });
+        if (local) this.cameras.main.shake(320, 0.006);
+        return;
+
+      case "bolt":
+        this.spellBeam(from.x, from.y - 26, at.x, at.y - 20, 0xffa53c);
+        this.burst(at.x, at.y - 16, { tints: [0xffd166, 0xff7b2c, 0xffffff], count: 26, speed: 200, gravityY: 60, lifespan: 600 });
+        return;
+
+      case "drain":
+        this.spellBeam(at.x, at.y - 20, from.x, from.y - 26, 0xa78bfa);
+        this.burst(at.x, at.y - 16, { tints: [0xa78bfa, 0x7c3aed, 0xe9d5ff], count: 24, speed: 120, gravityY: -120, lifespan: 800 });
+        return;
     }
+  }
 
+  /** Anel que cresce no chão, em perspectiva isométrica. */
+  private spellRing(x: number, y: number, from: number, to: number, color: number, duration: number) {
     const ring = this.add.graphics({ x, y }).setDepth(y + 3).setBlendMode(Phaser.BlendModes.ADD);
     const animation = { t: 0 };
     this.tweens.add({
       targets: animation,
       t: 1,
-      duration: 380,
+      duration,
       ease: "Cubic.easeOut",
       onUpdate: () => {
-        const size = 40 + animation.t * 150;
+        const size = from + animation.t * (to - from);
         ring.clear();
-        ring.lineStyle(7 * (1 - animation.t) + 1, 0xfff1c1, 1 - animation.t);
+        ring.lineStyle(7 * (1 - animation.t) + 1, color, 1 - animation.t);
         ring.strokeEllipse(0, 0, size, size / 2);
       },
       onComplete: () => ring.destroy(),
     });
-    this.burst(x, y - 20, { tints: [0xffffff, 0xffe08a], count: 22, speed: 280, gravityY: 0, lifespan: 420 });
+  }
+
+  /** Risco de energia entre dois pontos (raio e drenagem). */
+  private spellBeam(x1: number, y1: number, x2: number, y2: number, color: number) {
+    const beam = this.add.graphics().setDepth(DEPTH_FLOATING - 1).setBlendMode(Phaser.BlendModes.ADD);
+    const animation = { t: 0 };
+    this.tweens.add({
+      targets: animation,
+      t: 1,
+      duration: 320,
+      onUpdate: () => {
+        beam.clear();
+        beam.lineStyle(7 * (1 - animation.t) + 2, color, 1 - animation.t * 0.8);
+        beam.lineBetween(x1, y1, x2, y2);
+        beam.lineStyle(2, 0xffffff, (1 - animation.t) * 0.8);
+        beam.lineBetween(x1, y1, x2, y2);
+      },
+      onComplete: () => beam.destroy(),
+    });
   }
 
   private floatingText(x: number, y: number, text: string, color: string, size: number, rise = 34, duration = 900) {

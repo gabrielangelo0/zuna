@@ -1,4 +1,12 @@
-import { SPELLS, levelProgress, type ChatEvent, type PlayerData, type SpellId } from "@zuna/shared";
+import {
+  SPELLS,
+  SPELL_LIST,
+  levelProgress,
+  spellUnlocked,
+  type ChatEvent,
+  type PlayerData,
+  type SpellId,
+} from "@zuna/shared";
 import { element, formatNumber } from "./dom.ts";
 
 export interface TargetInfo {
@@ -32,7 +40,8 @@ export class Hud {
   private readonly targetHp = element("#target-hp");
   private readonly actionbar = element("#actionbar");
   private readonly minimap = element("#minimap");
-  private readonly spellButtons = [...document.querySelectorAll<HTMLButtonElement>(".spell")];
+  private readonly spellbar = element("#spellbar");
+  private readonly spellButtons: HTMLButtonElement[] = [];
   private readonly chat = element("#chat");
   private readonly chatLog = element("#chat-log");
   private readonly chatInput = element<HTMLInputElement>("#chat-input");
@@ -61,11 +70,34 @@ export class Hud {
         this.chatInput.blur();
       }
     });
-    for (const button of this.spellButtons) {
+    this.buildSpells();
+  }
+
+  /** Um botão por poder, na ordem em que são liberados. */
+  private buildSpells() {
+    for (const spell of SPELL_LIST) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "spell";
+      button.dataset.spell = spell.id;
+      button.title = `${spell.name} — ${spell.description} · ${spell.mana} de mana`;
+
+      const key = document.createElement("kbd");
+      key.textContent = spell.key;
+      const name = document.createElement("span");
+      name.textContent = spell.short;
+      const lock = document.createElement("b");
+      lock.textContent = `Nível ${spell.minLevel}`;
+      const cooldown = document.createElement("i");
+      cooldown.className = "cooldown";
+
+      button.append(key, name, lock, cooldown);
       button.addEventListener("click", () => {
-        this.spellHandler?.(button.dataset.spell as SpellId);
+        this.spellHandler?.(spell.id);
         button.blur();
       });
+      this.spellbar.append(button);
+      this.spellButtons.push(button);
     }
   }
 
@@ -130,7 +162,10 @@ export class Hud {
 
     for (const button of this.spellButtons) {
       const spell = SPELLS[button.dataset.spell as SpellId];
-      button.classList.toggle("no-mana", player.mana < spell.mana);
+      const locked = !spellUnlocked(spell, player.level);
+      button.classList.toggle("locked", locked);
+      button.classList.toggle("no-mana", !locked && player.mana < spell.mana);
+      button.disabled = locked;
     }
   }
 

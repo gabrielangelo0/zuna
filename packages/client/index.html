@@ -98,7 +98,7 @@
             <li><kbd>Clique</kbd> andar ou atacar um monstro</li>
             <li><kbd>WASD</kbd> ou <kbd>Setas</kbd> andar</li>
             <li><kbd>Tab</kbd> atacar o mais próximo · <kbd>Esc</kbd> parar</li>
-            <li><kbd>1</kbd> Cura · <kbd>2</kbd> Golpe Giratório</li>
+            <li><kbd>1</kbd> a <kbd>5</kbd> poderes (abrem conforme o nível)</li>
             <li><kbd>O</kbd> guarda-roupa e loja · <kbd>M</kbd> montar</li>
             <li><kbd>Enter</kbd> chat · <kbd>Roda do mouse</kbd> zoom</li>
           </ul>
@@ -201,14 +201,8 @@
         </div>
 
         <div class="action-center">
-          <div id="spellbar">
-            <button class="spell" data-spell="heal" type="button">
-              <kbd>1</kbd><span>Cura</span><i class="cooldown"></i>
-            </button>
-            <button class="spell" data-spell="whirl" type="button">
-              <kbd>2</kbd><span>Golpe Giratório</span><i class="cooldown"></i>
-            </button>
-          </div>
+          <div id="spellbar"></div>
+
           <div class="xp-track" title="Experiência">
             <div class="xp-inner"><div class="xp-fill" id="hud-xp"></div></div>
             <span id="hud-xp-text"></span>

@@ -33,6 +33,8 @@ import {
   playerStats,
   randInt,
   rollDrops,
+  spellUnlocked,
+  spellsUnlockedAt,
   stepDuration,
   xpForLevel,
   type AnnounceEvent,
@@ -86,6 +88,15 @@ import { generateSpawns } from "./spawns.ts";
 const XP_RATE = Number(process.env.XP_RATE) || 1;
 /** Comandos de teste no chat (/evento, /xp, /ouro, /diamantes). Ligados só fora de produção; DEV_COMMANDS=0 ou 1 força. */
 const DEV_COMMANDS = process.env.DEV_COMMANDS ? process.env.DEV_COMMANDS !== "0" : process.env.NODE_ENV !== "production";
+/** Dano de cada poder, em múltiplos do dano máximo do golpe normal. */
+const SPELL_POWER: Record<SpellId, { min: number; max: number }> = {
+  heal: { min: 0, max: 0 },
+  whirl: { min: 0.8, max: 1.5 },
+  bolt: { min: 1.6, max: 2.4 },
+  quake: { min: 1, max: 1.7 },
+  drain: { min: 1.2, max: 1.9 },
+};
+
 const AUTOSAVE_MS = 60_000;
 const MAX_TEST_GRANT = 100_000_000;
 
@@ -478,21 +489,38 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
     const now = Date.now();
     const s = player.state;
+    if (!spellUnlocked(spell, s.level)) {
+      this.sendChat(client, "system", `${spell.name} abre no nível ${spell.minLevel}.`);
+      return;
+    }
     if ((player.spellReadyAt.get(spell.id) ?? 0) > now) return;
     if (s.mana < spell.mana) {
       this.sendChat(client, "system", "Mana insuficiente.");
       return;
     }
 
-    const neighbors = spell.id === "whirl" ? this.adjacentMonsters(s) : [];
-    if (spell.id === "whirl" && neighbors.length === 0) {
-      this.sendChat(client, "system", "Nenhum monstro ao seu redor.");
-      return;
+    // Cada poder escolhe seus alvos antes de gastar mana: sem alvo, nada é cobrado.
+    let targets: MonsterSim[] = [];
+    let at: Point = s;
+    if (spell.id === "whirl" || spell.id === "quake") {
+      targets = this.monstersAround(s, spell.range);
+      if (targets.length === 0) {
+        this.sendChat(client, "system", "Nenhum monstro ao seu redor.");
+        return;
+      }
+    } else if (spell.id === "bolt" || spell.id === "drain") {
+      const target = s.target ? this.monsters.get(s.target) : undefined;
+      if (!target || chebyshev(s.x, s.y, target.state.x, target.state.y) > spell.range) {
+        this.sendChat(client, "system", "Escolha um alvo dentro do alcance (Tab mira no mais próximo).");
+        return;
+      }
+      targets = [target];
+      at = { x: target.state.x, y: target.state.y };
     }
 
     s.mana -= spell.mana;
     player.spellReadyAt.set(spell.id, now + spell.cooldownMs);
-    this.broadcast(ServerMsg.SpellEffect, { caster: player.id, spell: spell.id, x: s.x, y: s.y } satisfies SpellEffectEvent);
+    this.broadcast(ServerMsg.SpellEffect, { caster: player.id, spell: spell.id, x: at.x, y: at.y } satisfies SpellEffectEvent);
 
     if (spell.id === "heal") {
       const healed = Math.min(healAmount(s.level) + randInt(Math.random, 0, 10), s.maxHp - s.hp);
@@ -502,10 +530,35 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     }
 
     const { maxDamage } = playerStats(s.level);
-    for (const monster of neighbors) {
-      const roll = Math.round(maxDamage * (0.8 + Math.random() * 0.7));
+    const power = SPELL_POWER[spell.id];
+    let dealt = 0;
+    for (const monster of targets) {
+      const roll = Math.round(maxDamage * (power.min + Math.random() * (power.max - power.min)));
+      dealt += Math.max(0, roll - monster.def.armor);
       this.damageMonster(monster, player, roll - monster.def.armor);
     }
+
+    if (spell.id === "drain" && dealt > 0) {
+      const healed = Math.min(Math.round(dealt / 2), s.maxHp - s.hp);
+      if (healed > 0) {
+        s.hp += healed;
+        this.broadcastHit(player.id, player.id, healed, "heal");
+      }
+    }
+  }
+
+  /** Monstros num raio (Chebyshev) em volta de um ponto. */
+  private monstersAround(center: Point, radius: number): MonsterSim[] {
+    const found: MonsterSim[] = [];
+    for (let y = center.y - radius; y <= center.y + radius; y++) {
+      for (let x = center.x - radius; x <= center.x + radius; x++) {
+        if (x === center.x && y === center.y) continue;
+        const id = this.monsterAt.get(this.tileKey(x, y));
+        const monster = id ? this.monsters.get(id) : undefined;
+        if (monster) found.push(monster);
+      }
+    }
+    return found;
   }
 
   private handleChat(client: Client, message: ChatMessage) {
@@ -1014,6 +1067,11 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     s.mana = stats.maxMana;
     this.broadcast(ServerMsg.LevelUp, { id: player.id, level: newLevel } satisfies LevelUpEvent);
     this.sendChat(player.client, "system", `Você avançou do nível ${oldLevel} para o nível ${newLevel}.`);
+    for (let level = oldLevel + 1; level <= newLevel; level++) {
+      for (const spell of spellsUnlockedAt(level)) {
+        this.sendChat(player.client, "event", `Novo poder: ${spell.name} (tecla ${spell.key}) — ${spell.description}.`);
+      }
+    }
     if (Math.floor(newLevel / 10) > Math.floor(oldLevel / 10)) {
       this.broadcastChat("event", `${s.name} alcançou o nível ${newLevel}!`);
     }

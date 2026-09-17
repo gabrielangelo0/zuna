@@ -874,12 +874,17 @@ input:focus {
   display: grid;
   justify-items: center;
   gap: 8px;
+  /* Largura fixa: sobra o que os dois orbes não usam, e a barra de poderes cabe numa linha. */
+  width: min(520px, calc(100vw - 300px));
   padding-bottom: 8px;
 }
 
 #spellbar {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  max-width: 100%;
 }
 
 .spell {
@@ -888,8 +893,8 @@ input:focus {
   flex-direction: column;
   align-items: center;
   gap: 1px;
-  width: 150px;
-  height: 58px;
+  width: 92px;
+  height: 54px;
   justify-content: center;
   padding: 4px 6px 6px;
   overflow: hidden;
@@ -915,6 +920,10 @@ input:focus {
 }
 
 .spell kbd {
+  color: var(--accent);
+}
+
+.spell kbd {
   position: absolute;
   top: 2px;
   left: 4px;
@@ -935,10 +944,37 @@ input:focus {
   opacity: 0.45;
 }
 
+/* Poder ainda fechado: mostra em que nível ele abre. */
+.spell b {
+  display: none;
+}
+
+.spell.locked {
+  cursor: not-allowed;
+  filter: grayscale(0.75);
+  opacity: 0.5;
+}
+
+.spell.locked span {
+  display: none;
+}
+
+.spell.locked b {
+  display: block;
+  color: #b9c2dd;
+  font-size: 10.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.spell.locked b::before {
+  content: "🔒 ";
+}
+
 /* Experiência: a faixa embaixo das magias, com a moldura do kit. */
 .xp-track {
   position: relative;
-  width: min(540px, 44vw);
+  width: 100%;
   height: 30px;
   border: 0 solid transparent;
   border-width: 9px 26px;
@@ -1520,6 +1556,23 @@ input:focus {
   }
 }
 
+/* Telas médias: tudo um pouco menor, para a barra continuar numa linha só. */
+@media (max-width: 900px) {
+  .orb {
+    width: 104px;
+    height: 104px;
+  }
+
+  .action-center {
+    width: min(460px, calc(100vw - 250px));
+  }
+
+  .spell {
+    width: 78px;
+    height: 50px;
+  }
+}
+
 @media (max-width: 700px) {
   #menu {
     padding: 16px;
@@ -1606,7 +1659,6 @@ input:focus {
   }
 
   .xp-track {
-    width: min(260px, 54vw);
     height: 24px;
     border-width: 7px 20px;
     border-image-width: 7px 20px;
@@ -1636,7 +1688,7 @@ input:focus {
 
   #chat {
     left: 8px;
-    bottom: 124px;
+    bottom: 176px;
     width: calc(100% - 16px);
   }
 
@@ -1644,12 +1696,25 @@ input:focus {
     max-height: 100px;
   }
 
+  .action-center {
+    width: min(216px, calc(100vw - 150px));
+    gap: 6px;
+  }
+
+  #spellbar {
+    gap: 4px;
+  }
+
   .spell {
-    width: 96px;
-    height: 46px;
-    border-width: 10px;
-    border-image-width: 10px;
+    width: 66px;
+    height: 42px;
+    border-width: 9px;
+    border-image-width: 9px;
     padding: 2px;
+  }
+
+  .spell.locked b {
+    font-size: 9px;
   }
 
   .spell span {
