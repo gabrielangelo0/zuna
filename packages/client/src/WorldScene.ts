@@ -27,8 +27,9 @@ import {
   type SpellEffectEvent,
   type SpellId,
   type XpEvent,
-} from "@game/shared";
+} from "@zuna/shared";
 import { Actor } from "./actors.ts";
+import { GAME_FONT } from "./canvas.ts";
 import { Hud } from "./hud.ts";
 import { screenToTile, tileToScreen } from "./iso.ts";
 import { KeyboardInput } from "./keyboard.ts";
@@ -539,7 +540,7 @@ export class WorldScene extends Phaser.Scene {
   private floatingText(x: number, y: number, text: string, color: string, size: number, rise = 34, duration = 900) {
     const label = this.add
       .text(x, y, text, {
-        fontFamily: "system-ui, sans-serif",
+        fontFamily: GAME_FONT,
         fontSize: `${size}px`,
         fontStyle: "bold",
         color,

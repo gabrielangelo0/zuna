@@ -1,8 +1,8 @@
 // Gera os sprites sem abrir janela: sobe o servidor do baker e roda a página no Chrome headless.
-// Uso: npm run bake -w @game/baker [-- id1 id2 ...]
-//      npm run bake -w @game/baker -- --survey [pasta1 pasta2]   (mostruário de modelos em previews/)
-//      npm run bake -w @game/baker -- --overview                 (visão geral dos sprites prontos, com montarias)
-// Para acompanhar visualmente: npm run dev -w @game/baker e abra http://localhost:5180/?auto=1
+// Uso: npm run bake -w @zuna/baker [-- id1 id2 ...]
+//      npm run bake -w @zuna/baker -- --survey [pasta1 pasta2]   (mostruário de modelos em previews/)
+//      npm run bake -w @zuna/baker -- --overview                 (visão geral dos sprites prontos, com montarias)
+// Para acompanhar visualmente: npm run dev -w @zuna/baker e abra http://localhost:5180/?auto=1
 
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";

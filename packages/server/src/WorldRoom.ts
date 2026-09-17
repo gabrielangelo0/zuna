@@ -57,7 +57,7 @@ import {
   type SpellMessage,
   type TargetMessage,
   type XpEvent,
-} from "@game/shared";
+} from "@zuna/shared";
 import { accountFromToken } from "./auth.ts";
 import { EventManager } from "./events.ts";
 import {

@@ -1,4 +1,4 @@
-import type { AnimName, BakedDir, TintGroup } from "@game/shared";
+import type { AnimName, BakedDir, TintGroup } from "@zuna/shared";
 
 // O que o baker gera. Os ids viram arquivos em packages/client/public/sprites/<id>.{png,json}.
 

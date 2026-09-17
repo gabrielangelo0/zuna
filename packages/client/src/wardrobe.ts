@@ -9,7 +9,7 @@ import {
   type ItemKind,
   type PlayerData,
   type ProfileEvent,
-} from "@game/shared";
+} from "@zuna/shared";
 import { AppearanceEditor } from "./appearanceEditor.ts";
 import { element, formatNumber } from "./dom.ts";
 import { LookPreview, paintItem } from "./lookPreview.ts";

@@ -1,6 +1,8 @@
-# Protótipo RPG
+# Zuna
 
-MMORPG isométrico no navegador, no estilo Tibia. Esta é a fase 0 (protótipo técnico) do [plano do jogo](docs/plano-do-jogo.md).
+**Seu personagem, sua jornada!** Zuna é um MMORPG isométrico no navegador, no estilo Tibia: explore, evolua, conquiste e viva um mundo repleto de aventuras, sem downloads. Jogue em https://zuna.devly.net.
+
+Este repositório está na fase 0 (protótipo técnico) do [plano do jogo](docs/plano-do-jogo.md).
 
 ## Rodar
 
@@ -59,12 +61,12 @@ Abra http://localhost:5173, crie uma conta e um personagem. Para ver o multiplay
 
 Produção roda na [Railway](https://railway.com) com um só serviço (o `Dockerfile` da raiz) e um Postgres:
 
-- `https://jogo.devly.net`: o jogo. O próprio servidor entrega o cliente compilado (`packages/client/dist`).
-- `https://api.devly.net`: API e WebSocket. O cliente é compilado com `VITE_SERVER_URL=https://api.devly.net`; sem essa variável, ele fala com o mesmo endereço que entregou a página.
+- `https://zuna.devly.net`: o jogo. O próprio servidor entrega o cliente compilado (`packages/client/dist`).
+- `https://api.zuna.devly.net`: API e WebSocket. O cliente é compilado com `VITE_SERVER_URL=https://api.zuna.devly.net`; sem essa variável, ele fala com o mesmo endereço que entregou a página.
 - O DNS do devly.net fica na Cloudflare, com os dois subdomínios em CNAME para a Railway.
 - `railway.json` define o healthcheck (`/__healthcheck`), uma réplica só (o mundo fica na memória do processo) e 30 s para salvar os jogadores antes de desligar.
 
-Variáveis do serviço na Railway: `DATABASE_URL=${{Postgres.DATABASE_URL}}`, `VITE_SERVER_URL=https://api.devly.net` e `PORT=8080`. O `NODE_ENV=production` já vem da imagem.
+Variáveis do serviço na Railway: `DATABASE_URL=${{Postgres.DATABASE_URL}}`, `VITE_SERVER_URL=https://api.zuna.devly.net` e `PORT=8080`. O `NODE_ENV=production` já vem da imagem.
 
 Para publicar uma versão nova a partir da sua máquina:
 
@@ -75,7 +77,7 @@ railway up
 Para testar a imagem de produção localmente:
 
 ```bash
-docker build --build-arg VITE_SERVER_URL=http://localhost:8091 -t jogo-rpg .
+docker build --build-arg VITE_SERVER_URL=http://localhost:8091 -t zuna .
 ```
 
 ## Banco de dados
@@ -83,8 +85,14 @@ docker build --build-arg VITE_SERVER_URL=http://localhost:8091 -t jogo-rpg .
 As migrações são aplicadas sozinhas quando o servidor inicia. Depois de mudar `packages/server/src/db/schema.ts`, gere a migração nova:
 
 ```bash
-npm run db:generate -w @game/server
+npm run db:generate -w @zuna/server
 ```
+
+## Identidade visual
+
+- Logo, frase e cores vêm do pôster do Zuna: azul-noite com verde esmeralda. O dourado aparece só no ouro. As cores são variáveis no topo de `packages/client/src/style.css`.
+- Fontes empacotadas no cliente (Fontsource, sem Google Fonts): Lilita One no logo e nos títulos, Permanent Marker na frase e Montserrat no resto, inclusive nos nomes dentro do jogo.
+- Ícones e prévia de link ficam em `packages/client/public/`: `favicon.svg`, `icon-192.png`, `icon-512.png`, `apple-touch-icon.png`, `og-image.jpg` (1200×630, montada com o mapa e os sprites do jogo) e `site.webmanifest`.
 
 ## Arte (sprites)
 
@@ -110,7 +118,7 @@ npm run bake -- --overview
 npm run bake -- --survey quaternius/monsters
 ```
 
-O primeiro gera só os itens citados. O `--overview` monta uma folha com todos os sprites e o cavaleiro em cada montaria, e o `--survey` mostra todos os modelos de uma pasta. As folhas de conferência ficam em `packages/baker/previews/` (fora do git). Para acompanhar a geração na tela, rode `npm run dev -w @game/baker` e abra http://localhost:5180/?auto=1.
+O primeiro gera só os itens citados. O `--overview` monta uma folha com todos os sprites e o cavaleiro em cada montaria, e o `--survey` mostra todos os modelos de uma pasta. As folhas de conferência ficam em `packages/baker/previews/` (fora do git). Para acompanhar a geração na tela, rode `npm run dev -w @zuna/baker` e abra http://localhost:5180/?auto=1.
 
 ## Estrutura
 

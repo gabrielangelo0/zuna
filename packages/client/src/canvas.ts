@@ -2,6 +2,9 @@
 
 export type Ctx = CanvasRenderingContext2D;
 
+/** Fonte dos textos desenhados no jogo (nomes e números), a mesma da interface. */
+export const GAME_FONT = '"Montserrat Variable", system-ui, sans-serif';
+
 export function rgba(color: number, alpha = 1): string {
   return `rgba(${(color >> 16) & 255}, ${(color >> 8) & 255}, ${color & 255}, ${alpha})`;
 }

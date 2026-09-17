@@ -1,4 +1,4 @@
-import { TEMPLE_X, TEMPLE_Y, TOWN_RADIUS, type MonsterKind } from "@game/shared";
+import { TEMPLE_X, TEMPLE_Y, TOWN_RADIUS, type MonsterKind } from "@zuna/shared";
 import type { WorldRoom } from "./WorldRoom.ts";
 
 const intervalMinutes = Number(process.env.EVENT_INTERVAL_MIN ?? 20);

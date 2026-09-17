@@ -1,4 +1,4 @@
-import { TILE_H, TILE_W } from "@game/shared";
+import { TILE_H, TILE_W } from "@zuna/shared";
 
 /** Centro do tile na tela (coordenadas de mundo do Phaser). */
 export function tileToScreen(tx: number, ty: number): { x: number; y: number } {

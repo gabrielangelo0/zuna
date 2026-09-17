@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { defineRoom, defineServer } from "colyseus";
 import express from "express";
-import { ROOM_NAME, SERVER_PORT } from "@game/shared";
+import { ROOM_NAME, SERVER_PORT } from "@zuna/shared";
 import { apiRouter } from "./api.ts";
 import { connectDatabase, disconnectDatabase } from "./db/index.ts";
 import { WorldRoom, waitForPendingWrites } from "./WorldRoom.ts";
@@ -12,7 +12,7 @@ const production = process.env.NODE_ENV === "production";
 // Em produção vale o PORT que a hospedagem define.
 const port = Number(process.env.GAME_PORT) || (production ? Number(process.env.PORT) : 0) || SERVER_PORT;
 
-/** Cliente compilado (npm run build -w @game/client). Em produção, o próprio servidor entrega o jogo. */
+/** Cliente compilado (npm run build -w @zuna/client). Em produção, o próprio servidor entrega o jogo. */
 const CLIENT_DIST = fileURLToPath(new URL("../../client/dist", import.meta.url));
 
 function serveClient(app: express.Application) {

@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader, type GLTF } from "three/addons/loaders/GLTFLoader.js";
 import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
-import { TINT_GROUPS } from "@game/shared";
+import { TINT_GROUPS } from "@zuna/shared";
 import type { EntrySpec, TintSpec } from "./catalog.ts";
 import { PALETTE_COLS, PALETTE_ROWS, PITCH, PPU, TINT_REF } from "./config.ts";
 import type { Pass } from "./render.ts";

@@ -1,6 +1,6 @@
-import { SERVER_PORT, type ApiErrorBody } from "@game/shared";
+import { SERVER_PORT, type ApiErrorBody } from "@zuna/shared";
 
-const TOKEN_KEY = "rpg:token";
+const TOKEN_KEY = "zuna:token";
 
 export class ApiError extends Error {
   readonly status: number;

@@ -1,5 +1,5 @@
 {
-  "name": "@game/server",
+  "name": "@zuna/server",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
   "dependencies": {
     "@colyseus/schema": "^5.0.32",
     "@electric-sql/pglite": "^0.5.8",
-    "@game/shared": "*",
+    "@zuna/shared": "*",
     "colyseus": "^0.18.5",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",

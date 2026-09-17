@@ -8,7 +8,7 @@ import {
   type GameMap,
   type MonsterKind,
   type Point,
-} from "@game/shared";
+} from "@zuna/shared";
 
 export interface SpawnPoint extends Point {
   kind: MonsterKind;

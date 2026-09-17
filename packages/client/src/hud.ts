@@ -1,4 +1,4 @@
-import { SPELLS, levelProgress, type ChatEvent, type PlayerData, type SpellId } from "@game/shared";
+import { SPELLS, levelProgress, type ChatEvent, type PlayerData, type SpellId } from "@zuna/shared";
 import { element, formatNumber } from "./dom.ts";
 
 export interface TargetInfo {

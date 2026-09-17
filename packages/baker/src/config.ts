@@ -1,4 +1,4 @@
-import type { BakedDir } from "@game/shared";
+import type { BakedDir } from "@zuna/shared";
 
 /** Pixels por unidade do mundo. 1 tile = 1 unidade; o losango do tile tem 64 px de largura (√2 unidades). */
 export const PPU = 64 / Math.SQRT2;

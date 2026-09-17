@@ -8,7 +8,7 @@ import {
   type BakedDir,
   type CatalogItem,
   type SpriteSheetMeta,
-} from "@game/shared";
+} from "@zuna/shared";
 import { composeFrame, drawFrame, frameAt, loadSheet, type SpriteSheet } from "./sprites.ts";
 
 // Prévias em canvas 2D (menu e guarda-roupa), com os mesmos sprites do jogo.

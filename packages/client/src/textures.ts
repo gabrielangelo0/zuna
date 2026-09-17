@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { TILE_H, TILE_W } from "@game/shared";
+import { TILE_H, TILE_W } from "@zuna/shared";
 import { ellipse, rgba, shade, type Ctx } from "./canvas.ts";
 
 // Texturas desenhadas no próprio cliente: chão, efeitos e marcadores.

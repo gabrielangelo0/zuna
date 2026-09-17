@@ -11,7 +11,7 @@ import {
   type AuthResponse,
   type CharactersResponse,
   type CreateCharacterResponse,
-} from "@game/shared";
+} from "@zuna/shared";
 import {
   accountFromToken,
   allowLoginAttempt,

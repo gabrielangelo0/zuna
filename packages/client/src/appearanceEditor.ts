@@ -1,4 +1,4 @@
-import { HAIR_COLORS, OUTFIT_COLORS, SKIN_TONES, catalogItem, type Appearance } from "@game/shared";
+import { HAIR_COLORS, OUTFIT_COLORS, SKIN_TONES, catalogItem, type Appearance } from "@zuna/shared";
 
 type Field = keyof Appearance;
 

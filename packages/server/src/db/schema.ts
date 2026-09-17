@@ -12,7 +12,7 @@ import {
   timestamp,
 } from "drizzle-orm/pg-core";
 
-// Depois de mudar este arquivo: npm run db:generate -w @game/server (gera a migração em drizzle/).
+// Depois de mudar este arquivo: npm run db:generate -w @zuna/server (gera a migração em drizzle/).
 
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 

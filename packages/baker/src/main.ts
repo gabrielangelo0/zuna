@@ -6,7 +6,7 @@ import {
   type AnimName,
   type SpriteFrameMeta,
   type SpriteSheetMeta,
-} from "@game/shared";
+} from "@zuna/shared";
 import { CATALOG, type EntrySpec } from "./catalog.ts";
 import { ATLAS_MAX_WIDTH, DIR_YAW, OUTLINE_COLOR, OUTLINE_STRENGTH, PPU, SUPERSAMPLE, TINT_REF } from "./config.ts";
 import {

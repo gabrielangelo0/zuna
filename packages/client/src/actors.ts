@@ -13,7 +13,8 @@ import {
   type MonsterData,
   type PlayerData,
   type SpriteFrameMeta,
-} from "@game/shared";
+} from "@zuna/shared";
+import { GAME_FONT } from "./canvas.ts";
 import { tileToScreen } from "./iso.ts";
 import { animDuration, appearanceKey, frameAt, type SpriteTexture, type SpriteTextures } from "./sprites.ts";
 
@@ -211,7 +212,7 @@ export class Actor {
     const name = isPlayer ? (data as PlayerData).name : MONSTERS[(data as MonsterData).kind].name;
     this.label = scene.add
       .text(x, y, name, {
-        fontFamily: "system-ui, sans-serif",
+        fontFamily: GAME_FONT,
         fontSize: "12px",
         fontStyle: "bold",
         color: "#4ade80",

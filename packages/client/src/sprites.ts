@@ -7,7 +7,7 @@ import {
   type BakedDir,
   type SpriteFrameMeta,
   type SpriteSheetMeta,
-} from "@game/shared";
+} from "@zuna/shared";
 
 // Sprites gerados pelo baker (packages/baker): carregamento, tingimento por visual e desenho.
 

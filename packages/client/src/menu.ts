@@ -13,7 +13,7 @@ import {
   type CharacterSummary,
   type CharactersResponse,
   type CreateCharacterResponse,
-} from "@game/shared";
+} from "@zuna/shared";
 import { ApiError, apiRequest, clearToken, loadToken, saveToken } from "./api.ts";
 import { AppearanceEditor } from "./appearanceEditor.ts";
 import { element, messageOf } from "./dom.ts";

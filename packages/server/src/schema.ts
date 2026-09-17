@@ -1,6 +1,6 @@
 import { schema, t, type SchemaType } from "@colyseus/schema";
 
-// Precisa bater com PlayerData / MonsterData em @game/shared.
+// Precisa bater com PlayerData / MonsterData em @zuna/shared.
 
 export const PlayerState = schema(
   {

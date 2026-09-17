@@ -7,7 +7,7 @@ import {
   playerStats,
   type Appearance,
   type CharacterSummary,
-} from "@game/shared";
+} from "@zuna/shared";
 import { db } from "./db/index.ts";
 import { accounts, characters, purchases, unlocks } from "./db/schema.ts";
 
