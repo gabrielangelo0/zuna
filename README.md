@@ -1,6 +1,6 @@
 # Zuna
 
-**Seu personagem, sua jornada!** Zuna é um MMORPG isométrico no navegador, no estilo Tibia: explore, evolua, conquiste e viva um mundo repleto de aventuras, sem downloads. Jogue em https://zuna.devly.net.
+**Seu personagem, sua jornada!** Zuna é um MMORPG isométrico no navegador, no estilo Tibia: explore, evolua, conquiste e viva um mundo repleto de aventuras, sem downloads. Jogue em https://zuna.devfly.net.
 
 Este repositório está na fase 0 (protótipo técnico) do [plano do jogo](docs/plano-do-jogo.md).
 
@@ -61,12 +61,12 @@ Abra http://localhost:5173, crie uma conta e um personagem. Para ver o multiplay
 
 Produção roda na [Railway](https://railway.com) com um só serviço (o `Dockerfile` da raiz) e um Postgres:
 
-- `https://zuna.devly.net`: o jogo. O próprio servidor entrega o cliente compilado (`packages/client/dist`).
-- `https://api.zuna.devly.net`: API e WebSocket. O cliente é compilado com `VITE_SERVER_URL=https://api.zuna.devly.net`; sem essa variável, ele fala com o mesmo endereço que entregou a página.
-- O DNS do devly.net fica na Cloudflare, com os dois subdomínios em CNAME para a Railway.
+- `https://zuna.devfly.net`: o jogo. O próprio servidor entrega o cliente compilado (`packages/client/dist`).
+- `https://api.zuna.devfly.net`: API e WebSocket. O cliente é compilado com `VITE_SERVER_URL=https://api.zuna.devfly.net`; sem essa variável, ele fala com o mesmo endereço que entregou a página.
+- O DNS do devfly.net fica na Cloudflare, com os dois subdomínios em CNAME para a Railway.
 - `railway.json` define o healthcheck (`/__healthcheck`), uma réplica só (o mundo fica na memória do processo) e 30 s para salvar os jogadores antes de desligar.
 
-Variáveis do serviço na Railway: `DATABASE_URL=${{Postgres.DATABASE_URL}}`, `VITE_SERVER_URL=https://api.zuna.devly.net` e `PORT=8080`. O `NODE_ENV=production` já vem da imagem.
+Variáveis do serviço na Railway: `DATABASE_URL=${{Postgres.DATABASE_URL}}`, `VITE_SERVER_URL=https://api.zuna.devfly.net` e `PORT=8080`. O `NODE_ENV=production` já vem da imagem.
 
 Para publicar uma versão nova a partir da sua máquina:
 

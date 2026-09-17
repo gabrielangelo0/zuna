@@ -1,6 +1,6 @@
 # Plano do Jogo — Zuna
 
-> **Seu personagem, sua jornada!** Explore, evolua, conquiste e viva um mundo repleto de aventuras. No ar em https://zuna.devly.net.
+> **Seu personagem, sua jornada!** Explore, evolua, conquiste e viva um mundo repleto de aventuras. No ar em https://zuna.devfly.net.
 
 > **Versão 4.** Direção: foco em receita, progressão paga (pay-to-progress), nível ilimitado, equipamento com teto máximo e XP estilo Tibia (cada monstro dá uma quantidade fixa de XP). O protótipo técnico (fase 0) está em `packages/` e já tem contas, personagens salvos em banco e customização com roupas, mascotes e montarias.
 
