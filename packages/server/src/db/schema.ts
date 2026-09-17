@@ -23,6 +23,10 @@ export const accounts = pgTable("accounts", {
   passwordHash: text("password_hash").notNull(),
   /** Moeda premium: fica na conta e vale para todos os personagens. */
   diamonds: integer("diamonds").notNull().default(0),
+  /** Acesso ao painel de administração. */
+  isAdmin: boolean("is_admin").notNull().default(false),
+  /** Conta bloqueada: não entra no jogo nem no painel. */
+  banned: boolean("banned").notNull().default(false),
   createdAt: createdAt(),
 });
 
@@ -94,6 +98,27 @@ export const unlocks = pgTable(
     acquiredAt: timestamp("acquired_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [primaryKey({ columns: [table.accountId, table.itemId] })],
+);
+
+/** Tudo que um administrador muda fica registrado aqui. */
+export const adminActions = pgTable(
+  "admin_actions",
+  {
+    id: serial("id").primaryKey(),
+    /** Conta do administrador que fez a mudança. */
+    accountId: integer("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    /** Conta afetada. */
+    targetAccountId: integer("target_account_id").references(() => accounts.id, { onDelete: "set null" }),
+    /** Personagem afetado, quando a mudança foi num personagem. */
+    targetCharacterId: integer("target_character_id").references(() => characters.id, { onDelete: "set null" }),
+    action: text("action").notNull(),
+    /** O que mudou, em JSON. */
+    detail: text("detail").notNull().default(""),
+    createdAt: createdAt(),
+  },
+  (table) => [index("admin_actions_created_idx").on(table.createdAt)],
 );
 
 /** Registro de toda compra: base para suporte, reembolso e detecção de fraude. */

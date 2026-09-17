@@ -71,7 +71,9 @@ import {
 } from "@zuna/shared";
 import { accountFromToken } from "./auth.ts";
 import { EventManager } from "./events.ts";
+import { registerLiveRoom, unregisterLiveRoom, type LiveAccountPatch, type LiveCharacterPatch, type LiveRoom } from "./live.ts";
 import {
+  accountIsBanned,
   addDiamonds,
   appearanceFromRow,
   getAccount,
@@ -172,7 +174,7 @@ function parseTestAmount(argument: string): number | null {
   return amount > 0 ? Math.min(amount, MAX_TEST_GRANT) : null;
 }
 
-export class WorldRoom extends Room<{ state: WorldState }> {
+export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
   maxClients = 150;
 
   private gameMap!: GameMap;
@@ -214,12 +216,64 @@ export class WorldRoom extends Room<{ state: WorldState }> {
 
     this.setPatchRate(TICK_MS);
     this.setSimulationInterval(() => this.tick(), TICK_MS);
+    registerLiveRoom(this);
+  }
+
+  // ------------------------------------------------------------ painel de administração
+
+  onlineCharacters(): number[] {
+    return [...this.players.values()].map((player) => player.characterId);
+  }
+
+  /** O administrador mexeu num personagem que está online: vale na hora. */
+  applyCharacter(characterId: number, patch: LiveCharacterPatch) {
+    const player = [...this.players.values()].find((entry) => entry.characterId === characterId);
+    if (!player) return;
+    const s = player.state;
+    if (patch.gold !== undefined) s.gold = patch.gold;
+    if (patch.kills !== undefined) player.kills = patch.kills;
+    if (patch.xp !== undefined) s.xp = patch.xp;
+    if (patch.outfit !== undefined) {
+      s.outfit = patch.outfit;
+      player.unlocks.add(patch.outfit);
+      this.sendProfile(player);
+    }
+    if (patch.level !== undefined && patch.level !== s.level) {
+      const stats = playerStats(patch.level);
+      s.level = patch.level;
+      s.maxHp = stats.maxHp;
+      s.maxMana = stats.maxMana;
+      s.hp = Math.min(s.hp, stats.maxHp) || stats.maxHp;
+      s.mana = Math.min(s.mana, stats.maxMana);
+      s.xp = Math.max(s.xp, xpForLevel(patch.level));
+      player.shortcuts = sanitizeShortcuts(player.shortcuts, s.level);
+      this.sendProfile(player);
+      this.broadcast(ServerMsg.LevelUp, { id: player.id, level: s.level } satisfies LevelUpEvent);
+    }
+    this.sendChat(player.client, "system", "Um administrador ajustou seu personagem.");
+  }
+
+  applyAccount(accountId: number, patch: LiveAccountPatch) {
+    for (const player of this.players.values()) {
+      if (player.accountId !== accountId) continue;
+      if (patch.diamonds !== undefined) player.diamonds = patch.diamonds;
+      if (patch.unlock) player.unlocks.add(patch.unlock);
+      this.sendProfile(player);
+      this.sendChat(player.client, "system", "Um administrador atualizou sua conta.");
+    }
+  }
+
+  kickAccount(accountId: number, reason: string) {
+    for (const player of [...this.players.values()]) {
+      if (player.accountId === accountId) player.client.leave(4002, reason);
+    }
   }
 
   /** Valida a sessão e carrega o personagem antes de a pessoa entrar na sala. */
   async onAuth(_client: Client, options: JoinOptions) {
     const account = await accountFromToken(options?.token);
     if (!account) throw new ServerError(401, "Sua sessão expirou. Entre novamente.");
+    if (await accountIsBanned(account.id)) throw new ServerError(403, "Sua conta está bloqueada.");
     const characterId = Number(options?.characterId);
     await lastWriteByCharacter.get(characterId);
     const character = Number.isInteger(characterId) ? await loadCharacter(account.id, characterId) : undefined;
@@ -314,6 +368,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   }
 
   async onDispose() {
+    unregisterLiveRoom(this);
     await Promise.all([...this.players.values()].map((player) => this.persist(player)));
   }
 

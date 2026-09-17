@@ -72,6 +72,7 @@ Abra http://localhost:5173, crie uma conta e um personagem. Para ver o multiplay
 | `XP_RATE` | `1` | Multiplicador global de XP |
 | `EVENT_INTERVAL_MIN` | `20` | Minutos entre eventos automáticos (`0` desliga) |
 | `DEV_COMMANDS` | ligado fora de produção | `0` desliga e `1` liga os comandos de teste |
+| `ADMIN_USERS` | — | Contas que ganham acesso ao painel ao subir o servidor (separadas por vírgula) |
 
 ## Publicação
 
@@ -95,6 +96,16 @@ Para testar a imagem de produção localmente:
 ```bash
 docker build --build-arg VITE_SERVER_URL=http://localhost:8091 -t zuna .
 ```
+
+## Painel de administração
+
+Fica em `/admin` (a mesma URL do jogo), com login pela conta do jogo.
+
+- O acesso é por conta: `ADMIN_USERS=meu_usuario` marca a conta como administradora quando o servidor sobe. Depois disso, um administrador pode promover outros pelo painel.
+- Dá para mudar **nível, XP, ouro, diamantes, caçadas e a classe (roupa)** de cada personagem, **liberar itens** do catálogo, **tornar admin** e **bloquear** contas.
+- Quem está jogando recebe as mudanças na hora, sem precisar sair: o painel avisa a sala do Colyseus pela ponte em `packages/server/src/live.ts`.
+- Conta bloqueada não entra no jogo nem no painel, e quem estiver online é desconectado.
+- Toda mudança fica registrada na aba Histórico (tabela `admin_actions`): quem fez, o quê, em quem e quando.
 
 ## Banco de dados
 

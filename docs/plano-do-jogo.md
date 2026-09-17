@@ -507,7 +507,7 @@ game/
 
 | Fase | Duração* | Entregas | Critério para avançar |
 |---|---|---|---|
-| **0 · Protótipo técnico** ✅ | 3–4 sem. | Feito: mapa isométrico no Phaser; andar por clique e WASD; multiplayer via Colyseus; 7 monstros com IA; combate; XP fixa por monstro; níveis; morte; chat; poderes por família com graus infinitos e atalhos; eventos XP em Dobro e Invasão; contas e personagens salvos em Postgres; criação de personagem; guarda-roupa e loja com roupas, mascotes e montarias | "É gostoso matar esse monstro?" |
+| **0 · Protótipo técnico** ✅ | 3–4 sem. | Feito: mapa isométrico no Phaser; andar por clique e WASD; multiplayer via Colyseus; 7 monstros com IA; combate; XP fixa por monstro; níveis; morte; chat; poderes por família com graus infinitos e atalhos; painel de administração; eventos XP em Dobro e Invasão; contas e personagens salvos em Postgres; criação de personagem; guarda-roupa e loja com roupas, mascotes e montarias | "É gostoso matar esse monstro?" |
 | **1 · Core + progressão** | 8 sem. | Combate e skills das 3 classes; nível ilimitado + atributos; loot; 8 slots; refino; gemas; Poder de Combate; 1 cidade + 4 mapas | "Ver o Poder subir é viciante?" |
 | **2 · Loja e VIP** | 5–6 sem. | Diamantes + Pix/cartão; primeira recarga; VIP; Patrono; Fundo de Crescimento; ofertas; painel admin | Compra real de ponta a ponta, sem erro de entrega |
 | **3 · Social e endgame** | 6 sem. | Party; chat; anúncios; bosses; Torre Infinita; arena; rankings; auto-caça e offline; diárias; login; Web Push | Jogadores de teste voltam sozinhos no dia seguinte |
