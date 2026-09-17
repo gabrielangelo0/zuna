@@ -523,7 +523,12 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       this.runCommand(player, text);
       return;
     }
-    this.broadcastChat("player", text, undefined, player.state.name);
+    this.broadcast(ServerMsg.Chat, {
+      channel: "player",
+      from: player.state.name,
+      id: player.id,
+      text,
+    } satisfies ChatEvent);
   }
 
   /** Cores, pele e cabelo: grátis para trocar. */

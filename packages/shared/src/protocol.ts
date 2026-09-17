@@ -179,6 +179,8 @@ export type ChatChannel = "player" | "system" | "event" | "loot";
 export interface ChatEvent {
   channel: ChatChannel;
   from?: string;
+  /** Id de quem falou, para o balão aparecer acima do personagem. */
+  id?: string;
   text: string;
 }
 

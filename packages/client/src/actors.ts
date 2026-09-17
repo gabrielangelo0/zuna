@@ -14,6 +14,7 @@ import {
   type PlayerData,
   type SpriteFrameMeta,
 } from "@zuna/shared";
+import { Bubble } from "./bubble.ts";
 import { GAME_FONT } from "./canvas.ts";
 import { tileToScreen } from "./iso.ts";
 import { animDuration, appearanceKey, frameAt, type SpriteTexture, type SpriteTextures } from "./sprites.ts";
@@ -160,6 +161,7 @@ export class Actor {
   readonly data: PlayerData | MonsterData;
   /** Topo da cabeça na tela (para textos e efeitos). */
   headY = 0;
+  private bubble: Bubble | null = null;
   dead = false;
 
   private readonly scene: Phaser.Scene;
@@ -226,6 +228,12 @@ export class Actor {
 
     if (!isPlayer) this.body.set(`monster_${(data as MonsterData).kind}`);
     this.sync();
+  }
+
+  /** Mostra a fala do jogador acima da cabeça. */
+  say(text: string, now: number) {
+    this.bubble ??= new Bubble(this.scene, DEPTH_OVERLAY + 2);
+    this.bubble.say(text, now);
   }
 
   get riding(): boolean {
@@ -358,6 +366,7 @@ export class Actor {
     }
 
     this.headY = top;
+    this.bubble?.update(x, top - 21, time, alpha);
     this.label.setPosition(x, top - 7).setAlpha(alpha);
     this.hpBar.setPosition(x, top - 5).setAlpha(alpha);
     if (this.isPlayer) this.updatePet(x, y, time, delta, alpha);
@@ -367,6 +376,7 @@ export class Actor {
     for (const layer of [this.body, this.mount, this.front, this.pet]) layer.destroy();
     this.label.destroy();
     this.hpBar.destroy();
+    this.bubble?.destroy();
   }
 
   private alpha(time: number): number {

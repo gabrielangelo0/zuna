@@ -191,7 +191,10 @@ export class WorldScene extends Phaser.Scene {
     room.onMessage(ServerMsg.Loot, (event: LootEvent) => this.onLoot(event));
     room.onMessage(ServerMsg.PlayerDeath, (event: PlayerDeathEvent) => this.onPlayerDeath(event));
     room.onMessage(ServerMsg.SpellEffect, (event: SpellEffectEvent) => this.onSpellEffect(event));
-    room.onMessage(ServerMsg.Chat, (event: ChatEvent) => this.hud.addChat(event));
+    room.onMessage(ServerMsg.Chat, (event: ChatEvent) => {
+      this.hud.addChat(event);
+      if (event.id) this.actors.get(event.id)?.say(event.text, this.time.now);
+    });
     room.onMessage(ServerMsg.Announce, (event: AnnounceEvent) => this.hud.showBanner(event.text));
     room.onMessage(ServerMsg.Profile, (event: ProfileEvent) => {
       this.hud.setDiamonds(event.diamonds);
