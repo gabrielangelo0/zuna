@@ -60,7 +60,7 @@ Abra http://localhost:5173, crie uma conta e um personagem. Para ver o multiplay
 Produção roda na [Railway](https://railway.com) com um só serviço (o `Dockerfile` da raiz) e um Postgres:
 
 - `https://jogo.devly.net`: o jogo. O próprio servidor entrega o cliente compilado (`packages/client/dist`).
-- `https://api.devly.net`: API e WebSocket. O cliente é compilado com `VITE_SERVER_URL=https://api.devly.net`.
+- `https://api.devly.net`: API e WebSocket. O cliente é compilado com `VITE_SERVER_URL=https://api.devly.net`; sem essa variável, ele fala com o mesmo endereço que entregou a página.
 - O DNS do devly.net fica na Cloudflare, com os dois subdomínios em CNAME para a Railway.
 - `railway.json` define o healthcheck (`/__healthcheck`), uma réplica só (o mundo fica na memória do processo) e 30 s para salvar os jogadores antes de desligar.
 

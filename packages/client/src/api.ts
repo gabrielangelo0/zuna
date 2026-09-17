@@ -14,6 +14,8 @@ export class ApiError extends Error {
 export function httpEndpoint(): string {
   const configured = import.meta.env.VITE_SERVER_URL as string | undefined;
   if (configured) return configured.replace(/^ws/, "http");
+  // Em produção, sem endereço configurado, o servidor é o mesmo que entregou a página.
+  if (import.meta.env.PROD) return location.origin;
   return `${location.protocol}//${location.hostname}:${SERVER_PORT}`;
 }
 
