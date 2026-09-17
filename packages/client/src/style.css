@@ -88,6 +88,30 @@ kbd {
   text-align: center;
 }
 
+.kit-panel {
+  border: 18px solid transparent;
+  border-image: url("/ui/panel.png") 34 fill / 18px stretch;
+  background: none !important;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+/* Um fundo escuro atrás da moldura deixa o texto legível sobre o jogo. */
+.kit-panel::before {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  z-index: -1;
+  border-radius: 12px;
+  background: rgba(6, 9, 26, 0.72);
+}
+
+/* Painéis grandes cobrem o jogo por completo. */
+#wardrobe.kit-panel::before,
+#ranking.kit-panel::before {
+  background: rgba(6, 9, 26, 0.95);
+}
+
 .card {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -771,80 +795,68 @@ input:focus {
 
 .orb {
   position: relative;
-  width: 116px;
-  height: 116px;
+  width: 132px;
+  height: 132px;
+  background: var(--orb-art) center / 100% 100% no-repeat;
+  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.55));
+}
+
+.orb-hp {
+  --orb-art: url("/ui/orb-hp.png");
+}
+
+.orb-mana {
+  --orb-art: url("/ui/orb-mana.png");
+}
+
+/* O vidro do orbe: tudo que escurece fica preso dentro deste círculo. */
+.orb-globe {
+  position: absolute;
+  top: 13%;
+  left: 13.5%;
+  width: 73%;
+  height: 73%;
   overflow: hidden;
   border-radius: 50%;
-  background: radial-gradient(circle at 50% 32%, #141c38, #05070f 72%);
-  box-shadow:
-    inset 0 8px 20px rgba(0, 0, 0, 0.85),
-    0 10px 26px rgba(0, 0, 0, 0.55);
 }
 
-/* Aro metálico em volta do orbe. */
-.orb::after {
-  content: "";
+/* Cobre a parte vazia, de cima para baixo: quanto menos vida, mais escuro. */
+.orb-drain {
   position: absolute;
-  inset: -1px;
-  border-radius: 50%;
-  background: conic-gradient(#0a0f26, #4b5885, #0a0f26, #3a4570, #0a0f26, #56639a, #0a0f26);
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
-  mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
-  pointer-events: none;
-}
-
-.orb-liquid {
-  position: absolute;
-  inset: auto 0 0 0;
-  height: 100%;
+  top: -12%;
+  left: -20%;
+  width: 140%;
+  height: 0;
+  background: rgba(3, 5, 16, 0.76);
   transition: height 0.35s ease-out;
 }
 
-.orb-hp .orb-liquid {
-  background: linear-gradient(180deg, #ff7565, #cf2020 45%, #6d0a0a);
-}
-
-.orb-mana .orb-liquid {
-  background: linear-gradient(180deg, #86cdff, #2059d6 45%, #0c2472);
-}
-
-/* As duas ondas dão o movimento do líquido. */
-.orb-liquid i {
+/* A superfície do líquido balança. */
+.orb-drain i {
   position: absolute;
-  top: -9px;
-  left: -40%;
-  width: 180%;
+  left: -10%;
+  bottom: -9px;
+  width: 120%;
   height: 20px;
   border-radius: 45%;
   background: inherit;
-  opacity: 0.9;
   animation: wave 4.5s ease-in-out infinite alternate;
 }
 
-.orb-liquid i:last-child {
-  top: -14px;
-  opacity: 0.45;
+.orb-drain i:last-child {
+  bottom: -13px;
+  opacity: 0.5;
   animation-duration: 6.5s;
   animation-direction: alternate-reverse;
 }
 
 @keyframes wave {
   from {
-    transform: translateX(-11%) rotate(-1deg);
+    transform: translateX(-9%) rotate(-1deg);
   }
   to {
-    transform: translateX(11%) rotate(1deg);
+    transform: translateX(9%) rotate(1deg);
   }
-}
-
-.orb-glass {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background:
-    radial-gradient(circle at 34% 24%, rgba(255, 255, 255, 0.38), rgba(255, 255, 255, 0.05) 34%, transparent 58%),
-    radial-gradient(circle at 50% 118%, rgba(255, 255, 255, 0.16), transparent 62%);
-  pointer-events: none;
 }
 
 .orb span {
@@ -852,7 +864,7 @@ input:focus {
   inset: 0;
   display: grid;
   place-content: center;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   text-shadow: 0 2px 4px #000, 0 0 12px rgba(0, 0, 0, 0.9);
@@ -875,19 +887,21 @@ input:focus {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  width: 112px;
-  padding: 8px 6px;
+  gap: 1px;
+  width: 150px;
+  height: 58px;
+  justify-content: center;
+  padding: 4px 6px 6px;
   overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--panel);
+  border: 14px solid transparent;
+  border-image: url("/ui/slot.png") 30 fill / 14px stretch;
+  background: none;
   color: var(--text);
   transition: transform 0.08s;
 }
 
-.spell:hover {
-  background: rgba(20, 40, 50, 0.9);
+.spell:hover:not(.no-mana) {
+  border-image-source: url("/ui/slot-ready.png");
 }
 
 .spell:active {
@@ -895,16 +909,25 @@ input:focus {
 }
 
 .spell span {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
   white-space: nowrap;
+}
+
+.spell kbd {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  border: 0;
+  background: none;
+  font-size: 10px;
 }
 
 .spell .cooldown {
   position: absolute;
   inset: auto 0 0 0;
   height: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.62);
   pointer-events: none;
 }
 
@@ -912,34 +935,39 @@ input:focus {
   opacity: 0.45;
 }
 
-/* Experiência: a faixa embaixo das magias, como nos ARPGs. */
+/* Experiência: a faixa embaixo das magias, com a moldura do kit. */
 .xp-track {
   position: relative;
-  width: min(520px, 42vw);
-  height: 15px;
+  width: min(540px, 44vw);
+  height: 30px;
+  border: 0 solid transparent;
+  border-width: 9px 26px;
+  border-image: url("/ui/bar-frame.png") 20 42 fill / 9px 26px stretch;
+}
+
+.xp-inner {
+  position: absolute;
+  inset: -1px -3px;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(2, 4, 16, 0.78);
+  border-radius: 6px;
 }
 
 .xp-fill {
-  position: absolute;
-  inset: 0 auto 0 0;
   width: 0;
-  background: linear-gradient(90deg, #6d28d9, #a78bfa);
-  box-shadow: 0 0 14px rgba(167, 139, 250, 0.55);
+  height: 100%;
+  background: url("/ui/bar-xp.png") left center / auto 100% no-repeat;
+  filter: drop-shadow(0 0 6px rgba(150, 90, 255, 0.55));
   transition: width 0.3s ease-out;
 }
 
 .xp-track span {
-  position: relative;
-  display: block;
-  font-size: 10.5px;
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  font-size: 11px;
   font-weight: 700;
-  line-height: 15px;
-  text-align: center;
-  text-shadow: 0 1px 2px #000;
+  text-shadow: 0 1px 3px #000;
   font-variant-numeric: tabular-nums;
 }
 
@@ -947,16 +975,13 @@ input:focus {
 
 #minimap {
   position: absolute;
-  top: 16px;
-  right: 16px;
-  width: 204px;
-  height: 204px;
-  padding: 6px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: rgba(5, 8, 24, 0.72);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(4px);
+  top: 14px;
+  right: 14px;
+  width: 218px;
+  height: 218px;
+  border: 22px solid transparent;
+  border-image: url("/ui/minimap-frame.png") 46 / 22px stretch;
+  filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.5));
   transition: width 0.2s, height 0.2s;
 }
 
@@ -964,8 +989,9 @@ input:focus {
   display: block;
   width: 100%;
   height: 100%;
-  border-radius: 10px;
-  background: rgba(2, 4, 16, 0.6);
+  border-radius: 4px;
+  background: rgba(2, 4, 16, 0.75);
+  cursor: zoom-in;
 }
 
 #minimap.expanded {
@@ -976,38 +1002,51 @@ input:focus {
   transform: translate(50%, -50%);
 }
 
+#minimap.expanded canvas {
+  cursor: zoom-out;
+}
+
 .minimap-buttons {
   position: absolute;
-  right: 12px;
-  bottom: 12px;
+  right: -6px;
+  bottom: -40px;
   display: flex;
   gap: 4px;
 }
 
 .minimap-buttons button {
-  width: 26px;
-  height: 26px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: rgba(7, 10, 31, 0.8);
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  background: center / contain no-repeat;
+  color: transparent;
+  font-size: 0;
+  transition: transform 0.1s;
 }
 
 .minimap-buttons button:hover {
-  border-color: var(--border);
-  background: var(--accent-soft);
+  transform: scale(1.1);
+}
+
+#minimap-expand {
+  background-image: url("/ui/gear.png");
+}
+
+#minimap-in {
+  background-image: url("/ui/plus.png");
+}
+
+#minimap-out {
+  background-image: url("/ui/minus.png");
 }
 
 #minimap-where {
   position: absolute;
-  left: 14px;
-  bottom: 14px;
-  color: var(--muted);
+  left: 2px;
+  bottom: -30px;
+  color: #cfd8f0;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
   text-shadow: 0 1px 3px #000;
 }
 
@@ -1027,10 +1066,10 @@ input:focus {
   flex-direction: column;
   gap: 2px;
   max-height: 180px;
-  padding: 8px 10px;
+  padding: 6px 14px 6px 10px;
   overflow-y: auto;
-  border-radius: 10px;
-  background: rgba(7, 10, 31, 0.62);
+  border: 16px solid transparent;
+  border-image: url("/ui/chat-panel.png") 34 fill / 16px stretch;
   font-size: 13px;
   overflow-wrap: anywhere;
 }
@@ -1057,7 +1096,15 @@ input:focus {
 }
 
 #chat-input {
-  background: rgba(7, 10, 31, 0.78);
+  padding: 8px 18px 8px 30px;
+  border: 12px solid transparent;
+  border-image: url("/ui/field.png") 26 36 fill / 12px 18px stretch;
+  background: none;
+}
+
+#chat-input:focus {
+  box-shadow: none;
+  filter: brightness(1.15);
 }
 
 /* ---------------------------------------------------------------- guarda-roupa e loja */
@@ -1519,13 +1566,20 @@ input:focus {
   #minimap {
     top: 8px;
     right: 8px;
-    width: 128px;
-    height: 128px;
+    width: 148px;
+    height: 148px;
+    border-width: 16px;
+    border-image-width: 16px;
+  }
+
+  .minimap-buttons {
+    right: -4px;
+    bottom: -32px;
   }
 
   .minimap-buttons button {
-    width: 22px;
-    height: 22px;
+    width: 28px;
+    height: 28px;
   }
 
   #minimap-where {
@@ -1533,17 +1587,17 @@ input:focus {
   }
 
   #actionbar {
-    gap: 6px;
-    bottom: 8px;
+    gap: 4px;
+    bottom: 6px;
   }
 
   .orb {
-    width: 68px;
-    height: 68px;
+    width: 64px;
+    height: 64px;
   }
 
   .orb span {
-    font-size: 10px;
+    font-size: 9.5px;
   }
 
   .action-center {
@@ -1552,12 +1606,14 @@ input:focus {
   }
 
   .xp-track {
-    width: min(300px, 58vw);
-    height: 13px;
+    width: min(260px, 54vw);
+    height: 24px;
+    border-width: 7px 20px;
+    border-image-width: 7px 20px;
   }
 
   .xp-track span {
-    line-height: 13px;
+    font-size: 10px;
   }
 
   .panel {
@@ -1589,13 +1645,18 @@ input:focus {
   }
 
   .spell {
-    width: 84px;
-    padding: 6px 3px;
-    font-size: 11px;
+    width: 96px;
+    height: 46px;
+    border-width: 10px;
+    border-image-width: 10px;
+    padding: 2px;
   }
 
   .spell span {
-    font-size: 10.5px;
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 9px;
+    text-overflow: ellipsis;
   }
 
   #wardrobe {

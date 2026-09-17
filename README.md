@@ -100,6 +100,7 @@ npm run db:generate -w @zuna/server
 
 - Logo, frase e cores vêm do pôster do Zuna: azul-noite com verde esmeralda. O dourado aparece só no ouro. As cores são variáveis no topo de `packages/client/src/style.css`.
 - Fontes empacotadas no cliente (Fontsource, sem Google Fonts): Lilita One no logo e nos títulos, Permanent Marker na frase e Montserrat no resto, inclusive nos nomes dentro do jogo.
+- A HUD usa o kit de interface em `assets/ui/hud-kit.png`, recortado em peças em `packages/client/public/ui/` (orbes de vida e mana, molduras de barra, slots das magias, painéis, chat e minimapa). Veja a ressalva de licença em [assets/CREDITS.md](assets/CREDITS.md).
 - Ícones e prévia de link ficam em `packages/client/public/`: `favicon.svg`, `icon-192.png`, `icon-512.png`, `apple-touch-icon.png`, `og-image.jpg` (1200×630, montada com o mapa e os sprites do jogo) e `site.webmanifest`.
 
 ## Arte (sprites)

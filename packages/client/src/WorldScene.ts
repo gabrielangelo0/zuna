@@ -124,6 +124,7 @@ export class WorldScene extends Phaser.Scene {
     element("#minimap-in").addEventListener("click", () => this.minimap.zoom(1.35));
     element("#minimap-out").addEventListener("click", () => this.minimap.zoom(1 / 1.35));
     element("#minimap-expand").addEventListener("click", () => this.toggleMap());
+    element("#minimap-canvas").addEventListener("click", () => this.toggleMap());
     createTextures(this);
     this.drawGround();
     void this.drawObjects();

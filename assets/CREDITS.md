@@ -19,3 +19,7 @@ npm run assets:download
 | Stylized Nature MegaKit (Standard) | Quaternius | [OpenGameArt](https://opengameart.org/content/stylized-nature-megakit) · [site](https://quaternius.com/packs/stylizednaturemegakit.html) | CC0 |
 
 O Cristal de Zuna não vem de pacote nenhum: é modelado no próprio baker (`packages/baker/src/shapes.ts`), com a forma da gema do logo.
+
+## Interface
+
+O kit de interface (`assets/ui/hud-kit.png`) foi fornecido pelo Gabriel e parece ter sido gerado por IA. As peças recortadas ficam em `packages/client/public/ui/`, geradas a partir dele. **Confirme os direitos de uso comercial desse kit antes do lançamento**: o resto da arte é CC0, com uso comercial garantido.

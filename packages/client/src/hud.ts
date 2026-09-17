@@ -15,9 +15,10 @@ export class Hud {
   private readonly level = element("#hud-level");
   private readonly xpFill = element("#hud-xp");
   private readonly xpText = element("#hud-xp-text");
-  private readonly hpFill = element("#hud-hp");
+  /** Camada escura que cobre a parte vazia do orbe. */
+  private readonly hpDrain = element("#hud-hp");
   private readonly hpText = element("#hud-hp-text");
-  private readonly manaFill = element("#hud-mana");
+  private readonly manaDrain = element("#hud-mana");
   private readonly manaText = element("#hud-mana-text");
   private readonly gold = element("#hud-gold");
   private readonly diamonds = element("#hud-diamonds");
@@ -117,9 +118,9 @@ export class Hud {
     const progress = levelProgress(player.xp, player.level);
     this.xpFill.style.width = `${progress.ratio * 100}%`;
     this.xpText.textContent = `Nível ${player.level} · ${formatNumber(progress.current)} / ${formatNumber(progress.needed)} XP`;
-    this.hpFill.style.height = `${Math.max(0, player.hp / player.maxHp) * 100}%`;
+    this.hpDrain.style.height = `${(1 - Math.min(1, Math.max(0, player.hp / player.maxHp))) * 100}%`;
     this.hpText.textContent = `${formatNumber(Math.max(0, player.hp))} / ${formatNumber(player.maxHp)}`;
-    this.manaFill.style.height = `${Math.max(0, player.mana / player.maxMana) * 100}%`;
+    this.manaDrain.style.height = `${(1 - Math.min(1, Math.max(0, player.mana / player.maxMana))) * 100}%`;
     this.manaText.textContent = `${formatNumber(player.mana)} / ${formatNumber(player.maxMana)}`;
     this.gold.textContent = formatNumber(player.gold);
 
