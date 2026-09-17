@@ -15,6 +15,13 @@
       "when": 1789659712889,
       "tag": "0001_purple_slipstream",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789675937442,
+      "tag": "0002_brown_valeria_richards",
+      "breakpoints": true
     }
   ]
 }

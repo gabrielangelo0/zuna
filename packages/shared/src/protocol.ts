@@ -1,4 +1,5 @@
 import type { Appearance, ItemKind } from "./cosmetics.ts";
+import type { LootKind } from "./loot.ts";
 import type { MonsterKind } from "./monsters.ts";
 import type { SpellId } from "./spells.ts";
 
@@ -85,6 +86,29 @@ export interface BuyMessage {
   id: string;
 }
 
+// ---------------------------------------------------------------- ranking
+
+export type RankingBoard = "level" | "gold" | "kills";
+
+export const RANKING_BOARDS: readonly RankingBoard[] = ["level", "gold", "kills"];
+
+export const RANKING_SIZE = 50;
+
+export interface RankingRow {
+  rank: number;
+  name: string;
+  level: number;
+  /** Experiência, ouro ou caçadas, conforme a lista. */
+  value: number;
+}
+
+export interface RankingResponse {
+  board: RankingBoard;
+  entries: RankingRow[];
+  /** Quando o servidor montou esta lista (as listas são atualizadas a cada 30 s). */
+  updatedAt: number;
+}
+
 export const ClientMsg = {
   Move: "move",
   Goto: "goto",
@@ -139,6 +163,17 @@ export interface SpellEffectEvent {
   y: number;
 }
 
+/** Alguém pegou um drop do chão. */
+export interface LootEvent {
+  /** Jogador que pegou. */
+  id: string;
+  kind: LootKind;
+  gold: number;
+  diamonds: number;
+  x: number;
+  y: number;
+}
+
 export type ChatChannel = "player" | "system" | "event" | "loot";
 
 export interface ChatEvent {
@@ -168,6 +203,7 @@ export const ServerMsg = {
   Xp: "xp",
   LevelUp: "levelUp",
   MonsterDeath: "monsterDeath",
+  Loot: "loot",
   PlayerDeath: "playerDeath",
   SpellEffect: "spellEffect",
   Chat: "chat",

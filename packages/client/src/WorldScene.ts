@@ -3,6 +3,7 @@ import { Callbacks, type Room } from "@colyseus/sdk";
 import {
   ClientMsg,
   Ground,
+  LOOT,
   MONSTERS,
   Obj,
   SPELLS,
@@ -17,6 +18,8 @@ import {
   type ChatEvent,
   type HitEvent,
   type LevelUpEvent,
+  type LootData,
+  type LootEvent,
   type MonsterData,
   type MonsterDeathEvent,
   type MonsterKind,
@@ -30,8 +33,12 @@ import {
 } from "@zuna/shared";
 import { Actor } from "./actors.ts";
 import { GAME_FONT } from "./canvas.ts";
+import { element } from "./dom.ts";
 import { Hud } from "./hud.ts";
 import { screenToTile, tileToScreen } from "./iso.ts";
+import { LootLayer } from "./loot.ts";
+import { Minimap } from "./minimap.ts";
+import { Ranking } from "./ranking.ts";
 import { KeyboardInput } from "./keyboard.ts";
 import { SpriteTextures, loadSheet } from "./sprites.ts";
 import { GROUND_FRAMES, TILE_CELL_H, TILE_CELL_W, createTextures, type GroundFrameName } from "./textures.ts";
@@ -94,6 +101,10 @@ export class WorldScene extends Phaser.Scene {
   private localId = "";
   private readonly actors = new Map<string, Actor>();
   private readonly monsterIds = new Set<string>();
+  private lootLayer!: LootLayer;
+  private minimap!: Minimap;
+  private readonly ranking = new Ranking();
+  private nextMinimapAt = 0;
   private corpses: Actor[] = [];
   private readonly waterBobs: { bob: Phaser.GameObjects.Bob; offset: number }[] = [];
   private waterFrame = 0;
@@ -108,6 +119,11 @@ export class WorldScene extends Phaser.Scene {
 
   create() {
     this.spriteTextures = new SpriteTextures(this);
+    this.lootLayer = new LootLayer(this, this.spriteTextures);
+    this.minimap = new Minimap(element<HTMLCanvasElement>("#minimap-canvas"), this.worldMap);
+    element("#minimap-in").addEventListener("click", () => this.minimap.zoom(1.35));
+    element("#minimap-out").addEventListener("click", () => this.minimap.zoom(1 / 1.35));
+    element("#minimap-expand").addEventListener("click", () => this.toggleMap());
     createTextures(this);
     this.drawGround();
     void this.drawObjects();
@@ -161,6 +177,8 @@ export class WorldScene extends Phaser.Scene {
       this.monsterIds.delete(id);
       this.removeActor(id);
     });
+    callbacks.onAdd("loot", (value, key) => this.lootLayer.add(String(key), value as LootData));
+    callbacks.onRemove("loot", (_value, key) => this.lootLayer.remove(String(key)));
     const updateEvent = () => this.hud.setEvent(state.eventName, state.eventEndsAt);
     callbacks.listen("eventName", updateEvent);
     callbacks.listen("eventEndsAt", updateEvent);
@@ -169,6 +187,7 @@ export class WorldScene extends Phaser.Scene {
     room.onMessage(ServerMsg.Xp, (event: XpEvent) => this.onXp(event));
     room.onMessage(ServerMsg.LevelUp, (event: LevelUpEvent) => this.onLevelUp(event));
     room.onMessage(ServerMsg.MonsterDeath, (event: MonsterDeathEvent) => this.onMonsterDeath(event));
+    room.onMessage(ServerMsg.Loot, (event: LootEvent) => this.onLoot(event));
     room.onMessage(ServerMsg.PlayerDeath, (event: PlayerDeathEvent) => this.onPlayerDeath(event));
     room.onMessage(ServerMsg.SpellEffect, (event: SpellEffectEvent) => this.onSpellEffect(event));
     room.onMessage(ServerMsg.Chat, (event: ChatEvent) => this.hud.addChat(event));
@@ -187,6 +206,7 @@ export class WorldScene extends Phaser.Scene {
     this.hud.onChat((text) => room.send(ClientMsg.Chat, { text }));
     this.hud.onSpell((id) => this.castSpell(id));
     this.hud.onWardrobe(() => this.wardrobe.toggle());
+    this.hud.onRanking(() => this.ranking.toggle());
     this.hud.onMount(() => room.send(ClientMsg.ToggleMount));
     this.keyboard = new KeyboardInput({
       move: (dx, dy) => room.send(ClientMsg.Move, { dx, dy }),
@@ -196,7 +216,9 @@ export class WorldScene extends Phaser.Scene {
       },
       targetNearest: () => this.targetNearest(),
       escape: () => {
-        if (this.wardrobe.isOpen) this.wardrobe.close();
+        if (this.ranking.isOpen) this.ranking.close();
+        else if (this.wardrobe.isOpen) this.wardrobe.close();
+        else if (element("#minimap").classList.contains("expanded")) this.toggleMap();
         else room.send(ClientMsg.Target, { id: "" });
       },
       focusChat: () => {
@@ -205,11 +227,14 @@ export class WorldScene extends Phaser.Scene {
       },
       toggleWardrobe: () => this.wardrobe.toggle(),
       toggleMount: () => room.send(ClientMsg.ToggleMount),
+      toggleRanking: () => this.ranking.toggle(),
+      toggleMap: () => this.toggleMap(),
     });
   }
 
   update(time: number, delta: number) {
     for (const actor of this.actors.values()) actor.update(time, delta);
+    this.lootLayer.update(time);
     if (this.corpses.length > 0) {
       for (const corpse of this.corpses) corpse.update(time, delta);
       this.corpses = this.corpses.filter((corpse) => {
@@ -232,6 +257,30 @@ export class WorldScene extends Phaser.Scene {
     }
 
     this.updateTarget();
+    this.updateMinimap(time);
+  }
+
+  /** O mapa grande é o mesmo minimapa, só que maior e com mais zoom. */
+  private toggleMap() {
+    const map = element("#minimap");
+    const expanded = map.classList.toggle("expanded");
+    this.minimap.zoom(expanded ? 1.8 : 1 / 1.8);
+  }
+
+  private updateMinimap(time: number) {
+    const local = this.actors.get(this.localId);
+    if (!local || time < this.nextMinimapAt) return;
+    this.nextMinimapAt = time + 66;
+
+    this.minimap.follow(local.tileX, local.tileY);
+    const blips = this.lootLayer.blips();
+    for (const [id, actor] of this.actors) {
+      if (id === this.localId || actor.dead) continue;
+      const monster = this.monsterIds.has(id);
+      blips.push({ x: actor.tileX, y: actor.tileY, color: monster ? 0xe0483d : 0x5ef08f, size: monster ? 2 : 3 });
+    }
+    this.minimap.draw(blips);
+    element("#minimap-where").textContent = `${local.tileX}, ${local.tileY}`;
   }
 
   // ------------------------------------------------------------ mapa
@@ -297,6 +346,7 @@ export class WorldScene extends Phaser.Scene {
     if (actor.id !== this.localId) return;
     this.hud.updatePlayer(actor.data as PlayerData);
     this.wardrobe.setPlayer(actor.data as PlayerData);
+    this.ranking.setMyName((actor.data as PlayerData).name);
   }
 
   private removeActor(id: string) {
@@ -497,6 +547,28 @@ export class WorldScene extends Phaser.Scene {
     actor.die(now);
     const { x, y } = actor.position(now);
     this.burst(x, (y + actor.headY) / 2, { tints: [0x9f1d1d, 0x5c0f0f, 0xd9d9d9], count: 18, speed: 180 });
+  }
+
+  /** Alguém pegou um drop: brilho no chão e o valor subindo. */
+  private onLoot(event: LootEvent) {
+    const def = LOOT[event.kind];
+    const screen = tileToScreen(event.x, event.y);
+    const color = `#${def.color.toString(16).padStart(6, "0")}`;
+    this.burst(screen.x, screen.y - 10, {
+      tints: [def.color, 0xffffff],
+      count: def.rarity === "comum" ? 10 : 26,
+      speed: def.rarity === "comum" ? 90 : 190,
+      gravityY: 220,
+      lifespan: 700,
+      angle: { min: 200, max: 340 },
+    });
+
+    const mine = event.id === this.localId;
+    const parts: string[] = [];
+    if (event.gold > 0) parts.push(`+${event.gold.toLocaleString("pt-BR")} ouro`);
+    if (event.diamonds > 0) parts.push(`+${event.diamonds} 💎`);
+    if (parts.length === 0) return;
+    this.floatingText(screen.x, screen.y - 26, parts.join("  "), color, mine ? 16 : 12, 40, mine ? 1200 : 800);
   }
 
   private onPlayerDeath(event: PlayerDeathEvent) {

@@ -5,6 +5,7 @@ export * from "./map.ts";
 export * from "./pathfinding.ts";
 export * from "./xp.ts";
 export * from "./monsters.ts";
+export * from "./loot.ts";
 export * from "./spells.ts";
 export * from "./protocol.ts";
 export * from "./state.ts";

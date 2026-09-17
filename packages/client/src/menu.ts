@@ -18,6 +18,7 @@ import { ApiError, apiRequest, clearToken, loadToken, saveToken } from "./api.ts
 import { AppearanceEditor } from "./appearanceEditor.ts";
 import { element, messageOf } from "./dom.ts";
 import { LookPreview } from "./lookPreview.ts";
+import { paintMenuRanking } from "./ranking.ts";
 
 type Screen = "auth" | "characters" | "creator";
 type AuthMode = "login" | "register";
@@ -98,6 +99,7 @@ export class Menu {
   }
 
   async start() {
+    void paintMenuRanking();
     this.token = loadToken();
     if (this.token) await this.loadCharacters();
     else this.show("auth");

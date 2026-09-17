@@ -1,4 +1,5 @@
 import type { Appearance } from "./cosmetics.ts";
+import type { LootKind } from "./loot.ts";
 import type { MonsterKind } from "./monsters.ts";
 
 // Formato dos dados sincronizados pelo Colyseus. O schema do servidor precisa bater com isto.
@@ -39,6 +40,21 @@ export interface MonsterData {
   stepMs: number;
   hp: number;
   maxHp: number;
+}
+
+/** Um drop no chão, esperando alguém passar por cima. */
+export interface LootData {
+  kind: LootKind;
+  x: number;
+  y: number;
+  gold: number;
+  diamonds: number;
+  /** Id de quem derrubou o monstro: só ele pega até `freeAt`. */
+  owner: string;
+  /** Instante em que o drop libera para todo mundo. */
+  freeAt: number;
+  /** Instante em que o drop some do chão. */
+  expiresAt: number;
 }
 
 export function appearanceOf(player: PlayerData): Appearance {

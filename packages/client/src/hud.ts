@@ -23,12 +23,14 @@ export class Hud {
   private readonly diamonds = element("#hud-diamonds");
   private readonly online = element("#hud-online");
   private readonly wardrobeButton = element<HTMLButtonElement>("#hud-wardrobe");
+  private readonly rankingButton = element<HTMLButtonElement>("#hud-ranking");
   private readonly mountButton = element<HTMLButtonElement>("#hud-mount");
   private readonly mountLabel = element("#hud-mount-label");
   private readonly targetPanel = element("#target-panel");
   private readonly targetName = element("#target-name");
   private readonly targetHp = element("#target-hp");
-  private readonly spellbar = element("#spellbar");
+  private readonly actionbar = element("#actionbar");
+  private readonly minimap = element("#minimap");
   private readonly spellButtons = [...document.querySelectorAll<HTMLButtonElement>(".spell")];
   private readonly chat = element("#chat");
   private readonly chatLog = element("#chat-log");
@@ -68,7 +70,8 @@ export class Hud {
 
   show() {
     this.root.hidden = false;
-    this.spellbar.hidden = false;
+    this.actionbar.hidden = false;
+    this.minimap.hidden = false;
     this.chat.hidden = false;
   }
 
@@ -84,6 +87,13 @@ export class Hud {
     this.wardrobeButton.addEventListener("click", () => {
       handler();
       this.wardrobeButton.blur();
+    });
+  }
+
+  onRanking(handler: () => void) {
+    this.rankingButton.addEventListener("click", () => {
+      handler();
+      this.rankingButton.blur();
     });
   }
 
@@ -106,10 +116,10 @@ export class Hud {
 
     const progress = levelProgress(player.xp, player.level);
     this.xpFill.style.width = `${progress.ratio * 100}%`;
-    this.xpText.textContent = `${formatNumber(progress.current)} / ${formatNumber(progress.needed)} XP`;
-    this.hpFill.style.width = `${Math.max(0, player.hp / player.maxHp) * 100}%`;
+    this.xpText.textContent = `Nível ${player.level} · ${formatNumber(progress.current)} / ${formatNumber(progress.needed)} XP`;
+    this.hpFill.style.height = `${Math.max(0, player.hp / player.maxHp) * 100}%`;
     this.hpText.textContent = `${formatNumber(Math.max(0, player.hp))} / ${formatNumber(player.maxHp)}`;
-    this.manaFill.style.width = `${Math.max(0, player.mana / player.maxMana) * 100}%`;
+    this.manaFill.style.height = `${Math.max(0, player.mana / player.maxMana) * 100}%`;
     this.manaText.textContent = `${formatNumber(player.mana)} / ${formatNumber(player.maxMana)}`;
     this.gold.textContent = formatNumber(player.gold);
 

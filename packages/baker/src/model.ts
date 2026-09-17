@@ -5,6 +5,7 @@ import { TINT_GROUPS } from "@zuna/shared";
 import type { EntrySpec, TintSpec } from "./catalog.ts";
 import { PALETTE_COLS, PALETTE_ROWS, PITCH, PPU, TINT_REF } from "./config.ts";
 import type { Pass } from "./render.ts";
+import { builtinModel } from "./shapes.ts";
 
 const loader = new GLTFLoader();
 const gltfCache = new Map<string, Promise<GLTF>>();
@@ -12,6 +13,11 @@ const gltfCache = new Map<string, Promise<GLTF>>();
 export function loadGltf(file: string): Promise<GLTF> {
   let pending = gltfCache.get(file);
   if (!pending) {
+    if (file.startsWith("builtin:")) {
+      pending = Promise.resolve(builtinModel(file.slice("builtin:".length)));
+      gltfCache.set(file, pending);
+      return pending;
+    }
     const url = `/${file.split("/").map(encodeURIComponent).join("/")}`;
     pending = loader.loadAsync(url);
     gltfCache.set(file, pending);

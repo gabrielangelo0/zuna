@@ -27,6 +27,8 @@ Abra http://localhost:5173, crie uma conta e um personagem. Para ver o multiplay
 | Atacar | Clique no monstro · `Tab` ataca o mais próximo · `Esc` para |
 | Magias | `1` Cura · `2` Golpe Giratório |
 | Guarda-roupa e loja | `O` |
+| Ranking | `R` |
+| Mapa grande | `N` |
 | Montar / desmontar | `M` |
 | Chat | `Enter` |
 | Zoom | Roda do mouse |
@@ -35,6 +37,12 @@ Abra http://localhost:5173, crie uma conta e um personagem. Para ver o multiplay
 
 - `/ajuda`, `/online`
 - Só para testes: `/evento xp`, `/evento invasao`, `/xp 500`, `/ouro 2000`, `/diamantes 1000`
+
+## Drops e ranking
+
+- Cada monstro pode deixar cair **moedas** (comum), um **Baú de Ouro** (raro, vale de 3 a 6 vezes o ouro normal) e o **Cristal de Zuna** (lendário, vale diamantes e é anunciado para o servidor). As chances ficam em `packages/shared/src/monsters.ts` e o sorteio em `loot.ts`.
+- O drop cai no chão, no tile da morte, e é coletado ao passar por cima. Nos primeiros 20 s só quem derrubou o monstro pega; depois libera para todos. O que ninguém pegar some em 90 s.
+- O ranking tem três listas (nível, ouro e caçadas), servidas por `GET /api/ranking?board=level|gold|kills` com cache de 30 s. Aparecem na tecla `R` dentro do jogo e ao lado do menu de login.
 
 ## Contas, personagens e loja
 
@@ -124,7 +132,7 @@ O primeiro gera só os itens citados. O `--overview` monta uma folha com todos o
 
 - `packages/shared`: regras usadas por cliente e servidor (mapa determinístico, pathfinding A\*, curva de XP, monstros, magias, catálogo de cosméticos, validações, protocolo)
 - `packages/server`: sala do mundo no Colyseus (movimento, IA dos monstros, combate, XP, morte, eventos, compras), API de contas e personagens (`api.ts`), banco com Drizzle (`db/`, `repository.ts`)
-- `packages/client`: Phaser 4 com interface em HTML (menu de conta e criação de personagem, HUD, guarda-roupa e loja, renderização isométrica, efeitos). Sprites e tingimento em `sprites.ts`, personagens animados em `actors.ts`
+- `packages/client`: Phaser 4 com interface em HTML (menu de conta e criação de personagem, HUD com orbes de vida e mana, minimapa, guarda-roupa, loja e ranking, renderização isométrica, efeitos). Sprites e tingimento em `sprites.ts`, personagens animados em `actors.ts`, drops no chão em `loot.ts`, minimapa em `minimap.ts`
 - `packages/baker`: gera os sprites a partir dos modelos 3D
 - `tools/download-assets.mjs`: baixa os modelos 3D originais para `assets/source/` (fora do git)
 

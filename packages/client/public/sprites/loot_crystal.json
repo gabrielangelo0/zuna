@@ -1,0 +1,1 @@
+{"id":"loot_crystal","image":"loot_crystal.webp","cellW":90,"cellH":90,"anchorX":45,"anchorY":72,"headHeight":42,"tintable":false,"tintGain":1.25,"anims":{"idle":{"frames":1,"fps":0,"loop":false}},"frames":{"idle/S/0":{"x":2,"y":2,"w":26,"h":41,"dx":33,"dy":37}},"width":32,"height":64}

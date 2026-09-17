@@ -6,6 +6,9 @@ import {
   DEATH_XP_LOSS,
   DEFAULT_APPEARANCE,
   DIRS,
+  LOOT,
+  LOOT_OWNER_MS,
+  LOOT_TTL_MS,
   MAP_SEED,
   MONSTERS,
   PLAYER_ATTACK_MS,
@@ -17,6 +20,7 @@ import {
   TICK_MS,
   catalogItem,
   chebyshev,
+  describeDrop,
   dirIndex,
   findPath,
   generateMap,
@@ -28,6 +32,7 @@ import {
   parseAppearance,
   playerStats,
   randInt,
+  rollDrops,
   stepDuration,
   xpForLevel,
   type AnnounceEvent,
@@ -36,6 +41,7 @@ import {
   type ChatChannel,
   type ChatEvent,
   type ChatMessage,
+  type DropRoll,
   type EquipMessage,
   type GameMap,
   type GotoMessage,
@@ -44,6 +50,7 @@ import {
   type ItemKind,
   type JoinOptions,
   type LevelUpEvent,
+  type LootEvent,
   type MonsterDeathEvent,
   type MonsterDef,
   type MonsterKind,
@@ -72,7 +79,7 @@ import {
   type CharacterRow,
   type CharacterSnapshot,
 } from "./repository.ts";
-import { MonsterState, PlayerState, WorldState } from "./schema.ts";
+import { LootState, MonsterState, PlayerState, WorldState } from "./schema.ts";
 import { generateSpawns } from "./spawns.ts";
 
 /** Multiplicador global de XP ("rate" do servidor). */
@@ -104,6 +111,8 @@ interface PlayerSim {
   characterId: number;
   unlocks: Set<string>;
   diamonds: number;
+  /** Monstros derrubados (o golpe final vale para quem mais causou dano). */
+  kills: number;
   path: Point[];
   moveDir: Point | null;
   nextStepAt: number;
@@ -165,6 +174,10 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   private readonly monsters = new Map<string, MonsterSim>();
   private readonly monsterAt = new Map<number, string>();
   private readonly playersAt = new Map<number, number>();
+  /** Drops no chão, por tile. */
+  private readonly lootAt = new Map<number, string[]>();
+  private nextLootId = 1;
+  private nextLootSweepAt = 0;
   private scheduled: Scheduled[] = [];
   private nextMonsterId = 1;
   private nextRegenAt = 0;
@@ -263,6 +276,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       characterId: row.id,
       unlocks,
       diamonds: account?.diamonds ?? 0,
+      kills: row.kills,
       path: [],
       moveDir: null,
       nextStepAt: 0,
@@ -385,6 +399,7 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       hp: s.hp,
       mana: s.mana,
       gold: s.gold,
+      kills: player.kills,
       x: s.x,
       y: s.y,
       appearance: {
@@ -671,6 +686,10 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       this.nextRegenAt = now + 1000;
       this.regenerate();
     }
+    if (now >= this.nextLootSweepAt) {
+      this.nextLootSweepAt = now + 1000;
+      this.sweepLoot(now);
+    }
     if (now >= this.nextAutosaveAt) {
       this.nextAutosaveAt = now + AUTOSAVE_MS;
       for (const player of this.players.values()) void this.persist(player);
@@ -738,6 +757,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       this.face(s, target.state);
       this.damageMonster(target, player, roll - target.def.armor);
     }
+
+    if (this.lootAt.size > 0) this.collectLoot(player, now);
   }
 
   /** Anda na direção pedida; numa diagonal bloqueada, desliza pelo eixo livre. */
@@ -958,10 +979,10 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     }
 
     if (topDamager) {
-      const roll = randInt(Math.random, def.gold[0], def.gold[1]);
-      const gold = Math.round(roll * (1 + this.bonusesOf(topDamager).gold));
-      topDamager.state.gold += gold;
-      this.sendChat(topDamager.client, "loot", `Loot de ${def.name}: ${gold > 0 ? `${gold} moedas de ouro` : "nada"}.`);
+      topDamager.kills += 1;
+      for (const drop of rollDrops(Math.random, def, this.bonusesOf(topDamager).gold)) {
+        this.dropLoot(drop, s.x, s.y, topDamager.id);
+      }
     }
 
     if (monster.respawns) this.after(def.respawnMs, () => this.respawn(def.kind, monster.home));
@@ -1040,6 +1061,106 @@ export class WorldRoom extends Room<{ state: WorldState }> {
       if (monster) result.push(monster);
     }
     return result;
+  }
+
+  // ------------------------------------------------------------ drops
+
+  /** Põe um drop no chão, no tile da morte ou no mais perto que estiver livre. */
+  private dropLoot(drop: DropRoll, x: number, y: number, owner: string) {
+    const spot = this.freeLootTile(x, y);
+    if (!spot) return;
+    const now = Date.now();
+    const id = `l${this.nextLootId++}`;
+    const state = new LootState({
+      kind: drop.kind,
+      x: spot.x,
+      y: spot.y,
+      gold: drop.gold,
+      diamonds: drop.diamonds,
+      owner,
+      freeAt: now + LOOT_OWNER_MS,
+      expiresAt: now + LOOT_TTL_MS,
+    });
+    this.state.loot.set(id, state);
+    const key = this.tileKey(spot.x, spot.y);
+    const ids = this.lootAt.get(key);
+    if (ids) ids.push(id);
+    else this.lootAt.set(key, [id]);
+  }
+
+  /** Tile andável e ainda sem drop, para dois drops não ficarem um em cima do outro. */
+  private freeLootTile(cx: number, cy: number): Point | null {
+    for (let radius = 0; radius <= 2; radius++) {
+      const candidates: Point[] = [];
+      for (let y = cy - radius; y <= cy + radius; y++) {
+        for (let x = cx - radius; x <= cx + radius; x++) {
+          if (chebyshev(x, y, cx, cy) !== radius) continue;
+          if (!isWalkable(this.gameMap, x, y) || this.lootAt.has(this.tileKey(x, y))) continue;
+          candidates.push({ x, y });
+        }
+      }
+      if (candidates.length > 0) return candidates[Math.floor(Math.random() * candidates.length)];
+    }
+    return null;
+  }
+
+  /** Quem está pisando no drop leva. Nos primeiros segundos, só quem derrubou o monstro. */
+  private collectLoot(player: PlayerSim, now: number) {
+    const key = this.tileKey(player.state.x, player.state.y);
+    const ids = this.lootAt.get(key);
+    if (!ids) return;
+    for (const id of [...ids]) {
+      const loot = this.state.loot.get(id);
+      if (!loot) {
+        this.removeLoot(id, key);
+        continue;
+      }
+      if (loot.owner && loot.owner !== player.id && now < loot.freeAt) continue;
+      this.removeLoot(id, key);
+      this.giveLoot(player, loot);
+    }
+  }
+
+  private removeLoot(id: string, key: number) {
+    this.state.loot.delete(id);
+    const ids = this.lootAt.get(key)?.filter((other) => other !== id) ?? [];
+    if (ids.length > 0) this.lootAt.set(key, ids);
+    else this.lootAt.delete(key);
+  }
+
+  private giveLoot(player: PlayerSim, loot: LootState) {
+    const def = LOOT[loot.kind as keyof typeof LOOT];
+    const s = player.state;
+    if (loot.gold > 0) s.gold += loot.gold;
+    if (loot.diamonds > 0) {
+      const amount = loot.diamonds;
+      player.diamonds += amount;
+      void this.enqueue(player, async () => {
+        player.diamonds = await addDiamonds(player.accountId, amount);
+        this.sendProfile(player);
+      }).catch(() => undefined);
+    }
+
+    this.broadcast(ServerMsg.Loot, {
+      id: player.id,
+      kind: loot.kind as LootEvent["kind"],
+      gold: loot.gold,
+      diamonds: loot.diamonds,
+      x: loot.x,
+      y: loot.y,
+    } satisfies LootEvent);
+
+    const description = describeDrop(loot);
+    if (def.announce) this.announce(`${s.name} encontrou um ${def.name} (${description})!`);
+    else if (def.rarity !== "comum") this.sendChat(player.client, "loot", `${def.name}: ${description}.`);
+    if (loot.gold > 0 || loot.diamonds > 0) void this.persist(player);
+  }
+
+  /** Tira do chão o que ninguém pegou a tempo. */
+  private sweepLoot(now: number) {
+    for (const [id, loot] of this.state.loot) {
+      if (now >= loot.expiresAt) this.removeLoot(id, this.tileKey(loot.x, loot.y));
+    }
   }
 
   // ------------------------------------------------------------ utilidades

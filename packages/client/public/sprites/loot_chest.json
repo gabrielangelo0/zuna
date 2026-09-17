@@ -1,0 +1,1 @@
+{"id":"loot_chest","image":"loot_chest.webp","cellW":128,"cellH":128,"anchorX":64,"anchorY":102,"headHeight":44,"tintable":false,"tintGain":1.25,"anims":{"idle":{"frames":1,"fps":0,"loop":false}},"frames":{"idle/S/0":{"x":2,"y":2,"w":72,"h":60,"dx":30,"dy":56}},"width":128,"height":64}

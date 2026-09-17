@@ -305,6 +305,7 @@ export const MOUNT_SPRITES: EntrySpec[] = [
 
 const NATURE = "quaternius/nature-megakit/glTF";
 const HEXAGON = "kaykit/medieval-hexagon";
+const DUNGEON = "kaykit/dungeon";
 const numbered = (prefix: string, from: number, to: number) =>
   Array.from({ length: to - from + 1 }, (_, i) => `${NATURE}/${prefix}_${from + i}.gltf`);
 
@@ -356,4 +357,25 @@ export const PROP_SPRITES: EntrySpec[] = [
   },
 ];
 
-export const CATALOG: EntrySpec[] = [...OUTFITS, ...MONSTER_SPRITES, ...PET_SPRITES, ...MOUNT_SPRITES, ...PROP_SPRITES];
+/** Drops no chão: moedas (comum), baú (raro) e o Cristal de Zuna (lendário). */
+export const LOOT_SPRITES: EntrySpec[] = [
+  {
+    id: "loot_coins",
+    file: `${DUNGEON}/coin_stack_small.gltf.glb`,
+    variants: [`${DUNGEON}/coin_stack_medium.gltf.glb`, `${DUNGEON}/coin_stack_large.gltf.glb`],
+    rotations: [0, 120],
+    height: 22,
+    anims: {},
+  },
+  { id: "loot_chest", file: `${DUNGEON}/chest_gold.glb`, rotations: [25], height: 36, anims: {} },
+  { id: "loot_crystal", file: "builtin:crystal", rotations: [15], height: 34, anims: {} },
+];
+
+export const CATALOG: EntrySpec[] = [
+  ...OUTFITS,
+  ...MONSTER_SPRITES,
+  ...PET_SPRITES,
+  ...MOUNT_SPRITES,
+  ...PROP_SPRITES,
+  ...LOOT_SPRITES,
+];

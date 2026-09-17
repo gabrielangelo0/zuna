@@ -133,6 +133,11 @@
         <p id="menu-error" class="error" hidden></p>
       </section>
 
+      <aside id="menu-ranking" aria-label="Melhores caçadores">
+        <h2>Melhores caçadores</h2>
+        <ol id="menu-ranking-list"></ol>
+      </aside>
+
       <aside id="menu-features" aria-label="Destaques">
         <ul>
           <li>
@@ -159,36 +164,63 @@
       </aside>
 
       <aside id="hud" hidden>
-        <div class="card panel">
+        <div class="card panel" id="hud-status">
           <div class="hud-name" id="hud-name"></div>
-          <div class="hud-event" id="hud-event" hidden></div>
           <div class="hud-row"><span>Nível</span><strong id="hud-level">1</strong></div>
-          <div class="bar bar-xp" title="Experiência para o próximo nível">
-            <div class="fill" id="hud-xp"></div><span id="hud-xp-text"></span>
-          </div>
-          <div class="bar bar-hp"><div class="fill" id="hud-hp"></div><span id="hud-hp-text"></span></div>
-          <div class="bar bar-mana"><div class="fill" id="hud-mana"></div><span id="hud-mana-text"></span></div>
           <div class="hud-row"><span>Ouro</span><strong id="hud-gold">0</strong></div>
           <div class="hud-row"><span>Diamantes</span><strong id="hud-diamonds" class="diamonds">0</strong></div>
           <div class="hud-row"><span>Online</span><strong id="hud-online">0</strong></div>
+          <div class="hud-event" id="hud-event" hidden></div>
           <div class="hud-actions">
-            <button id="hud-wardrobe" type="button"><kbd>O</kbd> Visual e loja</button>
+            <button id="hud-wardrobe" type="button"><kbd>O</kbd> Visual</button>
             <button id="hud-mount" type="button"><kbd>M</kbd> <span id="hud-mount-label">Montar</span></button>
+            <button id="hud-ranking" type="button"><kbd>R</kbd> Ranking</button>
           </div>
         </div>
+
         <div class="card panel" id="target-panel" hidden>
           <div class="hud-row"><span>Alvo</span><strong id="target-name"></strong></div>
           <div class="bar bar-hp"><div class="fill" id="target-hp"></div></div>
         </div>
       </aside>
 
-      <div id="spellbar" hidden>
-        <button class="spell" data-spell="heal" type="button">
-          <kbd>1</kbd><span>Cura</span><i class="cooldown"></i>
-        </button>
-        <button class="spell" data-spell="whirl" type="button">
-          <kbd>2</kbd><span>Golpe Giratório</span><i class="cooldown"></i>
-        </button>
+      <section id="minimap" hidden>
+        <canvas id="minimap-canvas"></canvas>
+        <div class="minimap-buttons">
+          <button id="minimap-expand" type="button" aria-label="Ampliar o mapa">⤢</button>
+          <button id="minimap-in" type="button" aria-label="Aproximar">+</button>
+          <button id="minimap-out" type="button" aria-label="Afastar">−</button>
+        </div>
+        <div id="minimap-where"></div>
+      </section>
+
+      <div id="actionbar" hidden>
+        <div class="orb orb-hp" title="Vida">
+          <div class="orb-liquid" id="hud-hp"><i></i><i></i></div>
+          <div class="orb-glass"></div>
+          <span id="hud-hp-text"></span>
+        </div>
+
+        <div class="action-center">
+          <div id="spellbar">
+            <button class="spell" data-spell="heal" type="button">
+              <kbd>1</kbd><span>Cura</span><i class="cooldown"></i>
+            </button>
+            <button class="spell" data-spell="whirl" type="button">
+              <kbd>2</kbd><span>Golpe Giratório</span><i class="cooldown"></i>
+            </button>
+          </div>
+          <div class="xp-track" title="Experiência">
+            <div class="xp-fill" id="hud-xp"></div>
+            <span id="hud-xp-text"></span>
+          </div>
+        </div>
+
+        <div class="orb orb-mana" title="Mana">
+          <div class="orb-liquid" id="hud-mana"><i></i><i></i></div>
+          <div class="orb-glass"></div>
+          <span id="hud-mana-text"></span>
+        </div>
       </div>
 
       <section id="chat" hidden>
@@ -219,6 +251,19 @@
           <div id="wardrobe-content"></div>
         </div>
         <p id="wardrobe-status" class="status" hidden></p>
+      </section>
+
+      <section id="ranking" class="card" hidden>
+        <header class="panel-header">
+          <h2>Ranking</h2>
+          <button id="ranking-close" class="icon" type="button" aria-label="Fechar">✕</button>
+        </header>
+        <nav class="tabs" id="ranking-tabs">
+          <button type="button" class="tab active" data-board="level">Nível</button>
+          <button type="button" class="tab" data-board="gold">Ouro</button>
+          <button type="button" class="tab" data-board="kills">Caçadas</button>
+        </nav>
+        <div id="ranking-body"></div>
       </section>
 
       <div id="death" hidden>

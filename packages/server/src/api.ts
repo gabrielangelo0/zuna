@@ -1,6 +1,8 @@
 import { createEndpoint, createRouter } from "colyseus";
 import {
   MAX_CHARACTERS,
+  RANKING_BOARDS,
+  RANKING_SIZE,
   catalogItem,
   normalizeCharacterName,
   normalizeUsername,
@@ -11,6 +13,8 @@ import {
   type AuthResponse,
   type CharactersResponse,
   type CreateCharacterResponse,
+  type RankingBoard,
+  type RankingResponse,
 } from "@zuna/shared";
 import {
   accountFromToken,
@@ -22,7 +26,15 @@ import {
   hashPassword,
   verifyPasswordOrDummy,
 } from "./auth.ts";
-import { createAccount, createCharacter, findAccountByUsername, getAccount, listCharacters, summaryFromRow } from "./repository.ts";
+import {
+  createAccount,
+  createCharacter,
+  findAccountByUsername,
+  getAccount,
+  listCharacters,
+  summaryFromRow,
+  topCharacters,
+} from "./repository.ts";
 
 // API HTTP de contas e personagens. Erros sempre respondem { message } em português.
 
@@ -106,4 +118,19 @@ const createMyCharacter = createEndpoint("/api/characters", { method: "POST" }, 
   return ctx.json(response);
 });
 
-export const apiRouter = createRouter({ register, login, logout, listMyCharacters, createMyCharacter });
+/** As listas mudam devagar e a tela de login também as pede: uma consulta por lista a cada 30 s basta. */
+const RANKING_CACHE_MS = 30_000;
+const rankingCache = new Map<RankingBoard, RankingResponse>();
+
+const ranking = createEndpoint("/api/ranking", { method: "GET" }, async (ctx) => {
+  const asked = String(ctx.query?.board ?? "level") as RankingBoard;
+  const board = RANKING_BOARDS.includes(asked) ? asked : "level";
+  const cached = rankingCache.get(board);
+  if (cached && Date.now() - cached.updatedAt < RANKING_CACHE_MS) return ctx.json(cached);
+
+  const response: RankingResponse = { board, entries: await topCharacters(board, RANKING_SIZE), updatedAt: Date.now() };
+  rankingCache.set(board, response);
+  return ctx.json(response);
+});
+
+export const apiRouter = createRouter({ register, login, logout, listMyCharacters, createMyCharacter, ranking });

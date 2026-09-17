@@ -235,7 +235,7 @@ A 4ª classe entra numa atualização futura, com evento e pacote de lançamento
 - [ ] Números de dano flutuando (crítico maior, amarelo e com tremor)
 - [ ] Hit-stop de 50–80 ms no crítico e tremida leve de tela
 - [ ] Monstro pisca branco ao tomar dano, com recuo leve
-- [ ] Loot "explode" do monstro com brilho por qualidade; ouro coletado automaticamente com som de moedas
+- [x] Loot cai do monstro com brilho por qualidade e é coletado ao passar por cima (falta o som de moedas)
 - [ ] Barra de XP sempre visível, subindo a cada kill
 - [ ] Level up com coluna de luz visível para todos + som
 - [ ] **"+PODER" subindo** a cada refino, gema ou compra, com som e brilho

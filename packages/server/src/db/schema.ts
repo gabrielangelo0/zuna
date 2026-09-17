@@ -55,6 +55,8 @@ export const characters = pgTable(
     hp: integer("hp").notNull(),
     mana: integer("mana").notNull(),
     gold: bigint("gold", { mode: "number" }).notNull().default(0),
+    /** Monstros derrubados: entra no ranking de caçadas. */
+    kills: integer("kills").notNull().default(0),
     x: smallint("x").notNull(),
     y: smallint("y").notNull(),
     skin: smallint("skin").notNull(),
@@ -70,7 +72,13 @@ export const characters = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   },
-  (table) => [index("characters_account_idx").on(table.accountId)],
+  (table) => [
+    index("characters_account_idx").on(table.accountId),
+    // Rankings: nível/experiência, ouro e caçadas.
+    index("characters_level_idx").on(table.level, table.xp),
+    index("characters_gold_idx").on(table.gold),
+    index("characters_kills_idx").on(table.kills),
+  ],
 );
 
 /** Itens desbloqueados (roupas, mascotes, montarias). Valem para a conta inteira. */

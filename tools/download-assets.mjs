@@ -33,6 +33,16 @@ const KAYKIT = [
     dir: "kaykit/medieval-hexagon",
     folders: { "addons/kaykit_medieval_hexagon_pack/Assets/gltf/": "" },
   },
+  {
+    repo: "KayKit-Dungeon-Remastered-1.0",
+    dir: "kaykit/dungeon",
+    folders: {
+      "addons/kaykit_dungeon_remastered/Assets/gltf/": "",
+      "addons/kaykit_dungeon_remastered/Assets/texture/": "texture",
+    },
+    // O pacote inteiro tem 43 MB; daqui só saem os drops (moedas e baús).
+    only: /^(coin|chest|dungeon_texture)/,
+  },
 ];
 
 /** Modelos da Quaternius no Poly Pizza: [pacote, nome, uuid do arquivo em static.poly.pizza]. */
@@ -152,8 +162,9 @@ async function kaykitTasks() {
       }
       for (const [prefix, target] of Object.entries(pack.folders)) {
         if (!entry.path.startsWith(prefix)) continue;
-        const file = join(ROOT, pack.dir, target, entry.path.slice(prefix.length));
-        tasks.push(() => saveUrl(raw, file));
+        const name = entry.path.slice(prefix.length);
+        if (pack.only && !pack.only.test(name)) continue;
+        tasks.push(() => saveUrl(raw, join(ROOT, pack.dir, target, name)));
       }
     }
   }

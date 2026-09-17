@@ -6,6 +6,8 @@ export interface KeyboardHandlers {
   focusChat(): void;
   toggleWardrobe(): void;
   toggleMount(): void;
+  toggleRanking(): void;
+  toggleMap(): void;
 }
 
 const UP = new Set(["w", "arrowup"]);
@@ -70,6 +72,12 @@ export class KeyboardInput {
         return;
       case "m":
         this.handlers.toggleMount();
+        return;
+      case "r":
+        this.handlers.toggleRanking();
+        return;
+      case "n":
+        this.handlers.toggleMap();
         return;
     }
     if (/^[1-9]$/.test(key)) this.handlers.spell(key);

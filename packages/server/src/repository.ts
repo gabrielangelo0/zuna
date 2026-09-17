@@ -1,4 +1,4 @@
-import { and, asc, count, eq, gte, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, sql } from "drizzle-orm";
 import {
   MAX_CHARACTERS,
   TEMPLE_X,
@@ -7,6 +7,8 @@ import {
   playerStats,
   type Appearance,
   type CharacterSummary,
+  type RankingBoard,
+  type RankingRow,
 } from "@zuna/shared";
 import { db } from "./db/index.ts";
 import { accounts, characters, purchases, unlocks } from "./db/schema.ts";
@@ -118,6 +120,7 @@ export async function createCharacter(accountId: number, name: string, appearanc
 export interface CharacterSnapshot {
   id: number;
   level: number;
+  kills: number;
   xp: number;
   hp: number;
   mana: number;
@@ -140,6 +143,7 @@ export async function saveCharacter(snapshot: CharacterSnapshot) {
       hp: snapshot.hp,
       mana: snapshot.mana,
       gold: snapshot.gold,
+      kills: snapshot.kills,
       x: snapshot.x,
       y: snapshot.y,
       skin: appearance.skin,
@@ -154,6 +158,27 @@ export async function saveCharacter(snapshot: CharacterSnapshot) {
       updatedAt: new Date(),
     })
     .where(eq(characters.id, snapshot.id));
+}
+
+/** Top do ranking. `level` desempata pela experiência; `kills`, pelo nível. */
+export async function topCharacters(board: RankingBoard, limit: number): Promise<RankingRow[]> {
+  const order =
+    board === "gold"
+      ? [desc(characters.gold), desc(characters.level)]
+      : board === "kills"
+        ? [desc(characters.kills), desc(characters.level)]
+        : [desc(characters.level), desc(characters.xp)];
+  const rows = await db()
+    .select({ name: characters.name, level: characters.level, xp: characters.xp, gold: characters.gold, kills: characters.kills })
+    .from(characters)
+    .orderBy(...order)
+    .limit(limit);
+  return rows.map((row, index) => ({
+    rank: index + 1,
+    name: row.name,
+    level: row.level,
+    value: board === "gold" ? row.gold : board === "kills" ? row.kills : Math.round(row.xp),
+  }));
 }
 
 export async function markLogin(characterId: number) {

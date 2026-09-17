@@ -67,9 +67,11 @@ body {
 
 #menu,
 #hud,
-#spellbar,
+#minimap,
+#actionbar,
 #chat,
-#wardrobe {
+#wardrobe,
+#ranking {
   pointer-events: auto;
 }
 
@@ -486,8 +488,8 @@ input:focus {
   animation: fade-in 0.6s ease-out;
 }
 
-#menu[hidden] + #menu-features,
-#menu.wide + #menu-features {
+#menu[hidden] ~ #menu-features,
+#menu.wide ~ #menu-features {
   display: none;
 }
 
@@ -629,10 +631,10 @@ input:focus {
 #hud {
   position: absolute;
   top: 16px;
-  right: 16px;
+  left: 16px;
   display: grid;
   gap: 8px;
-  width: 230px;
+  width: 212px;
 }
 
 .panel {
@@ -689,7 +691,11 @@ input:focus {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px;
-  margin-top: 2px;
+  margin-top: 4px;
+}
+
+.hud-actions button:last-child {
+  grid-column: span 2;
 }
 
 .hud-actions button {
@@ -751,13 +757,115 @@ input:focus {
   font-variant-numeric: tabular-nums;
 }
 
-/* ---------------------------------------------------------------- magias */
+/* ---------------------------------------------------------------- barra de ação (orbes, magias e XP) */
+
+#actionbar {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  display: flex;
+  align-items: flex-end;
+  gap: 20px;
+  transform: translateX(-50%);
+}
+
+.orb {
+  position: relative;
+  width: 116px;
+  height: 116px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 32%, #141c38, #05070f 72%);
+  box-shadow:
+    inset 0 8px 20px rgba(0, 0, 0, 0.85),
+    0 10px 26px rgba(0, 0, 0, 0.55);
+}
+
+/* Aro metálico em volta do orbe. */
+.orb::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: 50%;
+  background: conic-gradient(#0a0f26, #4b5885, #0a0f26, #3a4570, #0a0f26, #56639a, #0a0f26);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
+  pointer-events: none;
+}
+
+.orb-liquid {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 100%;
+  transition: height 0.35s ease-out;
+}
+
+.orb-hp .orb-liquid {
+  background: linear-gradient(180deg, #ff7565, #cf2020 45%, #6d0a0a);
+}
+
+.orb-mana .orb-liquid {
+  background: linear-gradient(180deg, #86cdff, #2059d6 45%, #0c2472);
+}
+
+/* As duas ondas dão o movimento do líquido. */
+.orb-liquid i {
+  position: absolute;
+  top: -9px;
+  left: -40%;
+  width: 180%;
+  height: 20px;
+  border-radius: 45%;
+  background: inherit;
+  opacity: 0.9;
+  animation: wave 4.5s ease-in-out infinite alternate;
+}
+
+.orb-liquid i:last-child {
+  top: -14px;
+  opacity: 0.45;
+  animation-duration: 6.5s;
+  animation-direction: alternate-reverse;
+}
+
+@keyframes wave {
+  from {
+    transform: translateX(-11%) rotate(-1deg);
+  }
+  to {
+    transform: translateX(11%) rotate(1deg);
+  }
+}
+
+.orb-glass {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 34% 24%, rgba(255, 255, 255, 0.38), rgba(255, 255, 255, 0.05) 34%, transparent 58%),
+    radial-gradient(circle at 50% 118%, rgba(255, 255, 255, 0.16), transparent 62%);
+  pointer-events: none;
+}
+
+.orb span {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  font-size: 14px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 2px 4px #000, 0 0 12px rgba(0, 0, 0, 0.9);
+}
+
+.action-center {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding-bottom: 8px;
+}
 
 #spellbar {
-  position: absolute;
-  bottom: 16px;
-  left: 50%;
-  transform: translateX(-50%);
   display: flex;
   gap: 8px;
 }
@@ -804,12 +912,111 @@ input:focus {
   opacity: 0.45;
 }
 
+/* Experiência: a faixa embaixo das magias, como nos ARPGs. */
+.xp-track {
+  position: relative;
+  width: min(520px, 42vw);
+  height: 15px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(2, 4, 16, 0.78);
+}
+
+.xp-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  background: linear-gradient(90deg, #6d28d9, #a78bfa);
+  box-shadow: 0 0 14px rgba(167, 139, 250, 0.55);
+  transition: width 0.3s ease-out;
+}
+
+.xp-track span {
+  position: relative;
+  display: block;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+  text-shadow: 0 1px 2px #000;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- minimapa */
+
+#minimap {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 204px;
+  height: 204px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(5, 8, 24, 0.72);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(4px);
+  transition: width 0.2s, height 0.2s;
+}
+
+#minimap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 10px;
+  background: rgba(2, 4, 16, 0.6);
+}
+
+#minimap.expanded {
+  top: 50%;
+  right: 50%;
+  width: min(72vmin, 620px);
+  height: min(72vmin, 620px);
+  transform: translate(50%, -50%);
+}
+
+.minimap-buttons {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  gap: 4px;
+}
+
+.minimap-buttons button {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(7, 10, 31, 0.8);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.minimap-buttons button:hover {
+  border-color: var(--border);
+  background: var(--accent-soft);
+}
+
+#minimap-where {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-shadow: 0 1px 3px #000;
+}
+
 /* ---------------------------------------------------------------- chat */
 
 #chat {
   position: absolute;
   left: 16px;
-  bottom: 16px;
+  bottom: 148px;
   display: grid;
   gap: 6px;
   width: min(420px, calc(100% - 32px));
@@ -1033,6 +1240,182 @@ input:focus {
   color: #c4fbd6;
 }
 
+/* ---------------------------------------------------------------- ranking */
+
+#ranking {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 12px;
+  width: min(560px, calc(100% - 32px));
+  height: min(620px, calc(100% - 32px));
+  padding: 16px;
+  transform: translate(-50%, -50%);
+  background: var(--panel-solid);
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.panel-header h2 {
+  flex: 1;
+  margin: 0;
+  color: #fff;
+  font: 400 26px/1 var(--font-logo);
+  letter-spacing: 0.02em;
+  text-shadow: 0 2px 0 #050716;
+}
+
+#ranking-body {
+  min-height: 0;
+  padding-right: 4px;
+  overflow-y: auto;
+}
+
+.rank-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rank-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.rank-row .position {
+  color: var(--muted);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.rank-row .who {
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rank-row .who small {
+  margin-left: 6px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.rank-row .value {
+  color: var(--accent);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Os três primeiros ganham destaque. */
+.rank-row.top1 {
+  border-color: rgba(242, 201, 76, 0.55);
+  background: linear-gradient(90deg, rgba(242, 201, 76, 0.16), rgba(255, 255, 255, 0.03));
+}
+
+.rank-row.top1 .position {
+  color: var(--gold);
+}
+
+.rank-row.top2 {
+  border-color: rgba(203, 213, 225, 0.4);
+}
+
+.rank-row.top3 {
+  border-color: rgba(205, 127, 50, 0.45);
+}
+
+.rank-row.me {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px rgba(94, 240, 143, 0.35);
+}
+
+.rank-empty {
+  padding: 24px 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* Lista curta na tela de login, do lado oposto aos destaques. */
+#menu-ranking {
+  position: absolute;
+  top: 50%;
+  left: max(32px, calc(50% - 560px));
+  width: 230px;
+  transform: translateY(-50%);
+  animation: fade-in 0.6s ease-out;
+}
+
+#menu[hidden] ~ #menu-ranking,
+#menu.wide ~ #menu-ranking {
+  display: none;
+}
+
+#menu-ranking h2 {
+  margin: 0 0 10px;
+  color: #fff;
+  font: 400 19px/1 var(--font-logo);
+  letter-spacing: 0.02em;
+  text-shadow: 0 2px 0 #050716;
+}
+
+#menu-ranking ol {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85);
+}
+
+#menu-ranking li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+}
+
+#menu-ranking li b {
+  flex: 1;
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#menu-ranking li i {
+  color: var(--accent);
+  font-style: normal;
+  font-weight: 700;
+}
+
+#menu-ranking li span {
+  width: 18px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+@media (max-width: 1080px) {
+  #menu-ranking {
+    display: none;
+  }
+}
+
 /* ---------------------------------------------------------------- avisos */
 
 #banner {
@@ -1120,8 +1503,61 @@ input:focus {
 
   #hud {
     top: 8px;
+    left: 8px;
+    width: 146px;
+    font-size: 12px;
+  }
+
+  .hud-name {
+    font-size: 13px;
+  }
+
+  .hud-actions button {
+    font-size: 11px;
+  }
+
+  #minimap {
+    top: 8px;
     right: 8px;
-    width: 176px;
+    width: 128px;
+    height: 128px;
+  }
+
+  .minimap-buttons button {
+    width: 22px;
+    height: 22px;
+  }
+
+  #minimap-where {
+    display: none;
+  }
+
+  #actionbar {
+    gap: 6px;
+    bottom: 8px;
+  }
+
+  .orb {
+    width: 68px;
+    height: 68px;
+  }
+
+  .orb span {
+    font-size: 10px;
+  }
+
+  .action-center {
+    gap: 6px;
+    padding-bottom: 4px;
+  }
+
+  .xp-track {
+    width: min(300px, 58vw);
+    height: 13px;
+  }
+
+  .xp-track span {
+    line-height: 13px;
   }
 
   .panel {
@@ -1144,7 +1580,7 @@ input:focus {
 
   #chat {
     left: 8px;
-    bottom: 76px;
+    bottom: 124px;
     width: calc(100% - 16px);
   }
 
@@ -1152,12 +1588,14 @@ input:focus {
     max-height: 100px;
   }
 
-  #spellbar {
-    bottom: 8px;
+  .spell {
+    width: 84px;
+    padding: 6px 3px;
+    font-size: 11px;
   }
 
-  .spell {
-    width: 96px;
+  .spell span {
+    font-size: 10.5px;
   }
 
   #wardrobe {

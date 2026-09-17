@@ -45,10 +45,26 @@ export const MonsterState = schema(
 );
 export type MonsterState = SchemaType<typeof MonsterState>;
 
+export const LootState = schema(
+  {
+    kind: t.string(),
+    x: t.int16(),
+    y: t.int16(),
+    gold: t.uint32(),
+    diamonds: t.uint16(),
+    owner: t.string(),
+    freeAt: t.float64(),
+    expiresAt: t.float64(),
+  },
+  "Loot",
+);
+export type LootState = SchemaType<typeof LootState>;
+
 export const WorldState = schema(
   {
     players: t.map(PlayerState),
     monsters: t.map(MonsterState),
+    loot: t.map(LootState),
     eventName: t.string(),
     eventEndsAt: t.float64(),
     xpMultiplier: t.float32(),
