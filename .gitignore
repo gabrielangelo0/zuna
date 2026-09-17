@@ -1,0 +1,14 @@
+node_modules/
+dist/
+# Banco local (PGlite)
+.data/
+.DS_Store
+*.log
+.env
+.env.*
+# Modelos 3D originais (baixados por npm run assets:download)
+assets/source/
+# Folhas de conferência do baker
+packages/baker/previews/
+# Configuração local do Claude Code
+.claude/settings.local.json

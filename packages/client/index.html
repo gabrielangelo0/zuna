@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>Protótipo RPG</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="game"></div>
+
+    <div id="ui">
+      <div id="banner" hidden></div>
+
+      <section id="menu" class="card">
+        <header class="menu-header">
+          <h1>Protótipo RPG</h1>
+          <p class="subtitle">Mate monstros, ganhe experiência e suba de nível.</p>
+        </header>
+
+        <div id="screen-auth" hidden>
+          <div class="tabs">
+            <button type="button" class="tab active" data-auth-mode="login">Entrar</button>
+            <button type="button" class="tab" data-auth-mode="register">Criar conta</button>
+          </div>
+          <form id="auth-form" class="stack">
+            <input
+              id="auth-username"
+              maxlength="20"
+              placeholder="Usuário"
+              autocomplete="username"
+              autocapitalize="off"
+              spellcheck="false"
+            />
+            <input id="auth-password" type="password" maxlength="72" placeholder="Senha" autocomplete="current-password" />
+            <button id="auth-submit" class="primary" type="submit">Entrar</button>
+          </form>
+          <ul class="controls">
+            <li><kbd>Clique</kbd> andar ou atacar um monstro</li>
+            <li><kbd>WASD</kbd> ou <kbd>Setas</kbd> andar</li>
+            <li><kbd>Tab</kbd> atacar o mais próximo · <kbd>Esc</kbd> parar</li>
+            <li><kbd>1</kbd> Cura · <kbd>2</kbd> Golpe Giratório</li>
+            <li><kbd>O</kbd> guarda-roupa e loja · <kbd>M</kbd> montar</li>
+            <li><kbd>Enter</kbd> chat · <kbd>Roda do mouse</kbd> zoom</li>
+          </ul>
+        </div>
+
+        <div id="screen-characters" hidden>
+          <p id="characters-greeting" class="lead"></p>
+          <ul id="character-list"></ul>
+          <div class="row">
+            <button id="character-new" class="secondary" type="button">+ Novo personagem</button>
+            <button id="logout" class="link" type="button">Sair da conta</button>
+          </div>
+        </div>
+
+        <div id="screen-creator" hidden>
+          <div class="creator">
+            <div class="creator-preview">
+              <canvas id="creator-canvas" width="216" height="312"></canvas>
+              <button id="creator-random" class="secondary small" type="button">Aleatório</button>
+            </div>
+            <div class="creator-form">
+              <input id="creator-name" maxlength="16" placeholder="Nome do personagem" autocomplete="off" />
+              <div id="creator-editor" class="editor"></div>
+            </div>
+          </div>
+          <div class="row">
+            <button id="creator-back" class="link" type="button">Voltar</button>
+            <button id="creator-create" class="primary" type="button">Criar e jogar</button>
+          </div>
+        </div>
+
+        <p id="menu-error" class="error" hidden></p>
+      </section>
+
+      <aside id="hud" hidden>
+        <div class="card panel">
+          <div class="hud-name" id="hud-name"></div>
+          <div class="hud-event" id="hud-event" hidden></div>
+          <div class="hud-row"><span>Nível</span><strong id="hud-level">1</strong></div>
+          <div class="bar bar-xp" title="Experiência para o próximo nível">
+            <div class="fill" id="hud-xp"></div><span id="hud-xp-text"></span>
+          </div>
+          <div class="bar bar-hp"><div class="fill" id="hud-hp"></div><span id="hud-hp-text"></span></div>
+          <div class="bar bar-mana"><div class="fill" id="hud-mana"></div><span id="hud-mana-text"></span></div>
+          <div class="hud-row"><span>Ouro</span><strong id="hud-gold">0</strong></div>
+          <div class="hud-row"><span>Diamantes</span><strong id="hud-diamonds" class="diamonds">0</strong></div>
+          <div class="hud-row"><span>Online</span><strong id="hud-online">0</strong></div>
+          <div class="hud-actions">
+            <button id="hud-wardrobe" type="button"><kbd>O</kbd> Visual e loja</button>
+            <button id="hud-mount" type="button"><kbd>M</kbd> <span id="hud-mount-label">Montar</span></button>
+          </div>
+        </div>
+        <div class="card panel" id="target-panel" hidden>
+          <div class="hud-row"><span>Alvo</span><strong id="target-name"></strong></div>
+          <div class="bar bar-hp"><div class="fill" id="target-hp"></div></div>
+        </div>
+      </aside>
+
+      <div id="spellbar" hidden>
+        <button class="spell" data-spell="heal" type="button">
+          <kbd>1</kbd><span>Cura</span><i class="cooldown"></i>
+        </button>
+        <button class="spell" data-spell="whirl" type="button">
+          <kbd>2</kbd><span>Golpe Giratório</span><i class="cooldown"></i>
+        </button>
+      </div>
+
+      <section id="chat" hidden>
+        <div id="chat-log"></div>
+        <input id="chat-input" maxlength="180" placeholder="Enter para conversar · /ajuda" autocomplete="off" />
+      </section>
+
+      <section id="wardrobe" class="card" hidden>
+        <header class="wardrobe-header">
+          <h2>Guarda-roupa</h2>
+          <div class="balances">
+            <span title="Ouro">🪙 <strong id="wardrobe-gold">0</strong></span>
+            <span title="Diamantes" class="diamonds">💎 <strong id="wardrobe-diamonds">0</strong></span>
+          </div>
+          <button id="wardrobe-close" class="icon" type="button" aria-label="Fechar">✕</button>
+        </header>
+        <nav class="tabs">
+          <button type="button" class="tab active" data-tab="visual">Aparência</button>
+          <button type="button" class="tab" data-tab="outfit">Roupas</button>
+          <button type="button" class="tab" data-tab="pet">Mascotes</button>
+          <button type="button" class="tab" data-tab="mount">Montarias</button>
+        </nav>
+        <div class="wardrobe-body">
+          <figure class="wardrobe-preview">
+            <canvas id="wardrobe-canvas" width="352" height="280"></canvas>
+            <figcaption id="wardrobe-preview-label">Seu visual</figcaption>
+          </figure>
+          <div id="wardrobe-content"></div>
+        </div>
+        <p id="wardrobe-status" class="status" hidden></p>
+      </section>
+
+      <div id="death" hidden>
+        <h2>Você morreu</h2>
+        <p id="death-text"></p>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

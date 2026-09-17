@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Baker de sprites</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 16px;
+        background: #1b1d24;
+        color: #e8e2d4;
+        font: 13px/1.5 system-ui, sans-serif;
+      }
+      #log {
+        white-space: pre-wrap;
+      }
+      #stage canvas {
+        border: 1px solid #333;
+        background: repeating-conic-gradient(#2a2d36 0 25%, #23252d 0 50%) 0 0 / 16px 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Baker de sprites</h1>
+    <p>Abra com <code>?auto=1</code> para gerar tudo, ou <code>?auto=1&amp;only=id1,id2</code> para alguns.</p>
+    <div id="stage"></div>
+    <div id="log"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
