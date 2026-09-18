@@ -22,7 +22,11 @@ O Cristal de Zuna não vem de pacote nenhum: é modelado no próprio baker (`pac
 
 ## Marca
 
-A logo (`assets/brand/zuna-logo.png`) foi fornecida pelo Gabriel. Dela saem a logo do menu e do painel, os ícones do navegador e a imagem de prévia dos links — todos gerados por `npm run brand`. O fundo da imagem de prévia (`assets/brand/og-background.jpg`) é uma cena do próprio jogo. **Se a logo foi gerada por IA, confirme os direitos de uso comercial e o registro da marca antes do lançamento.**
+A logo (`assets/brand/zuna-logo.png`) e a referência de tela do painel (`assets/brand/painel-referencia.png`) foram fornecidas pelo Gabriel. Da logo saem a marca do menu e do painel, os ícones do navegador e a imagem de prévia dos links; da referência saem a faixa do topo do painel, a cena ao lado do quadro do mundo e a arte da barra lateral — tudo gerado por `npm run brand`. O fundo da imagem de prévia (`assets/brand/og-background.jpg`) é uma cena do próprio jogo. **Se a logo e a referência foram geradas por IA, confirme os direitos de uso comercial e o registro da marca antes do lançamento.**
+
+## Fontes
+
+Todas vêm do Fontsource e são **SIL Open Font License 1.1** (uso comercial liberado): Lilita One e Montserrat no jogo, Permanent Marker na frase da marca e Cinzel nos títulos do painel de administração.
 
 ## Interface
 

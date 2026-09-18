@@ -57,6 +57,13 @@ export class EventManager {
     return true;
   }
 
+  /** Encerra na hora o evento em andamento. Falso quando não havia nenhum. */
+  stop(): boolean {
+    if (!this.active) return false;
+    this.finish(false);
+    return true;
+  }
+
   private begin(kind: ActiveEvent, name: string, durationMs: number): number {
     this.active = kind;
     this.endsAt = Date.now() + durationMs;

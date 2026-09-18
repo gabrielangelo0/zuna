@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gte, ilike, inArray, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, sql } from "drizzle-orm";
 import {
   MAX_CHARACTERS,
   TEMPLE_X,
@@ -7,15 +7,11 @@ import {
   playerStats,
   type Appearance,
   type CharacterSummary,
-  type AdminAccountPatch,
-  type AdminCharacterPatch,
-  type AdminLogRow,
-  type AdminPlayerRow,
   type RankingBoard,
   type RankingRow,
 } from "@zuna/shared";
 import { db } from "./db/index.ts";
-import { accounts, adminActions, characters, purchases, unlocks } from "./db/schema.ts";
+import { accounts, characters, purchases, unlocks } from "./db/schema.ts";
 
 export type AccountRow = typeof accounts.$inferSelect;
 export type CharacterRow = typeof characters.$inferSelect;
@@ -176,7 +172,14 @@ export async function topCharacters(board: RankingBoard, limit: number): Promise
         ? [desc(characters.kills), desc(characters.level)]
         : [desc(characters.level), desc(characters.xp)];
   const rows = await db()
-    .select({ name: characters.name, level: characters.level, xp: characters.xp, gold: characters.gold, kills: characters.kills })
+    .select({
+      name: characters.name,
+      level: characters.level,
+      xp: characters.xp,
+      gold: characters.gold,
+      kills: characters.kills,
+      outfit: characters.outfit,
+    })
     .from(characters)
     .orderBy(...order)
     .limit(limit);
@@ -184,6 +187,7 @@ export async function topCharacters(board: RankingBoard, limit: number): Promise
     rank: index + 1,
     name: row.name,
     level: row.level,
+    outfit: row.outfit,
     value: board === "gold" ? row.gold : board === "kills" ? row.kills : Math.round(row.xp),
   }));
 }
@@ -252,155 +256,14 @@ export async function purchaseItem(params: {
   });
 }
 
-// ---------------------------------------------------------------- painel de administração
+// ---------------------------------------------------------------- bloqueio
 
-/** Marca como administrador as contas listadas em ADMIN_USERS (uma vez, ao subir o servidor). */
-export async function ensureAdmins(usernames: string[]): Promise<string[]> {
-  const wanted = usernames.map((name) => name.trim().toLowerCase()).filter((name) => name.length > 0);
-  if (wanted.length === 0) return [];
-  const rows = await db()
-    .update(accounts)
-    .set({ isAdmin: true })
-    .where(and(inArray(accounts.username, wanted), eq(accounts.isAdmin, false)))
-    .returning({ username: accounts.username });
-  return rows.map((row) => row.username);
-}
-
-export async function isAdminAccount(accountId: number): Promise<boolean> {
-  const [row] = await db().select({ isAdmin: accounts.isAdmin }).from(accounts).where(eq(accounts.id, accountId)).limit(1);
-  return row?.isAdmin === true;
-}
-
-/** Uma linha por personagem; contas sem personagem também aparecem. */
-export async function listPlayersForAdmin(
-  query: string,
-  limit: number,
-  offset: number,
-  online: Set<number>,
-): Promise<{ players: AdminPlayerRow[]; total: number }> {
-  const term = `%${query.trim()}%`;
-  const filter = query.trim() ? or(ilike(accounts.username, term), ilike(characters.name, term)) : undefined;
-
-  const rows = await db()
-    .select({
-      accountId: accounts.id,
-      username: accounts.username,
-      isAdmin: accounts.isAdmin,
-      banned: accounts.banned,
-      diamonds: accounts.diamonds,
-      accountCreatedAt: accounts.createdAt,
-      characterId: characters.id,
-      name: characters.name,
-      level: characters.level,
-      xp: characters.xp,
-      gold: characters.gold,
-      kills: characters.kills,
-      outfit: characters.outfit,
-      lastLoginAt: characters.lastLoginAt,
-    })
+/** Uma conta bloqueada não entra no jogo; o motivo aparece para quem tenta. */
+export async function accountBan(accountId: number): Promise<{ banned: boolean; reason: string }> {
+  const [row] = await db()
+    .select({ banned: accounts.banned, reason: accounts.banReason })
     .from(accounts)
-    .leftJoin(characters, eq(characters.accountId, accounts.id))
-    .where(filter)
-    .orderBy(desc(characters.level), asc(accounts.username))
-    .limit(limit)
-    .offset(offset);
-
-  const [{ total }] = await db()
-    .select({ total: count() })
-    .from(accounts)
-    .leftJoin(characters, eq(characters.accountId, accounts.id))
-    .where(filter);
-
-  const players: AdminPlayerRow[] = rows.map((row) => ({
-    accountId: row.accountId,
-    username: row.username,
-    isAdmin: row.isAdmin,
-    banned: row.banned,
-    diamonds: row.diamonds,
-    characterId: row.characterId,
-    name: row.name ?? "",
-    level: row.level ?? 0,
-    xp: Math.round(row.xp ?? 0),
-    gold: row.gold ?? 0,
-    kills: row.kills ?? 0,
-    outfit: row.outfit ?? "",
-    online: row.characterId !== null && online.has(row.characterId),
-    createdAt: row.accountCreatedAt.toISOString(),
-    lastLoginAt: row.lastLoginAt?.toISOString() ?? null,
-  }));
-  return { players, total };
-}
-
-export async function adminUpdateCharacter(patch: AdminCharacterPatch): Promise<boolean> {
-  const values: Record<string, unknown> = { updatedAt: new Date() };
-  if (patch.level !== undefined) values.level = patch.level;
-  if (patch.xp !== undefined) values.xp = patch.xp;
-  if (patch.gold !== undefined) values.gold = patch.gold;
-  if (patch.kills !== undefined) values.kills = patch.kills;
-  if (patch.outfit !== undefined) values.outfit = patch.outfit;
-  const rows = await db().update(characters).set(values).where(eq(characters.id, patch.characterId)).returning({ id: characters.id });
-  return rows.length > 0;
-}
-
-export async function adminUpdateAccount(patch: AdminAccountPatch): Promise<boolean> {
-  const values: Record<string, unknown> = {};
-  if (patch.diamonds !== undefined) values.diamonds = patch.diamonds;
-  if (patch.isAdmin !== undefined) values.isAdmin = patch.isAdmin;
-  if (patch.banned !== undefined) values.banned = patch.banned;
-  if (Object.keys(values).length > 0) {
-    const rows = await db().update(accounts).set(values).where(eq(accounts.id, patch.accountId)).returning({ id: accounts.id });
-    if (rows.length === 0) return false;
-  }
-  if (patch.unlock) {
-    await db().insert(unlocks).values({ accountId: patch.accountId, itemId: patch.unlock }).onConflictDoNothing();
-  }
-  return true;
-}
-
-export async function accountIsBanned(accountId: number): Promise<boolean> {
-  const [row] = await db().select({ banned: accounts.banned }).from(accounts).where(eq(accounts.id, accountId)).limit(1);
-  return row?.banned === true;
-}
-
-export async function logAdminAction(entry: {
-  accountId: number;
-  action: string;
-  detail: unknown;
-  targetAccountId?: number | null;
-  targetCharacterId?: number | null;
-}) {
-  await db().insert(adminActions).values({
-    accountId: entry.accountId,
-    action: entry.action,
-    detail: JSON.stringify(entry.detail ?? {}),
-    targetAccountId: entry.targetAccountId ?? null,
-    targetCharacterId: entry.targetCharacterId ?? null,
-  });
-}
-
-export async function listAdminActions(limit: number): Promise<AdminLogRow[]> {
-  const admin = { id: accounts.id, username: accounts.username };
-  const rows = await db()
-    .select({
-      id: adminActions.id,
-      action: adminActions.action,
-      detail: adminActions.detail,
-      at: adminActions.createdAt,
-      admin: admin.username,
-      targetName: characters.name,
-      targetAccount: adminActions.targetAccountId,
-    })
-    .from(adminActions)
-    .leftJoin(accounts, eq(accounts.id, adminActions.accountId))
-    .leftJoin(characters, eq(characters.id, adminActions.targetCharacterId))
-    .orderBy(desc(adminActions.id))
-    .limit(limit);
-  return rows.map((row) => ({
-    id: row.id,
-    admin: row.admin ?? "?",
-    action: row.action,
-    detail: row.detail,
-    target: row.targetName ?? (row.targetAccount ? `conta ${row.targetAccount}` : "—"),
-    at: row.at.toISOString(),
-  }));
+    .where(eq(accounts.id, accountId))
+    .limit(1);
+  return { banned: row?.banned === true, reason: row?.reason ?? "" };
 }

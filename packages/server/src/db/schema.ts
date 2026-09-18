@@ -27,6 +27,8 @@ export const accounts = pgTable("accounts", {
   isAdmin: boolean("is_admin").notNull().default(false),
   /** Conta bloqueada: não entra no jogo nem no painel. */
   banned: boolean("banned").notNull().default(false),
+  /** Motivo do bloqueio, mostrado a quem tenta entrar. */
+  banReason: text("ban_reason").notNull().default(""),
   createdAt: createdAt(),
 });
 

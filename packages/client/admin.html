@@ -3,87 +3,63 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Zuna · Painel</title>
+    <title>Zuna · Painel do Mestre</title>
     <meta name="robots" content="noindex, nofollow" />
-    <meta name="theme-color" content="#0a0f2c" />
+    <meta name="theme-color" content="#0a1620" />
     <link rel="icon" href="/favicon.png" type="image/png" sizes="96x96" />
     <link rel="stylesheet" href="/src/admin/admin.css" />
   </head>
   <body>
-    <header class="top">
-      <h1>
-        <img src="/brand/zuna-logo.png" width="1024" height="618" alt="Zuna" />
-        <span>painel</span>
-      </h1>
-      <div class="who">
-        <span id="admin-user"></span>
-        <button id="admin-logout" type="button" class="ghost" hidden>Sair</button>
+    <div class="shell">
+      <aside class="side" id="side">
+        <div class="side-logo"><img src="/brand/zuna-logo.png" width="1024" height="618" alt="Zuna" /></div>
+        <nav class="side-nav" id="side-nav"></nav>
+        <div class="side-art">
+          <p>Grandes jornadas começam com um simples passo.</p>
+          <span class="gem-rule"></span>
+        </div>
+      </aside>
+
+      <div class="main">
+        <header class="banner">
+          <div class="chip" id="admin-chip" hidden>
+            <span class="chip-face" id="admin-face"></span>
+            <span class="chip-text">
+              <strong id="admin-user">—</strong>
+              <small><i class="dot"></i> Online</small>
+            </span>
+          </div>
+          <span class="spacer"></span>
+          <div class="chip server">
+            <span class="chip-text">
+              <small>Servidor</small>
+              <strong>Zuna World</strong>
+            </span>
+            <i class="dot" id="server-dot"></i>
+          </div>
+          <button id="admin-logout" type="button" hidden></button>
+        </header>
+
+        <nav class="tabs" id="tabs" hidden></nav>
+
+        <main id="view">
+          <section id="login" class="login frame" hidden>
+            <h2>Entrar no painel</h2>
+            <form id="login-form" class="frame-body">
+              <p class="note">Use a conta do jogo que tem acesso de mestre.</p>
+              <input id="login-user" placeholder="Usuário" autocomplete="username" autocapitalize="off" spellcheck="false" />
+              <input id="login-pass" type="password" placeholder="Senha" autocomplete="current-password" />
+              <button class="primary" type="submit">Entrar</button>
+              <p id="login-error" class="error" hidden></p>
+            </form>
+          </section>
+          <div id="panel"></div>
+        </main>
       </div>
-    </header>
+    </div>
 
-    <main>
-      <section id="login" class="card" hidden>
-        <h2>Entrar</h2>
-        <p class="muted">Use a conta do jogo que tem acesso de administrador.</p>
-        <form id="login-form" class="stack">
-          <input id="login-user" placeholder="Usuário" autocomplete="username" autocapitalize="off" spellcheck="false" />
-          <input id="login-pass" type="password" placeholder="Senha" autocomplete="current-password" />
-          <button class="primary" type="submit">Entrar</button>
-        </form>
-        <p id="login-error" class="error" hidden></p>
-      </section>
-
-      <section id="panel" hidden>
-        <nav class="tabs">
-          <button type="button" class="tab active" data-view="players">Jogadores</button>
-          <button type="button" class="tab" data-view="log">Histórico</button>
-        </nav>
-
-        <div id="view-players">
-          <div class="toolbar">
-            <input id="search" placeholder="Buscar por conta ou personagem" />
-            <button id="reload" class="ghost" type="button">Atualizar</button>
-            <span id="total" class="muted"></span>
-          </div>
-          <div class="table-wrap">
-            <table id="players">
-              <thead>
-                <tr>
-                  <th>Conta</th>
-                  <th>Personagem</th>
-                  <th>Nível</th>
-                  <th>XP</th>
-                  <th>Ouro</th>
-                  <th>Diamantes</th>
-                  <th>Caçadas</th>
-                  <th>Classe</th>
-                  <th>Ações</th>
-                </tr>
-              </thead>
-              <tbody id="players-body"></tbody>
-            </table>
-          </div>
-        </div>
-
-        <div id="view-log" hidden>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Quando</th>
-                  <th>Administrador</th>
-                  <th>Ação</th>
-                  <th>Alvo</th>
-                  <th>Detalhe</th>
-                </tr>
-              </thead>
-              <tbody id="log-body"></tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-    </main>
-
+    <div id="modal" class="modal" hidden></div>
+    <div id="dialog" class="modal" hidden></div>
     <div id="toast" hidden></div>
 
     <script type="module" src="/src/admin/main.ts"></script>

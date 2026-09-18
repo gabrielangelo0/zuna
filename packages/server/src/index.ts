@@ -5,7 +5,7 @@ import express from "express";
 import { ROOM_NAME, SERVER_PORT } from "@zuna/shared";
 import { apiRouter } from "./api.ts";
 import { connectDatabase, disconnectDatabase } from "./db/index.ts";
-import { ensureAdmins } from "./repository.ts";
+import { ensureAdmins } from "./adminRepository.ts";
 import { WorldRoom, waitForPendingWrites } from "./WorldRoom.ts";
 
 const production = process.env.NODE_ENV === "production";

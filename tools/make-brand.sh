@@ -10,6 +10,7 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 art="$root/assets/brand/zuna-logo.png"
 ogbg="$root/assets/brand/og-background.jpg"
+ref="$root/assets/brand/painel-referencia.png"
 out="$root/packages/client/public"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -58,6 +59,17 @@ done
 magick "$ogbg" \( "$work/logo.png" -resize 390x \) -geometry +52+14 -compose over -composite \
   -quality 84 -strip "$out/og-image.jpg"
 
+# 5. Arte do painel: recortes da referência do painel (faixa do topo, cena lateral e da barra).
+magick "$ref" -crop 730x110+700+1 +repage "$work/strip.png"
+magick "$work/strip.png" \( "$work/strip.png" -flop \) "$work/strip.png" +append \
+  -resize 2190x165 -quality 88 -strip "$out/brand/panel-banner.jpg"
+magick "$ref" -crop 274x176+9+562 +repage -resize 420x -quality 88 -strip "$out/brand/panel-side.jpg"
+magick "$ref" -crop 302x288+1401+365 +repage -resize 460x -quality 88 -strip "$out/brand/panel-scene.jpg"
+
+# Retratos das classes, tirados dos próprios sprites do jogo.
+node "$root/tools/make-faces.mjs" > /dev/null
+
 printf 'pronto:\n'
-ls -lh "$out/brand/zuna-logo.png" "$out/icon-512.png" "$out/icon-192.png" \
-  "$out/apple-touch-icon.png" "$out/favicon.png" "$out/og-image.jpg" | awk '{print "  " $9 "  " $5}'
+ls -lh "$out/brand/zuna-logo.png" "$out/brand/panel-banner.jpg" "$out/brand/panel-side.jpg" "$out/icon-512.png" \
+  "$out/icon-192.png" "$out/apple-touch-icon.png" "$out/favicon.png" "$out/og-image.jpg" | awk '{print "  " $9 "  " $5}'
+printf '  %s retratos de classe em brand/class/\n' "$(ls "$out/brand/class" | wc -l | tr -d ' ')"

@@ -91,72 +91,6 @@ export interface ShortcutsMessage {
   slots: string[];
 }
 
-// ---------------------------------------------------------------- painel de administração
-
-export interface AdminPlayerRow {
-  accountId: number;
-  username: string;
-  isAdmin: boolean;
-  banned: boolean;
-  diamonds: number;
-  /** Personagem, quando a conta tem algum. */
-  characterId: number | null;
-  name: string;
-  level: number;
-  xp: number;
-  gold: number;
-  kills: number;
-  outfit: string;
-  online: boolean;
-  createdAt: string;
-  lastLoginAt: string | null;
-}
-
-export interface AdminPlayersResponse {
-  players: AdminPlayerRow[];
-  total: number;
-  /** Quem está usando o painel. */
-  username: string;
-}
-
-/** Mudanças num personagem. Campo ausente = não mexe. */
-export interface AdminCharacterPatch {
-  characterId: number;
-  level?: number;
-  xp?: number;
-  gold?: number;
-  kills?: number;
-  outfit?: string;
-}
-
-/** Mudanças numa conta. */
-export interface AdminAccountPatch {
-  accountId: number;
-  diamonds?: number;
-  isAdmin?: boolean;
-  banned?: boolean;
-  /** Libera um item do catálogo (roupa, mascote ou montaria). */
-  unlock?: string;
-}
-
-export interface AdminLogRow {
-  id: number;
-  admin: string;
-  action: string;
-  detail: string;
-  target: string;
-  at: string;
-}
-
-export interface AdminLogResponse {
-  entries: AdminLogRow[];
-}
-
-/** Limites do que o painel aceita, para não estourar o banco nem o jogo. */
-export const ADMIN_MAX_LEVEL = 9999;
-export const ADMIN_MAX_GOLD = 1_000_000_000;
-export const ADMIN_MAX_DIAMONDS = 10_000_000;
-
 // ---------------------------------------------------------------- ranking
 
 export type RankingBoard = "level" | "gold" | "kills";
@@ -169,6 +103,8 @@ export interface RankingRow {
   rank: number;
   name: string;
   level: number;
+  /** Roupa equipada: o painel usa para mostrar o retrato da classe. */
+  outfit: string;
   /** Experiência, ouro ou caçadas, conforme a lista. */
   value: number;
 }

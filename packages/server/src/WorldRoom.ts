@@ -71,9 +71,19 @@ import {
 } from "@zuna/shared";
 import { accountFromToken } from "./auth.ts";
 import { EventManager } from "./events.ts";
-import { registerLiveRoom, unregisterLiveRoom, type LiveAccountPatch, type LiveCharacterPatch, type LiveRoom } from "./live.ts";
 import {
-  accountIsBanned,
+  registerLiveRoom,
+  unregisterLiveRoom,
+  type LiveAccountPatch,
+  type LiveCharacterPatch,
+  type LiveCommand,
+  type LiveEvent,
+  type LiveEventResult,
+  type LiveRoom,
+  type LiveWorldPart,
+} from "./live.ts";
+import {
+  accountBan,
   addDiamonds,
   appearanceFromRow,
   getAccount,
@@ -94,6 +104,13 @@ const XP_RATE = Number(process.env.XP_RATE) || 1;
 const DEV_COMMANDS = process.env.DEV_COMMANDS ? process.env.DEV_COMMANDS !== "0" : process.env.NODE_ENV !== "production";
 const AUTOSAVE_MS = 60_000;
 const MAX_TEST_GRANT = 100_000_000;
+/** Roupa para quem teve um item tirado pelo painel. */
+const FREE_OUTFIT = "aventureiro";
+
+/** Aviso de conta bloqueada, com o motivo quando o administrador escreveu um. */
+export function banMessage(reason: string): string {
+  return reason ? `Sua conta está bloqueada: ${reason}` : "Sua conta está bloqueada.";
+}
 
 const pendingWrites = new Set<Promise<void>>();
 /** Última gravação de cada personagem: quem entra de novo espera a saída anterior terminar de salvar. */
@@ -114,6 +131,8 @@ interface PlayerSim {
   client: Client;
   state: PlayerState;
   accountId: number;
+  /** Nome da conta, para o painel. */
+  username: string;
   characterId: number;
   unlocks: Set<string>;
   diamonds: number;
@@ -128,6 +147,8 @@ interface PlayerSim {
   nextChaseAt: number;
   spellReadyAt: Map<SpellId, number>;
   chatReadyAt: number;
+  /** Silenciado por um administrador até este instante. */
+  mutedUntil: number;
   /** Operações de banco deste personagem, em fila: nunca duas ao mesmo tempo. */
   queue: Promise<void>;
 }
@@ -225,18 +246,44 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     return [...this.players.values()].map((player) => player.characterId);
   }
 
+  private playerByCharacter(characterId: number): PlayerSim | undefined {
+    return [...this.players.values()].find((entry) => entry.characterId === characterId);
+  }
+
+  /** Põe o personagem noutro tile sem deixar o mapa de ocupação desencontrado. */
+  private placePlayer(player: PlayerSim, x: number, y: number) {
+    const spot = this.findFreeTile(x, y, false) ?? { x, y };
+    const s = player.state;
+    this.occupyPlayer(s.x, s.y, -1);
+    s.x = spot.x;
+    s.y = spot.y;
+    this.occupyPlayer(s.x, s.y, 1);
+    s.target = "";
+    player.path = [];
+    player.moveDir = null;
+  }
+
   /** O administrador mexeu num personagem que está online: vale na hora. */
   applyCharacter(characterId: number, patch: LiveCharacterPatch) {
-    const player = [...this.players.values()].find((entry) => entry.characterId === characterId);
+    const player = this.playerByCharacter(characterId);
     if (!player) return;
     const s = player.state;
+    if (patch.name !== undefined) s.name = patch.name;
     if (patch.gold !== undefined) s.gold = patch.gold;
     if (patch.kills !== undefined) player.kills = patch.kills;
     if (patch.xp !== undefined) s.xp = patch.xp;
+    if (patch.pet !== undefined) s.pet = patch.pet;
+    if (patch.mount !== undefined) {
+      s.mount = patch.mount;
+      if (!patch.mount) s.mounted = false;
+    }
     if (patch.outfit !== undefined) {
       s.outfit = patch.outfit;
       player.unlocks.add(patch.outfit);
       this.sendProfile(player);
+    }
+    if (patch.x !== undefined || patch.y !== undefined) {
+      this.placePlayer(player, patch.x ?? s.x, patch.y ?? s.y);
     }
     if (patch.level !== undefined && patch.level !== s.level) {
       const stats = playerStats(patch.level);
@@ -258,6 +305,17 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       if (player.accountId !== accountId) continue;
       if (patch.diamonds !== undefined) player.diamonds = patch.diamonds;
       if (patch.unlock) player.unlocks.add(patch.unlock);
+      if (patch.revoke) {
+        player.unlocks.delete(patch.revoke);
+        // Quem perdeu o item não pode continuar usando: volta para o visual grátis.
+        const s = player.state;
+        if (s.outfit === patch.revoke) s.outfit = FREE_OUTFIT;
+        if (s.pet === patch.revoke) s.pet = "";
+        if (s.mount === patch.revoke) {
+          s.mount = "";
+          s.mounted = false;
+        }
+      }
       this.sendProfile(player);
       this.sendChat(player.client, "system", "Um administrador atualizou sua conta.");
     }
@@ -269,11 +327,95 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     }
   }
 
+  /** Retrato desta sala para o painel. */
+  liveWorld(): LiveWorldPart {
+    const now = Date.now();
+    const players = [...this.players.values()].map((player) => {
+      const s = player.state;
+      return {
+        characterId: player.characterId,
+        accountId: player.accountId,
+        name: s.name,
+        username: player.username,
+        level: s.level,
+        hp: s.hp,
+        maxHp: s.maxHp,
+        mana: s.mana,
+        maxMana: s.maxMana,
+        x: s.x,
+        y: s.y,
+        gold: s.gold,
+        outfit: s.outfit,
+        mounted: s.mounted,
+        mutedMs: Math.max(0, player.mutedUntil - now),
+      };
+    });
+    return {
+      players,
+      monsters: this.monsters.size,
+      event: this.state.eventName,
+      eventEndsAt: this.state.eventEndsAt,
+      xpMultiplier: this.state.xpMultiplier,
+    };
+  }
+
+  announceText(text: string) {
+    this.announce(text);
+  }
+
+  /** Comando de mestre num personagem desta sala. */
+  commandCharacter(characterId: number, command: LiveCommand): boolean {
+    const player = this.playerByCharacter(characterId);
+    if (!player) return false;
+    const s = player.state;
+
+    switch (command.kind) {
+      case "whisper":
+        this.sendChat(player.client, "system", command.text);
+        return true;
+      case "kick":
+        void this.persist(player);
+        player.client.leave(4003, command.text);
+        return true;
+      case "teleport":
+        this.placePlayer(player, command.x, command.y);
+        this.sendChat(player.client, "system", "Um administrador te moveu de lugar.");
+        return true;
+      case "heal":
+        s.hp = s.maxHp;
+        s.mana = s.maxMana;
+        this.broadcast(ServerMsg.Hit, {
+          target: player.id,
+          attacker: player.id,
+          amount: s.maxHp,
+          kind: "heal",
+        } satisfies HitEvent);
+        this.sendChat(player.client, "system", "Um administrador curou você.");
+        return true;
+      case "summon": {
+        for (let i = 0; i < command.count; i++) this.spawnMonster(command.monster, { x: s.x, y: s.y }, false);
+        this.sendChat(player.client, "system", "Algo foi invocado perto de você...");
+        return true;
+      }
+      case "mute":
+        player.mutedUntil = Date.now() + command.minutes * 60_000;
+        this.sendChat(player.client, "system", `Um administrador silenciou você por ${command.minutes} min.`);
+        return true;
+    }
+  }
+
+  runEvent(event: LiveEvent): LiveEventResult {
+    if (event === "stop") return this.eventManager.stop() ? "ok" : "none";
+    const started = event === "xp" ? this.eventManager.startDoubleXp() : this.eventManager.startInvasion();
+    return started ? "ok" : "busy";
+  }
+
   /** Valida a sessão e carrega o personagem antes de a pessoa entrar na sala. */
   async onAuth(_client: Client, options: JoinOptions) {
     const account = await accountFromToken(options?.token);
     if (!account) throw new ServerError(401, "Sua sessão expirou. Entre novamente.");
-    if (await accountIsBanned(account.id)) throw new ServerError(403, "Sua conta está bloqueada.");
+    const ban = await accountBan(account.id);
+    if (ban.banned) throw new ServerError(403, banMessage(ban.reason));
     const characterId = Number(options?.characterId);
     await lastWriteByCharacter.get(characterId);
     const character = Number.isInteger(characterId) ? await loadCharacter(account.id, characterId) : undefined;
@@ -334,6 +476,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       client,
       state,
       accountId: auth.accountId,
+      username: account?.username ?? "",
       characterId: row.id,
       unlocks,
       diamonds: account?.diamonds ?? 0,
@@ -346,6 +489,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       nextChaseAt: 0,
       spellReadyAt: new Map(),
       chatReadyAt: 0,
+      mutedUntil: 0,
       queue: Promise.resolve(),
     };
     this.players.set(client.sessionId, player);
@@ -634,6 +778,12 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     const now = Date.now();
     if (!text || now < player.chatReadyAt) return;
     player.chatReadyAt = now + 600;
+
+    if (now < player.mutedUntil && !text.startsWith("/")) {
+      const minutes = Math.ceil((player.mutedUntil - now) / 60_000);
+      this.sendChat(player.client, "system", `Você está silenciado por mais ${minutes} min.`);
+      return;
+    }
 
     if (text.startsWith("/")) {
       this.runCommand(player, text);

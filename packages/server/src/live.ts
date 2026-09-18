@@ -1,5 +1,8 @@
+import type { AdminWorld, AdminWorldPlayer, MonsterKind } from "@zuna/shared";
+
 // Ponte entre o painel de administração (API) e as salas do jogo rodando no mesmo processo:
-// o que o administrador muda no banco vale na hora para quem está online.
+// o que o administrador muda no banco vale na hora para quem está online, e os comandos de
+// mestre (anúncio, recado, teleporte, expulsão, evento) chegam ao mundo sem passar pelo banco.
 
 export interface LiveRoom {
   /** Personagens deste servidor que estão online agora. */
@@ -10,6 +13,14 @@ export interface LiveRoom {
   applyAccount(accountId: number, patch: LiveAccountPatch): void;
   /** Tira do jogo todo mundo de uma conta (bloqueio). */
   kickAccount(accountId: number, reason: string): void;
+  /** Retrato do mundo desta sala para o painel. */
+  liveWorld(): LiveWorldPart;
+  /** Mensagem em destaque para todo mundo. */
+  announceText(text: string): void;
+  /** Comando de mestre num personagem online. Falso quando ele não está nesta sala. */
+  commandCharacter(characterId: number, command: LiveCommand): boolean;
+  /** Liga ou desliga um evento do mundo. */
+  runEvent(event: LiveEvent): LiveEventResult;
 }
 
 export interface LiveCharacterPatch {
@@ -18,14 +29,36 @@ export interface LiveCharacterPatch {
   gold?: number;
   kills?: number;
   outfit?: string;
+  name?: string;
+  pet?: string;
+  mount?: string;
+  x?: number;
+  y?: number;
 }
 
 export interface LiveAccountPatch {
   diamonds?: number;
   unlock?: string;
+  revoke?: string;
 }
 
+export type LiveCommand =
+  | { kind: "whisper"; text: string }
+  | { kind: "kick"; text: string }
+  | { kind: "teleport"; x: number; y: number }
+  | { kind: "heal" }
+  | { kind: "summon"; monster: MonsterKind; count: number }
+  | { kind: "mute"; minutes: number };
+
+export type LiveEvent = "xp" | "invasion" | "stop";
+
+export type LiveEventResult = "ok" | "busy" | "none";
+
+/** O que uma sala sabe do mundo; o painel junta as salas todas. */
+export type LiveWorldPart = Omit<AdminWorld, "rooms" | "uptimeMs">;
+
 const rooms = new Set<LiveRoom>();
+const startedAt = Date.now();
 
 export function registerLiveRoom(room: LiveRoom) {
   rooms.add(room);
@@ -51,4 +84,46 @@ export function applyLiveAccount(accountId: number, patch: LiveAccountPatch) {
 
 export function kickAccount(accountId: number, reason: string) {
   for (const room of rooms) room.kickAccount(accountId, reason);
+}
+
+/** Junta o retrato de todas as salas num só. */
+export function liveWorld(): AdminWorld {
+  const players: AdminWorldPlayer[] = [];
+  let monsters = 0;
+  let event = "";
+  let eventEndsAt = 0;
+  let xpMultiplier = 1;
+  for (const room of rooms) {
+    const part = room.liveWorld();
+    players.push(...part.players);
+    monsters += part.monsters;
+    if (part.event) {
+      event = part.event;
+      eventEndsAt = part.eventEndsAt;
+    }
+    xpMultiplier = Math.max(xpMultiplier, part.xpMultiplier);
+  }
+  players.sort((a, b) => b.level - a.level || a.name.localeCompare(b.name, "pt-BR"));
+  return { players, monsters, event, eventEndsAt, xpMultiplier, rooms: rooms.size, uptimeMs: Date.now() - startedAt };
+}
+
+export function announceToWorld(text: string): number {
+  for (const room of rooms) room.announceText(text);
+  return rooms.size;
+}
+
+/** Manda o comando para a sala onde o personagem está. */
+export function commandCharacter(characterId: number, command: LiveCommand): boolean {
+  for (const room of rooms) if (room.commandCharacter(characterId, command)) return true;
+  return false;
+}
+
+export function runWorldEvent(event: LiveEvent): LiveEventResult {
+  let result: LiveEventResult = "none";
+  for (const room of rooms) {
+    const answer = room.runEvent(event);
+    if (answer === "ok") result = "ok";
+    else if (answer === "busy" && result !== "ok") result = "busy";
+  }
+  return result;
 }

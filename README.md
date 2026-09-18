@@ -99,13 +99,21 @@ docker build --build-arg VITE_SERVER_URL=http://localhost:8091 -t zuna .
 
 ## Painel de administração
 
-Fica em `/admin` (a mesma URL do jogo), com login pela conta do jogo.
+Fica em `/admin` (a mesma URL do jogo), com login pela conta do jogo. A tela tem barra lateral, faixa ilustrada no topo e quatro telas:
 
-- O acesso é por conta: `ADMIN_USERS=meu_usuario` marca a conta como administradora quando o servidor sobe. Depois disso, um administrador pode promover outros pelo painel.
-- Dá para mudar **nível, XP, ouro, diamantes, caçadas e a classe (roupa)** de cada personagem, **liberar itens** do catálogo, **tornar admin** e **bloquear** contas.
+- **Visão geral** — contas, personagens, gente online, maior nível, ouro e diamantes do mundo, caçadas e compras; gráfico de cadastros dos últimos 14 dias; estado do servidor (evento em andamento, monstros vivos, salas, tempo no ar); os maiores heróis e as últimas ações do painel.
+- **Jogadores** — busca por conta ou personagem, ordenação (nível, ouro, caçadas, contas novas, nome) e páginas de 40. Dá para editar nível, XP, ouro, diamantes, caçadas e classe direto na linha, tornar a conta administradora ou bloqueá-la, e abrir a **ficha completa**: senha nova, motivo do bloqueio, itens liberados (dar e tirar), compras, histórico da conta e, para cada personagem, nome, posição, mascote, montaria, vida, mana e os comandos de mestre — curar, levar ao templo, mandar recado, expulsar, silenciar, invocar monstros e apagar o personagem.
+- **Mundo** — começa ou encerra os eventos (XP em Dobro e Invasão Orc), manda anúncio para todo o servidor e lista quem está jogando agora, com vida, mana, posição e as ações rápidas de mestre. Atualiza sozinho a cada 6 segundos.
+- **Histórico** — tudo que os administradores fizeram, com filtro por administrador, alvo ou ação.
+
+Como funciona por dentro:
+
+- O acesso é por conta: `ADMIN_USERS=meu_usuario` marca a conta como administradora quando o servidor sobe. Depois disso, um administrador pode promover outros pelo painel. Ninguém consegue tirar o próprio acesso nem se bloquear.
 - Quem está jogando recebe as mudanças na hora, sem precisar sair: o painel avisa a sala do Colyseus pela ponte em `packages/server/src/live.ts`.
-- Conta bloqueada não entra no jogo nem no painel, e quem estiver online é desconectado.
+- Conta bloqueada não entra no jogo nem no painel, e quem estiver online é desconectado; o motivo aparece na tela de quem tenta entrar.
 - Toda mudança fica registrada na aba Histórico (tabela `admin_actions`): quem fez, o quê, em quem e quando.
+- As rotas ficam em `packages/server/src/adminApi.ts`, as consultas em `adminRepository.ts` e a tela em `packages/client/src/admin/`.
+- A arte do painel (faixa, cena lateral e retratos das classes) sai do `npm run brand`, recortada da referência em `assets/brand/` e dos próprios sprites do jogo.
 
 ## Banco de dados
 
@@ -119,7 +127,7 @@ npm run db:generate -w @zuna/server
 
 - A logo é a arte em `assets/brand/zuna-logo.png`: a palavra em pedra com a gema esmeralda em cima e embaixo. Ela aparece no menu do jogo e no topo do painel.
 - Frase e cores vêm do mesmo pôster: azul-noite com verde esmeralda. O dourado aparece só no ouro. As cores são variáveis no topo de `packages/client/src/style.css`.
-- Fontes empacotadas no cliente (Fontsource, sem Google Fonts): Lilita One nos títulos, Permanent Marker na frase e Montserrat no resto, inclusive nos nomes dentro do jogo.
+- Fontes empacotadas no cliente (Fontsource, sem Google Fonts): Lilita One nos títulos, Permanent Marker na frase, Montserrat no resto e Cinzel nos títulos do painel. Todas são SIL Open Font License.
 - A HUD usa o kit de interface em `assets/ui/hud-kit.png`, recortado em peças em `packages/client/public/ui/` (orbes de vida e mana, molduras de barra, slots das magias, painéis, chat e minimapa). Veja a ressalva de licença em [assets/CREDITS.md](assets/CREDITS.md).
 - Tudo o que deriva da logo sai de um comando só:
 
@@ -127,7 +135,7 @@ npm run db:generate -w @zuna/server
 npm run brand
 ```
 
-  Ele lê `assets/brand/` e escreve em `packages/client/public/`: `brand/zuna-logo.png` (a logo sem o fundo preto, 1024px), os ícones `favicon.png`, `icon-192.png`, `icon-512.png` e `apple-touch-icon.png` (a gema sobre o azul-noite) e a `og-image.jpg` de 1200×630 para a prévia dos links. Precisa do ImageMagick (`brew install imagemagick`); só roda quando a arte muda.
+  Ele lê `assets/brand/` e escreve em `packages/client/public/`: `brand/zuna-logo.png` (a logo sem o fundo preto, 1024px), os ícones `favicon.png`, `icon-192.png`, `icon-512.png` e `apple-touch-icon.png` (a gema sobre o azul-noite), a `og-image.jpg` de 1200×630 para a prévia dos links e a arte do painel (`brand/panel-*.jpg` e os retratos em `brand/class/`). Precisa do ImageMagick (`brew install imagemagick`); só roda quando a arte muda.
 
 ## Arte (sprites)
 

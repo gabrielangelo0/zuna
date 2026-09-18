@@ -52,8 +52,12 @@ const DEPTH_GROUND = -1_000_000;
 const DEPTH_DECAL = -900_000;
 const DEPTH_FLOATING = 950_000;
 
-/** Código de saída enviado pelo servidor quando o mesmo personagem entra em outra janela. */
-const CLOSE_REPLACED = 4001;
+/** Motivos de saída que o servidor manda junto com o fechamento da conexão. */
+const CLOSE_REASON: Record<number, string> = {
+  4001: "Seu personagem entrou em outra janela.",
+  4002: "Sua conta foi bloqueada por um administrador.",
+  4003: "Um administrador tirou você do jogo.",
+};
 
 const TEXT_RESOLUTION = Math.min(2, window.devicePixelRatio || 1);
 
@@ -207,9 +211,9 @@ export class WorldScene extends Phaser.Scene {
       this.wardrobe.setProfile(event);
     });
     room.onMessage(ServerMsg.Purchase, (event: PurchaseEvent) => this.onPurchase(event));
-    room.onLeave((code) => {
+    room.onLeave((code, reason) => {
       this.wardrobe.close();
-      this.hud.showDisconnected(code === CLOSE_REPLACED ? "Seu personagem entrou em outra janela." : undefined);
+      this.hud.showDisconnected(reason || CLOSE_REASON[code]);
     });
 
     this.hud.show();

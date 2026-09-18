@@ -1,0 +1,1 @@
+ALTER TABLE "accounts" ADD COLUMN "ban_reason" text DEFAULT '' NOT NULL;

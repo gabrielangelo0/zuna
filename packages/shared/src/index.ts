@@ -8,6 +8,7 @@ export * from "./monsters.ts";
 export * from "./loot.ts";
 export * from "./spells.ts";
 export * from "./protocol.ts";
+export * from "./admin.ts";
 export * from "./state.ts";
 export * from "./cosmetics.ts";
 export * from "./validation.ts";
