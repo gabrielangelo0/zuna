@@ -94,9 +94,10 @@ const adminOverview = createEndpoint("/api/admin/overview", { method: "GET" }, a
   if (!admin) throw ctx.error("UNAUTHORIZED", { message: FORBIDDEN });
 
   const world = liveWorld();
+  const range = clamp(ctx.query?.days ?? 14, 7, 30) ?? 14;
   const [stats, days, top, log] = await Promise.all([
     adminStats(world.players.length),
-    adminDays(14),
+    adminDays(range),
     topCharacters("level", 8),
     listAdminActions(8),
   ]);

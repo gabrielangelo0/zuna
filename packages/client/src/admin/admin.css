@@ -326,6 +326,14 @@ main {
   color: var(--gold);
 }
 
+.frame > h2 select {
+  margin-left: auto;
+  padding: 4px 9px;
+  font: 600 11.5px/1.3 var(--font-body);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 .frame > h2 small {
   margin-left: auto;
   color: var(--muted);

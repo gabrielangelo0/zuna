@@ -1,7 +1,7 @@
 import { TEMPLE_X, TEMPLE_Y, type AdminWorldResponse } from "@zuna/shared";
 import { openPlayer } from "./detail.ts";
 import { ask, notify, run } from "./session.ts";
-import { askText, badge, bar, button, cell, duration, face, frame, h, iconButton, input, num, retitle, sheet } from "./ui.ts";
+import { askText, badge, bar, button, cell, duration, face, frame, h, input, num, retitle, sheet } from "./ui.ts";
 
 // Aba do mundo: eventos, anúncio para todos e a lista de quem está jogando agora.
 

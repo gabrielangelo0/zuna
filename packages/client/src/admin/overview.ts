@@ -1,12 +1,20 @@
 import type { AdminOverviewResponse } from "@zuna/shared";
 import { icon } from "./icons.ts";
 import { ask, setAdminName } from "./session.ts";
-import { cell, chart, duration, face, frame, h, line, num, sheet, short, stamp, stat } from "./ui.ts";
+import { cell, chart, duration, face, frame, h, line, num, select, sheet, short, stamp, stat } from "./ui.ts";
 
 // Primeira aba: o reino em números, o movimento dos últimos dias e o estado do mundo.
 
+const RANGES = [
+  { id: "7", label: "Últimos 7 dias" },
+  { id: "14", label: "Últimos 14 dias" },
+  { id: "30", label: "Últimos 30 dias" },
+];
+
+let range = 14;
+
 export async function renderOverview(root: HTMLElement) {
-  const data = await ask<AdminOverviewResponse>("/api/admin/overview");
+  const data = await ask<AdminOverviewResponse>(`/api/admin/overview?days=${range}`);
   const { stats, world } = data;
   setAdminName(data.username);
 
@@ -23,7 +31,13 @@ export async function renderOverview(root: HTMLElement) {
     stat("itens comprados", num(stats.purchases), "box", "#a874e8"),
   );
 
-  const movement = frame("Movimento", "últimos 14 dias", "chart");
+  const movement = frame("Movimento", undefined, "chart");
+  const picker = select(RANGES, String(range));
+  picker.addEventListener("change", () => {
+    range = Number(picker.value);
+    void renderOverview(root);
+  });
+  movement.root.querySelector("h2")!.append(picker);
   movement.body.append(
     chart(data.days),
     h(
