@@ -123,17 +123,22 @@
 
       <aside id="hud" hidden>
         <div class="card panel kit-panel" id="hud-status">
-          <div class="hud-name" id="hud-name"></div>
-          <div class="hud-row"><span>Nível</span><strong id="hud-level">1</strong></div>
-          <div class="hud-row"><span>Ouro</span><strong id="hud-gold">0</strong></div>
-          <div class="hud-row"><span>Diamantes</span><strong id="hud-diamonds" class="diamonds">0</strong></div>
-          <div class="hud-row"><span>Online</span><strong id="hud-online">0</strong></div>
-          <div class="hud-event" id="hud-event" hidden></div>
-          <div class="hud-actions">
-            <button id="hud-wardrobe" type="button"><kbd>O</kbd> Visual</button>
-            <button id="hud-mount" type="button"><kbd>M</kbd> <span id="hud-mount-label">Montar</span></button>
-            <button id="hud-powers" type="button"><kbd>P</kbd> Poderes</button>
-            <button id="hud-ranking" type="button"><kbd>R</kbd> Ranking</button>
+          <button id="hud-toggle" type="button" aria-expanded="false">
+            <span class="hud-name" id="hud-name"></span>
+            <b id="hud-badge">1</b>
+          </button>
+          <div class="hud-body">
+            <div class="hud-row"><span>Nível</span><strong id="hud-level">1</strong></div>
+            <div class="hud-row"><span>Ouro</span><strong id="hud-gold">0</strong></div>
+            <div class="hud-row"><span>Diamantes</span><strong id="hud-diamonds" class="diamonds">0</strong></div>
+            <div class="hud-row"><span>Online</span><strong id="hud-online">0</strong></div>
+            <div class="hud-event" id="hud-event" hidden></div>
+            <div class="hud-actions">
+              <button id="hud-wardrobe" type="button"><kbd>O</kbd> Visual</button>
+              <button id="hud-mount" type="button"><kbd>M</kbd> <span id="hud-mount-label">Montar</span></button>
+              <button id="hud-powers" type="button"><kbd>P</kbd> Poderes</button>
+              <button id="hud-ranking" type="button"><kbd>R</kbd> Ranking</button>
+            </div>
           </div>
         </div>
 
@@ -142,6 +147,16 @@
           <div class="bar bar-hp"><div class="fill" id="target-hp"></div></div>
         </div>
       </aside>
+
+      <div id="mini-actions" hidden>
+        <button id="minimap-toggle" type="button" aria-label="Mapa">
+          <svg viewBox="0 0 24 24"><path d="M9 4 3 6.5v14L9 18l6 2.5 6-2.5v-14L15 6.5zM9 4v14m6-11.5v14" /></svg>
+        </button>
+        <button id="chat-toggle" type="button" aria-label="Conversa">
+          <svg viewBox="0 0 24 24"><path d="M4 5.5h16v11H9.5L5.5 20v-3.5H4z" /></svg>
+          <i id="chat-dot" hidden></i>
+        </button>
+      </div>
 
       <section id="minimap" hidden>
         <canvas id="minimap-canvas"></canvas>

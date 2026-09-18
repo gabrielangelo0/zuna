@@ -67,6 +67,7 @@ body {
 
 #menu,
 #hud,
+#mini-actions,
 #minimap,
 #actionbar,
 #chat,
@@ -654,6 +655,37 @@ input:focus {
   padding: 10px 12px;
 }
 
+#hud-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+
+/* O nível ao lado do nome só aparece com o painel fechado, no celular. */
+#hud-badge {
+  display: none;
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(94, 240, 143, 0.16);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.hud-body {
+  display: grid;
+  gap: 6px;
+}
+
 .hud-name {
   color: var(--accent);
   font-size: 15px;
@@ -661,6 +693,51 @@ input:focus {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Botões redondos do mapa e da conversa: só aparecem nas telas estreitas. */
+#mini-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: none;
+  gap: 6px;
+}
+
+#mini-actions button {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 10px solid transparent;
+  border-image: url("/ui/panel.png") 24 fill / 10px stretch;
+  background: none;
+  color: var(--accent);
+}
+
+#mini-actions button.on {
+  filter: brightness(1.3);
+}
+
+#mini-actions svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linejoin: round;
+}
+
+#chat-dot {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ff6b5e;
+  box-shadow: 0 0 8px #ff6b5e;
 }
 
 .hud-event {
@@ -1905,5 +1982,55 @@ input:focus {
 
   .item-grid {
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  }
+}
+
+/* Telas estreitas: a interface começa toda fechada e o jogador abre o que quiser. */
+@media (max-width: 700px) {
+  #hud {
+    width: auto;
+    max-width: 58vw;
+  }
+
+  #hud-toggle {
+    cursor: pointer;
+  }
+
+  #hud-badge {
+    display: block;
+  }
+
+  #hud-status:not(.open) .hud-body {
+    display: none;
+  }
+
+  #hud-status.open #hud-badge {
+    display: none;
+  }
+
+  #mini-actions {
+    display: flex;
+  }
+
+  #minimap {
+    top: 60px;
+  }
+
+  #minimap:not(.open) {
+    display: none;
+  }
+
+  #chat:not(.open) {
+    display: none;
+  }
+
+  /* Atalho vazio não ocupa espaço no celular: os poderes se escolhem no grimório. */
+  .spell.free {
+    display: none;
+  }
+
+  #banner {
+    right: 8px;
+    top: 58px;
   }
 }

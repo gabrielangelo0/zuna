@@ -36,6 +36,13 @@ export class Hud {
   private readonly powersButton = element<HTMLButtonElement>("#hud-powers");
   private readonly mountButton = element<HTMLButtonElement>("#hud-mount");
   private readonly mountLabel = element("#hud-mount-label");
+  private readonly status = element("#hud-status");
+  private readonly statusToggle = element<HTMLButtonElement>("#hud-toggle");
+  private readonly badge = element("#hud-badge");
+  private readonly miniActions = element("#mini-actions");
+  private readonly minimapToggle = element<HTMLButtonElement>("#minimap-toggle");
+  private readonly chatToggle = element<HTMLButtonElement>("#chat-toggle");
+  private readonly chatDot = element("#chat-dot");
   private readonly targetPanel = element("#target-panel");
   private readonly targetName = element("#target-name");
   private readonly targetHp = element("#target-hp");
@@ -75,6 +82,7 @@ export class Hud {
       }
     });
     this.buildSpells();
+    this.setupPanels();
   }
 
   /** A barra segue os atalhos do jogador: um botão por tecla. */
@@ -129,6 +137,44 @@ export class Hud {
     this.actionbar.hidden = false;
     this.minimap.hidden = false;
     this.chat.hidden = false;
+    this.miniActions.hidden = false;
+  }
+
+  /** Numa tela estreita a interface começa fechada; aqui é onde ela abre e fecha. */
+  private get narrow(): boolean {
+    return window.matchMedia("(max-width: 700px)").matches;
+  }
+
+  private setupPanels() {
+    this.statusToggle.addEventListener("click", () => {
+      if (!this.narrow) return;
+      this.status.classList.toggle("open");
+      this.statusToggle.setAttribute("aria-expanded", String(this.status.classList.contains("open")));
+    });
+
+    this.minimapToggle.addEventListener("click", () => {
+      const open = this.minimap.classList.toggle("open");
+      this.minimapToggle.classList.toggle("on", open);
+      this.minimapToggle.blur();
+    });
+
+    this.chatToggle.addEventListener("click", () => {
+      const open = this.chat.classList.toggle("open");
+      this.chatToggle.classList.toggle("on", open);
+      if (open) {
+        this.chatDot.hidden = true;
+        this.chatInput.focus();
+      } else {
+        this.chatInput.blur();
+      }
+    });
+  }
+
+  /** Abre a conversa (Enter no teclado ou botão) e deixa o cursor no campo. */
+  private openChat() {
+    this.chat.classList.add("open");
+    this.chatToggle.classList.add("on");
+    this.chatDot.hidden = true;
   }
 
   onChat(handler: (text: string) => void) {
@@ -169,12 +215,14 @@ export class Hud {
   }
 
   focusChat() {
+    this.openChat();
     this.chatInput.focus();
   }
 
   updatePlayer(player: PlayerData) {
     this.name.textContent = player.name;
     this.level.textContent = String(player.level);
+    this.badge.textContent = String(player.level);
     if (this.lastLevel && player.level > this.lastLevel) this.pulse(this.level);
     this.lastLevel = player.level;
 
@@ -247,6 +295,7 @@ export class Hud {
     this.chatLog.append(line);
     while (this.chatLog.childElementCount > 80) this.chatLog.firstElementChild?.remove();
     this.chatLog.scrollTop = this.chatLog.scrollHeight;
+    if (this.narrow && !this.chat.classList.contains("open")) this.chatDot.hidden = false;
   }
 
   showBanner(text: string) {

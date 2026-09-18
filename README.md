@@ -97,6 +97,10 @@ Para testar a imagem de produção localmente:
 docker build --build-arg VITE_SERVER_URL=http://localhost:8091 -t zuna .
 ```
 
+## No celular
+
+A interface do jogo começa fechada para sobrar tela: no alto à esquerda fica só o nome e o nível (toque abre ouro, diamantes e os botões), e no alto à direita dois botões redondos abrem o mapa e a conversa — a bolinha vermelha avisa mensagem nova. Atalhos de poder vazios somem da barra. No computador nada muda: tudo continua aberto.
+
 ## Painel de administração
 
 Fica em `/admin` (a mesma URL do jogo), com login pela conta do jogo. A tela tem barra lateral, faixa ilustrada no topo e quatro telas:
