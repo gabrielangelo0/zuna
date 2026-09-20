@@ -9,23 +9,18 @@ import {
   LOOT,
   LOOT_OWNER_MS,
   LOOT_TTL_MS,
-  MAP_SEED,
   MONSTERS,
   PLAYER_ATTACK_MS,
   PLAYER_STEP_MS,
   ServerMsg,
-  TEMPLE_X,
-  TEMPLE_Y,
   TICK_MS,
+  buildWorldMap,
   catalogItem,
   chebyshev,
   describeDrop,
   dirIndex,
   findPath,
-  generateMap,
   healAmount,
-  inTown,
-  isWalkable,
   levelForXp,
   ownsItem,
   parseAppearance,
@@ -41,13 +36,15 @@ import {
   type AnnounceEvent,
   type AppearanceMessage,
   type BuyMessage,
+  type CatalogEvent,
+  type CatalogOverride,
   type ChatChannel,
   type ChatEvent,
   type ChatMessage,
   type DropRoll,
   type EquipMessage,
-  type GameMap,
   type GotoMessage,
+  type GroundItemDef,
   type HitEvent,
   type HitKind,
   type ItemKind,
@@ -58,6 +55,7 @@ import {
   type MonsterDef,
   type MonsterKind,
   type MoveMessage,
+  type PortalDef,
   type PlayerDeathEvent,
   type Point,
   type ProfileEvent,
@@ -66,7 +64,11 @@ import {
   type SpellId,
   type SpellMessage,
   type ShortcutsMessage,
+  type SpawnDef,
   type TargetMessage,
+  type TravelEvent,
+  type WorldBlueprint,
+  type WorldPatchEvent,
   type XpEvent,
 } from "@zuna/shared";
 import { accountFromToken } from "./auth.ts";
@@ -97,6 +99,21 @@ import {
 } from "./repository.ts";
 import { LootState, MonsterState, PlayerState, WorldState } from "./schema.ts";
 import { generateSpawns } from "./spawns.ts";
+import { blueprintOf, getWorld, loadAllWorlds, loadWorldContent, type WorldContent } from "./worldRepository.ts";
+import {
+  blockedForMonster,
+  blockedForPlayer,
+  createSim,
+  findFreeTile,
+  freeLootTile,
+  indexPortals,
+  inSafe,
+  occupyPlayer,
+  portalAt,
+  tileKey,
+  walkable,
+  type WorldSim,
+} from "./worldSim.ts";
 
 /** Multiplicador global de XP ("rate" do servidor). */
 const XP_RATE = Number(process.env.XP_RATE) || 1;
@@ -130,6 +147,8 @@ interface PlayerSim {
   id: string;
   client: Client;
   state: PlayerState;
+  /** Mundo onde o personagem está agora. */
+  world: WorldSim;
   accountId: number;
   /** Nome da conta, para o painel. */
   username: string;
@@ -149,6 +168,8 @@ interface PlayerSim {
   chatReadyAt: number;
   /** Silenciado por um administrador até este instante. */
   mutedUntil: number;
+  /** Portais só levam de novo depois deste instante (evita ir e voltar sem parar). */
+  nextPortalAt: number;
   /** Operações de banco deste personagem, em fila: nunca duas ao mesmo tempo. */
   queue: Promise<void>;
 }
@@ -157,8 +178,11 @@ export interface MonsterSim {
   id: string;
   def: MonsterDef;
   state: MonsterState;
+  world: WorldSim;
   home: Point;
   respawns: boolean;
+  /** Ninho do editor de mapa que criou este monstro (0 = nenhum). */
+  nestId: number;
   targetId: string | null;
   path: Point[];
   pathGoal: Point | null;
@@ -198,13 +222,11 @@ function parseTestAmount(argument: string): number | null {
 export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
   maxClients = 150;
 
-  private gameMap!: GameMap;
+  /** Todos os mundos rodando nesta sala, por id e por chave. */
+  private readonly worlds = new Map<number, WorldSim>();
+  private readonly worldBySlug = new Map<string, WorldSim>();
   private readonly players = new Map<string, PlayerSim>();
   private readonly monsters = new Map<string, MonsterSim>();
-  private readonly monsterAt = new Map<number, string>();
-  private readonly playersAt = new Map<number, number>();
-  /** Drops no chão, por tile. */
-  private readonly lootAt = new Map<number, string[]>();
   private nextLootId = 1;
   private nextLootSweepAt = 0;
   private scheduled: Scheduled[] = [];
@@ -213,16 +235,16 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
   private nextAutosaveAt = Date.now() + AUTOSAVE_MS;
   private eventManager!: EventManager;
 
-  onCreate() {
+  async onCreate() {
     const state = new WorldState();
     state.eventName = "";
     state.eventEndsAt = 0;
     state.xpMultiplier = 1;
     this.setState(state);
 
-    this.gameMap = generateMap(MAP_SEED);
-    for (const spawn of generateSpawns(this.gameMap, MAP_SEED + 1)) this.spawnMonster(spawn.kind, spawn, true);
+    for (const content of await loadAllWorlds()) this.startWorld(content);
     this.eventManager = new EventManager(this);
+    await this.eventManager.load();
 
     this.onMessage(ClientMsg.Move, (client, message: MoveMessage) => this.handleMove(client, message));
     this.onMessage(ClientMsg.Goto, (client, message: GotoMessage) => this.handleGoto(client, message));
@@ -240,6 +262,221 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     registerLiveRoom(this);
   }
 
+  // ------------------------------------------------------------ mundos
+
+  /** Levanta um mundo do banco: terreno, ninhos de monstro e tesouros no chão. */
+  private startWorld(content: WorldContent): WorldSim {
+    const sim = createSim(content);
+    this.worlds.set(sim.def.id, sim);
+    this.worldBySlug.set(sim.def.slug, sim);
+    this.populate(sim);
+    return sim;
+  }
+
+  /** Enche o mundo: ninhos do editor, tesouros e, se o mundo pedir, monstros espalhados sozinhos. */
+  private populate(sim: WorldSim) {
+    if (sim.def.autoSpawns) {
+      for (const spawn of generateSpawns(sim.def, sim.map)) this.spawnMonster(sim, spawn.kind, spawn, { respawns: true });
+    }
+    for (const nest of sim.spawns) {
+      for (let i = 0; i < nest.amount; i++) this.spawnFromNest(sim, nest);
+    }
+    for (const item of sim.items) this.spawnGroundItem(sim, item);
+  }
+
+  /** Mundo onde os personagens novos nascem. */
+  private defaultWorld(): WorldSim {
+    for (const sim of this.worlds.values()) if (sim.def.isDefault) return sim;
+    return [...this.worlds.values()][0];
+  }
+
+  /** O mundo pedido, ou o padrão quando ele sumiu ou está fechado. */
+  private worldFor(worldId: number, admin = false): WorldSim {
+    const sim = this.worlds.get(worldId);
+    if (sim && (admin || sim.def.published)) return sim;
+    return this.defaultWorld();
+  }
+
+  /** Tira do mundo tudo o que estava nele: usado ao recarregar ou apagar. */
+  private clearWorld(sim: WorldSim) {
+    for (const monster of [...this.monsters.values()]) {
+      if (monster.world === sim) this.removeMonster(monster.id);
+    }
+    for (const [id, loot] of [...this.state.loot]) {
+      if (loot.world === sim.def.slug) this.removeLoot(sim, id, tileKey(sim, loot.x, loot.y));
+    }
+    sim.nestAlive.clear();
+    sim.itemLoot.clear();
+    sim.itemOfLoot.clear();
+    sim.itemReadyAt.clear();
+  }
+
+  /**
+   * O painel salvou um mundo: monta o terreno de novo e manda o desenho para quem está jogando.
+   * `full` repõe também monstros e tesouros (pintar o mapa não precisa disso).
+   */
+  async reloadWorld(worldId: number, full = true) {
+    const existing = this.worlds.get(worldId);
+    const world = await getWorld(worldId);
+    if (!world) {
+      if (existing) this.dropWorld(existing);
+      return;
+    }
+    const content = await loadWorldContent(world);
+
+    if (!existing) {
+      this.startWorld(content);
+      this.broadcast(ServerMsg.WorldPatch, { blueprint: blueprintOf(content) } satisfies WorldPatchEvent);
+      return;
+    }
+
+    const sim = existing;
+    // Mudar tamanho, semente ou terreno refaz o mapa inteiro: nada pode continuar no lugar antigo.
+    const reshaped =
+      sim.def.width !== world.width ||
+      sim.def.height !== world.height ||
+      sim.def.seed !== world.seed ||
+      sim.def.style !== world.style ||
+      sim.def.spawnX !== world.spawnX ||
+      sim.def.spawnY !== world.spawnY ||
+      sim.def.townRadius !== world.townRadius;
+    const rebuild = full || reshaped;
+
+    if (rebuild) this.clearWorld(sim);
+    this.worldBySlug.delete(sim.def.slug);
+    sim.def = content.world;
+    sim.tiles = content.tiles;
+    sim.portalList = content.portals;
+    sim.spawns = content.spawns;
+    sim.items = content.items;
+    sim.map = buildWorldMap(blueprintOf(content));
+    indexPortals(sim);
+    this.worldBySlug.set(sim.def.slug, sim);
+
+    if (rebuild) {
+      sim.monsterAt.clear();
+      sim.lootAt.clear();
+      sim.playersAt.clear();
+      this.populate(sim);
+    } else {
+      this.settleWorld(sim);
+    }
+
+    const home = this.defaultWorld();
+    for (const player of this.players.values()) {
+      if (player.world !== sim) continue;
+      if (!sim.def.published && sim !== home) {
+        this.travel(player, home, home.def.spawnX, home.def.spawnY);
+        continue;
+      }
+      player.state.world = sim.def.slug;
+      const x = Math.min(player.state.x, sim.map.width - 1);
+      const y = Math.min(player.state.y, sim.map.height - 1);
+      if (rebuild || !walkable(sim, x, y)) this.travel(player, sim, x, y);
+    }
+    this.broadcast(ServerMsg.WorldPatch, { blueprint: blueprintOf(content) } satisfies WorldPatchEvent);
+  }
+
+  /** Depois de repintar o terreno: tira monstros e tesouros de tiles que viraram parede ou água. */
+  private settleWorld(sim: WorldSim) {
+    const now = Date.now();
+    for (const monster of [...this.monsters.values()]) {
+      if (monster.world !== sim || walkable(sim, monster.state.x, monster.state.y)) continue;
+      const spot = findFreeTile(sim, monster.state.x, monster.state.y, true, 6);
+      if (spot) this.moveMonster(monster, spot.x, spot.y, now);
+      else this.removeMonster(monster.id);
+    }
+    for (const [id, loot] of [...this.state.loot]) {
+      if (loot.world !== sim.def.slug || walkable(sim, loot.x, loot.y)) continue;
+      this.removeLoot(sim, id, tileKey(sim, loot.x, loot.y));
+    }
+  }
+
+  /** O mundo foi apagado no painel: quem estava lá volta para o mundo padrão. */
+  private dropWorld(sim: WorldSim) {
+    this.clearWorld(sim);
+    this.worlds.delete(sim.def.id);
+    this.worldBySlug.delete(sim.def.slug);
+    const home = this.defaultWorld();
+    for (const player of this.players.values()) {
+      if (player.world === sim) this.travel(player, home, home.def.spawnX, home.def.spawnY);
+    }
+  }
+
+  /** Mundo onde as levas de um evento nascem (0 = o mundo padrão). */
+  eventWorld(worldId: number): WorldSim | undefined {
+    if (!worldId) return this.defaultWorld();
+    const sim = this.worlds.get(worldId);
+    return sim && sim.def.published ? sim : undefined;
+  }
+
+  /** Desenho atual de cada mundo, para o cliente montar o mapa. */
+  blueprints(): WorldBlueprint[] {
+    return [...this.worlds.values()].map((sim) => ({
+      world: sim.def,
+      tiles: sim.tiles,
+      portals: sim.portalList,
+    }));
+  }
+
+  /** Leva o personagem para outro ponto — no mesmo mundo ou em outro. */
+  private travel(player: PlayerSim, sim: WorldSim, x: number, y: number) {
+    const s = player.state;
+    const from = player.world;
+    // O destino pode vir de um mundo maior (painel, portal antigo): traz para dentro do mapa.
+    const at = {
+      x: Math.min(Math.max(0, Math.round(x)), sim.map.width - 1),
+      y: Math.min(Math.max(0, Math.round(y)), sim.map.height - 1),
+    };
+    const spot = findFreeTile(sim, at.x, at.y, false) ?? findFreeTile(sim, sim.def.spawnX, sim.def.spawnY, false) ?? at;
+    occupyPlayer(from, s.x, s.y, -1);
+    if (from !== sim) {
+      for (const monster of this.monsters.values()) {
+        if (monster.targetId === player.id) monster.targetId = null;
+      }
+      player.world = sim;
+      s.world = sim.def.slug;
+    }
+    s.x = spot.x;
+    s.y = spot.y;
+    occupyPlayer(sim, s.x, s.y, 1);
+    s.target = "";
+    player.path = [];
+    player.moveDir = null;
+    player.nextPortalAt = Date.now() + 800;
+    if (from === sim) return;
+    player.client.send(ServerMsg.Travel, {
+      world: sim.def.slug,
+      x: s.x,
+      y: s.y,
+      name: sim.def.name,
+    } satisfies TravelEvent);
+    void this.persist(player);
+  }
+
+  /** Alguém pisou num portal. */
+  private enterPortal(player: PlayerSim, portal: PortalDef) {
+    const target = this.worlds.get(portal.toWorldId);
+    const label = portal.name || "o portal";
+    if (!target || !target.def.published) {
+      player.nextPortalAt = Date.now() + 3000;
+      this.sendChat(player.client, "system", `${portal.name || "Este portal"} está fechado.`);
+      return;
+    }
+    if (player.state.level < portal.minLevel) {
+      player.nextPortalAt = Date.now() + 3000;
+      this.sendChat(player.client, "system", `Você precisa do nível ${portal.minLevel} para atravessar ${label}.`);
+      return;
+    }
+    const changed = target !== player.world;
+    this.travel(player, target, portal.toX, portal.toY);
+    this.sendChat(
+      player.client,
+      "event",
+      changed ? `Você atravessou ${label} e chegou a ${target.def.name}.` : `Você atravessou ${label}.`,
+    );
+  }
+
   // ------------------------------------------------------------ painel de administração
 
   onlineCharacters(): number[] {
@@ -252,15 +489,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
 
   /** Põe o personagem noutro tile sem deixar o mapa de ocupação desencontrado. */
   private placePlayer(player: PlayerSim, x: number, y: number) {
-    const spot = this.findFreeTile(x, y, false) ?? { x, y };
-    const s = player.state;
-    this.occupyPlayer(s.x, s.y, -1);
-    s.x = spot.x;
-    s.y = spot.y;
-    this.occupyPlayer(s.x, s.y, 1);
-    s.target = "";
-    player.path = [];
-    player.moveDir = null;
+    this.travel(player, player.world, x, y);
   }
 
   /** O administrador mexeu num personagem que está online: vale na hora. */
@@ -334,6 +563,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       const s = player.state;
       return {
         characterId: player.characterId,
+        world: player.world.def.slug,
         accountId: player.accountId,
         name: s.name,
         username: player.username,
@@ -350,9 +580,19 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
         mutedMs: Math.max(0, player.mutedUntil - now),
       };
     });
+    const worlds = [...this.worlds.values()].map((sim) => ({
+      worldId: sim.def.id,
+      slug: sim.def.slug,
+      name: sim.def.name,
+      players: [...this.players.values()].filter((player) => player.world === sim).length,
+      monsters: [...this.monsters.values()].filter((monster) => monster.world === sim).length,
+      loot: sim.lootAt.size,
+    }));
+
     return {
       players,
       monsters: this.monsters.size,
+      worlds,
       event: this.state.eventName,
       eventEndsAt: this.state.eventEndsAt,
       xpMultiplier: this.state.xpMultiplier,
@@ -377,10 +617,12 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
         void this.persist(player);
         player.client.leave(4003, command.text);
         return true;
-      case "teleport":
-        this.placePlayer(player, command.x, command.y);
+      case "teleport": {
+        const target = command.worldId ? this.worldFor(command.worldId, true) : player.world;
+        this.travel(player, target, command.x, command.y);
         this.sendChat(player.client, "system", "Um administrador te moveu de lugar.");
         return true;
+      }
       case "heal":
         s.hp = s.maxHp;
         s.mana = s.maxMana;
@@ -393,7 +635,9 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
         this.sendChat(player.client, "system", "Um administrador curou você.");
         return true;
       case "summon": {
-        for (let i = 0; i < command.count; i++) this.spawnMonster(command.monster, { x: s.x, y: s.y }, false);
+        for (let i = 0; i < command.count; i++) {
+          this.spawnMonster(player.world, command.monster, { x: s.x, y: s.y }, { respawns: false });
+        }
         this.sendChat(player.client, "system", "Algo foi invocado perto de você...");
         return true;
       }
@@ -406,8 +650,17 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
 
   runEvent(event: LiveEvent): LiveEventResult {
     if (event === "stop") return this.eventManager.stop() ? "ok" : "none";
-    const started = event === "xp" ? this.eventManager.startDoubleXp() : this.eventManager.startInvasion();
-    return started ? "ok" : "busy";
+    return this.eventManager.start(event) ? "ok" : "busy";
+  }
+
+  /** O painel mexeu nos eventos: recarrega a lista sem derrubar o que está rodando. */
+  async reloadEvents() {
+    await this.eventManager.load();
+  }
+
+  /** Preço novo na loja: quem está com a vitrine aberta vê na hora. */
+  sendCatalog(overrides: CatalogOverride[]) {
+    this.broadcast(ServerMsg.Catalog, { catalog: overrides } satisfies CatalogEvent);
   }
 
   /** Valida a sessão e carrega o personagem antes de a pessoa entrar na sala. */
@@ -449,10 +702,12 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     const pet = row.pet && owns(row.pet, "pet") ? row.pet : "";
     const mount = row.mount && owns(row.mount, "mount") ? row.mount : "";
     const stats = playerStats(row.level);
-    const spot = this.spawnPointFor(row);
+    const sim = this.worldFor(row.worldId);
+    const spot = this.spawnPointFor(sim, row);
 
     const state = new PlayerState({
       name: row.name,
+      world: sim.def.slug,
       x: spot.x,
       y: spot.y,
       dir: 1,
@@ -475,6 +730,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       id: client.sessionId,
       client,
       state,
+      world: sim,
       accountId: auth.accountId,
       username: account?.username ?? "",
       characterId: row.id,
@@ -490,15 +746,17 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       spellReadyAt: new Map(),
       chatReadyAt: 0,
       mutedUntil: 0,
+      nextPortalAt: 0,
       queue: Promise.resolve(),
     };
     this.players.set(client.sessionId, player);
     this.state.players.set(client.sessionId, state);
-    this.occupyPlayer(spot.x, spot.y, 1);
+    occupyPlayer(sim, spot.x, spot.y, 1);
 
     this.sendProfile(player);
     const greeting = row.lastLoginAt ? "Bem-vindo de volta" : "Bem-vindo";
     this.sendChat(client, "system", `${greeting}, ${row.name}! Aperte O para abrir o guarda-roupa e a loja.`);
+    if (sim !== this.defaultWorld()) this.sendChat(client, "event", `Você está em ${sim.def.name}.`);
     this.broadcastChat("system", `${row.name} entrou no mundo.`, client);
     void this.enqueue(player, () => markLogin(row.id)).catch(() => undefined);
   }
@@ -527,13 +785,19 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     this.broadcastChat("event", text);
   }
 
-  spawnMonster(kind: MonsterKind, at: Point, respawns: boolean): MonsterSim | null {
-    const spot = this.findFreeTile(at.x, at.y, true, 3);
+  spawnMonster(
+    sim: WorldSim,
+    kind: MonsterKind,
+    at: Point,
+    options: { respawns: boolean; nestId?: number } = { respawns: false },
+  ): MonsterSim | null {
+    const spot = findFreeTile(sim, at.x, at.y, true, 3);
     if (!spot) return null;
     const def = MONSTERS[kind];
     const id = `m${this.nextMonsterId++}`;
     const state = new MonsterState({
       kind,
+      world: sim.def.slug,
       x: spot.x,
       y: spot.y,
       dir: randInt(Math.random, 0, DIRS.length - 1),
@@ -545,8 +809,10 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       id,
       def,
       state,
+      world: sim,
       home: { x: at.x, y: at.y },
-      respawns,
+      respawns: options.respawns,
+      nestId: options.nestId ?? 0,
       targetId: null,
       path: [],
       pathGoal: null,
@@ -557,8 +823,46 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     };
     this.monsters.set(id, monster);
     this.state.monsters.set(id, state);
-    this.monsterAt.set(this.tileKey(spot.x, spot.y), id);
+    sim.monsterAt.set(tileKey(sim, spot.x, spot.y), id);
     return monster;
+  }
+
+  /** Põe mais um monstro de um ninho do editor, num ponto sorteado dentro do raio. */
+  private spawnFromNest(sim: WorldSim, nest: SpawnDef) {
+    if (!sim.spawns.includes(nest)) return;
+    const alive = sim.nestAlive.get(nest.id) ?? 0;
+    if (alive >= nest.amount) return;
+    const radius = Math.max(0, nest.radius);
+    const at = {
+      x: nest.x + randInt(Math.random, -radius, radius),
+      y: nest.y + randInt(Math.random, -radius, radius),
+    };
+    const monster = this.spawnMonster(sim, nest.monster, at, { respawns: false, nestId: nest.id });
+    if (!monster) {
+      this.after(5000, () => this.spawnFromNest(sim, nest));
+      return;
+    }
+    monster.home = { x: nest.x, y: nest.y };
+    sim.nestAlive.set(nest.id, alive + 1);
+  }
+
+  /** Põe no chão um tesouro fixo do editor. Ele fica lá até alguém passar por cima. */
+  private spawnGroundItem(sim: WorldSim, item: GroundItemDef) {
+    if (sim.itemLoot.has(item.id)) return;
+    const lootId = this.dropLoot(
+      sim,
+      { kind: item.loot, gold: item.gold, diamonds: item.diamonds },
+      item.x,
+      item.y,
+      "",
+      { forever: true },
+    );
+    if (!lootId) {
+      sim.itemReadyAt.set(item.id, Date.now() + 10_000);
+      return;
+    }
+    sim.itemLoot.set(item.id, lootId);
+    sim.itemOfLoot.set(lootId, item.id);
   }
 
   /** Remove sem recompensa (fim de evento). */
@@ -567,7 +871,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     if (!monster) return;
     this.monsters.delete(id);
     this.state.monsters.delete(id);
-    this.monsterAt.delete(this.tileKey(monster.state.x, monster.state.y));
+    monster.world.monsterAt.delete(tileKey(monster.world, monster.state.x, monster.state.y));
     for (const player of this.players.values()) {
       if (player.state.target === id) player.state.target = "";
     }
@@ -610,6 +914,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       shortcuts: player.shortcuts,
       x: s.x,
       y: s.y,
+      worldId: player.world.def.id,
       appearance: {
         skin: s.skin,
         hairColor: s.hairColor,
@@ -625,7 +930,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
   }
 
   private removePlayer(player: PlayerSim) {
-    this.occupyPlayer(player.state.x, player.state.y, -1);
+    occupyPlayer(player.world, player.state.x, player.state.y, -1);
     this.players.delete(player.id);
     this.state.players.delete(player.id);
     for (const monster of this.monsters.values()) {
@@ -633,11 +938,12 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     }
   }
 
-  private spawnPointFor(row: CharacterRow): Point {
-    if (!this.blockedForPlayer(row.x, row.y)) return { x: row.x, y: row.y };
-    return (
-      this.findFreeTile(row.x, row.y, false) ?? this.findFreeTile(TEMPLE_X, TEMPLE_Y, false) ?? { x: TEMPLE_X, y: TEMPLE_Y }
-    );
+  private spawnPointFor(sim: WorldSim, row: CharacterRow): Point {
+    const home = { x: sim.def.spawnX, y: sim.def.spawnY };
+    const inside = row.x >= 0 && row.y >= 0 && row.x < sim.map.width && row.y < sim.map.height;
+    if (inside && !blockedForPlayer(sim, row.x, row.y)) return { x: row.x, y: row.y };
+    const near = inside ? findFreeTile(sim, row.x, row.y, false) : null;
+    return near ?? findFreeTile(sim, home.x, home.y, false) ?? home;
   }
 
   // ------------------------------------------------------------ mensagens dos clientes
@@ -657,8 +963,9 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     const y = Math.trunc(Number(message?.y));
     if (!player || !Number.isFinite(x) || !Number.isFinite(y)) return;
 
-    const blocked = (tx: number, ty: number) => this.blockedForPlayer(tx, ty);
-    const { width, height } = this.gameMap;
+    const sim = player.world;
+    const blocked = (tx: number, ty: number) => blockedForPlayer(sim, tx, ty);
+    const { width, height } = sim.map;
     const goal = { x, y };
     const path =
       findPath(width, height, player.state, goal, blocked, { maxNodes: 6000 }) ??
@@ -700,7 +1007,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     let targets: MonsterSim[] = [];
     let at: Point = s;
     if (spell.kind === "melee" || spell.kind === "area") {
-      targets = this.monstersAround(s, spell.range);
+      targets = this.monstersAround(player.world, s, spell.range);
       if (targets.length === 0) {
         this.sendChat(client, "system", "Nenhum monstro ao seu redor.");
         return;
@@ -744,13 +1051,13 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     }
   }
 
-  /** Monstros num raio (Chebyshev) em volta de um ponto. */
-  private monstersAround(center: Point, radius: number): MonsterSim[] {
+  /** Monstros num raio (Chebyshev) em volta de um ponto do mesmo mundo. */
+  private monstersAround(sim: WorldSim, center: Point, radius: number): MonsterSim[] {
     const found: MonsterSim[] = [];
     for (let y = center.y - radius; y <= center.y + radius; y++) {
       for (let x = center.x - radius; x <= center.x + radius; x++) {
         if (x === center.x && y === center.y) continue;
-        const id = this.monsterAt.get(this.tileKey(x, y));
+        const id = sim.monsterAt.get(tileKey(sim, x, y));
         const monster = id ? this.monsters.get(id) : undefined;
         if (monster) found.push(monster);
       }
@@ -848,7 +1155,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     const player = this.players.get(client.sessionId);
     if (!player) return;
     const item = catalogItem(String(message?.id ?? ""));
-    if (!item || item.price === 0) {
+    if (!item || item.price === 0 || item.enabled === false) {
       this.sendPurchase(player, false, "", "Item indisponível.");
       return;
     }
@@ -890,7 +1197,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
           player.client,
           "system",
           DEV_COMMANDS
-            ? "Comandos: /online · teste: /evento xp · /evento invasao · /xp 500 · /ouro 2000 · /diamantes 1000"
+            ? "Comandos: /online · teste: /evento <chave> · /ir <mundo> · /xp 500 · /ouro 2000 · /diamantes 1000"
             : "Comandos: /online",
         );
         return;
@@ -901,12 +1208,26 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       }
       case "evento": {
         if (!testOnly()) return;
-        const started =
-          argument === "xp" ? this.eventManager.startDoubleXp()
-          : argument === "invasao" || argument === "invasão" ? this.eventManager.startInvasion()
-          : null;
-        if (started === null) this.sendChat(player.client, "system", "Use /evento xp ou /evento invasao.");
-        else if (!started) this.sendChat(player.client, "system", "Já existe um evento em andamento.");
+        const slugs = this.eventManager
+          .list()
+          .filter((def) => def.enabled)
+          .map((def) => def.slug);
+        if (!slugs.includes(argument)) {
+          this.sendChat(player.client, "system", `Use /evento <chave>. Hoje tem: ${slugs.join(", ") || "nenhum"}.`);
+        } else if (!this.eventManager.start(argument)) {
+          this.sendChat(player.client, "system", "Já existe um evento em andamento.");
+        }
+        return;
+      }
+      case "ir": {
+        if (!testOnly()) return;
+        const target = this.worldBySlug.get(argument);
+        if (!target) {
+          const names = [...this.worldBySlug.keys()].join(", ");
+          this.sendChat(player.client, "system", `Use /ir <mundo>. Mundos: ${names}.`);
+          return;
+        }
+        this.travel(player, target, target.def.spawnX, target.def.spawnY);
         return;
       }
       case "xp": {
@@ -960,6 +1281,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     if (now >= this.nextLootSweepAt) {
       this.nextLootSweepAt = now + 1000;
       this.sweepLoot(now);
+      this.refillGroundItems(now);
     }
     if (now >= this.nextAutosaveAt) {
       this.nextAutosaveAt = now + AUTOSAVE_MS;
@@ -991,32 +1313,29 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
 
   private updatePlayer(player: PlayerSim, now: number) {
     const s = player.state;
+    const sim = player.world;
     const target = s.target ? this.monsters.get(s.target) : undefined;
-    if (s.target && !target) s.target = "";
+    if (s.target && (!target || target.world !== sim)) s.target = "";
 
     if (isReady(player.nextStepAt, now)) {
       if (player.moveDir) {
         this.tryPlayerStep(player, player.moveDir.x, player.moveDir.y, now);
       } else if (player.path.length > 0) {
         const next = player.path[0];
-        if (this.blockedForPlayer(next.x, next.y)) {
+        if (blockedForPlayer(sim, next.x, next.y)) {
           const goal = player.path[player.path.length - 1];
           player.path =
-            findPath(this.gameMap.width, this.gameMap.height, s, goal, (x, y) => this.blockedForPlayer(x, y), { maxNodes: 3000 }) ?? [];
+            findPath(sim.map.width, sim.map.height, s, goal, (x, y) => blockedForPlayer(sim, x, y), { maxNodes: 3000 }) ?? [];
         } else {
           player.path.shift();
           this.movePlayer(player, next.x, next.y, now);
         }
       } else if (target && chebyshev(s.x, s.y, target.state.x, target.state.y) > 1 && now >= player.nextChaseAt) {
         player.nextChaseAt = now + 200;
-        const path = findPath(
-          this.gameMap.width,
-          this.gameMap.height,
-          s,
-          target.state,
-          (x, y) => this.blockedForPlayer(x, y),
-          { adjacent: true, maxNodes: 1500 },
-        );
+        const path = findPath(sim.map.width, sim.map.height, s, target.state, (x, y) => blockedForPlayer(sim, x, y), {
+          adjacent: true,
+          maxNodes: 1500,
+        });
         if (path && path.length > 0) this.movePlayer(player, path[0].x, path[0].y, now);
       }
     }
@@ -1029,18 +1348,19 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       this.damageMonster(target, player, roll - target.def.armor);
     }
 
-    if (this.lootAt.size > 0) this.collectLoot(player, now);
+    if (player.world.lootAt.size > 0) this.collectLoot(player, now);
   }
 
   /** Anda na direção pedida; numa diagonal bloqueada, desliza pelo eixo livre. */
   private tryPlayerStep(player: PlayerSim, dx: number, dy: number, now: number) {
     const s = player.state;
+    const sim = player.world;
     const options = dx !== 0 && dy !== 0 ? [[dx, dy], [dx, 0], [0, dy]] : [[dx, dy]];
     for (const [ox, oy] of options) {
       const nx = s.x + ox;
       const ny = s.y + oy;
-      if (this.blockedForPlayer(nx, ny)) continue;
-      if (ox !== 0 && oy !== 0 && (this.blockedForPlayer(s.x + ox, s.y) || this.blockedForPlayer(s.x, s.y + oy))) continue;
+      if (blockedForPlayer(sim, nx, ny)) continue;
+      if (ox !== 0 && oy !== 0 && (blockedForPlayer(sim, s.x + ox, s.y) || blockedForPlayer(sim, s.x, s.y + oy))) continue;
       this.movePlayer(player, nx, ny, now);
       return;
     }
@@ -1050,24 +1370,31 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
 
   private movePlayer(player: PlayerSim, x: number, y: number, now: number) {
     const s = player.state;
+    const sim = player.world;
     const dx = x - s.x;
     const dy = y - s.y;
     const duration = stepDuration(PLAYER_STEP_MS * this.bonusesOf(player).stepFactor, dx, dy);
-    this.occupyPlayer(s.x, s.y, -1);
+    occupyPlayer(sim, s.x, s.y, -1);
     s.x = x;
     s.y = y;
     s.dir = dirIndex(dx, dy);
     s.stepMs = duration;
-    this.occupyPlayer(x, y, 1);
+    occupyPlayer(sim, x, y, 1);
     player.nextStepAt = nextStepTime(player.nextStepAt, now, duration);
+
+    const portal = portalAt(sim, x, y);
+    if (portal && now >= player.nextPortalAt) this.enterPortal(player, portal);
   }
 
   private updateMonster(monster: MonsterSim, now: number) {
     const s = monster.state;
+    const sim = monster.world;
     let target = monster.targetId ? this.players.get(monster.targetId) : undefined;
     if (
       target &&
-      (inTown(target.state.x, target.state.y) || chebyshev(s.x, s.y, target.state.x, target.state.y) > CHASE_LOSE_RANGE)
+      (target.world !== sim ||
+        inSafe(sim, target.state.x, target.state.y) ||
+        chebyshev(s.x, s.y, target.state.x, target.state.y) > CHASE_LOSE_RANGE)
     ) {
       target = undefined;
     }
@@ -1114,20 +1441,22 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
 
   private canMonsterStep(monster: MonsterSim, dx: number, dy: number): boolean {
     const { x, y } = monster.state;
-    if (this.blockedForMonster(x + dx, y + dy, monster.id)) return false;
+    const sim = monster.world;
+    if (blockedForMonster(sim, x + dx, y + dy, monster.id)) return false;
     if (dx !== 0 && dy !== 0) {
-      return !this.blockedForMonster(x + dx, y, monster.id) && !this.blockedForMonster(x, y + dy, monster.id);
+      return !blockedForMonster(sim, x + dx, y, monster.id) && !blockedForMonster(sim, x, y + dy, monster.id);
     }
     return true;
   }
 
   private stepMonsterTowards(monster: MonsterSim, goal: Point, adjacent: boolean, now: number) {
     const s = monster.state;
+    const sim = monster.world;
     const goalChanged = !monster.pathGoal || monster.pathGoal.x !== goal.x || monster.pathGoal.y !== goal.y;
     if (goalChanged || monster.path.length === 0) {
       monster.pathGoal = { x: goal.x, y: goal.y };
       monster.path =
-        findPath(this.gameMap.width, this.gameMap.height, s, goal, (x, y) => this.blockedForMonster(x, y, monster.id), {
+        findPath(sim.map.width, sim.map.height, s, goal, (x, y) => blockedForMonster(sim, x, y, monster.id), {
           adjacent,
           maxNodes: 600,
         }) ?? [];
@@ -1138,7 +1467,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     }
 
     const next = monster.path[0];
-    if (this.blockedForMonster(next.x, next.y, monster.id)) {
+    if (blockedForMonster(sim, next.x, next.y, monster.id)) {
       monster.path = [];
       monster.nextStepAt = now + 200;
       return;
@@ -1166,15 +1495,16 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
 
   private moveMonster(monster: MonsterSim, x: number, y: number, now: number) {
     const s = monster.state;
+    const sim = monster.world;
     const dx = x - s.x;
     const dy = y - s.y;
     const duration = stepDuration(monster.def.stepMs, dx, dy);
-    this.monsterAt.delete(this.tileKey(s.x, s.y));
+    sim.monsterAt.delete(tileKey(sim, s.x, s.y));
     s.x = x;
     s.y = y;
     s.dir = dirIndex(dx, dy);
     s.stepMs = duration;
-    this.monsterAt.set(this.tileKey(x, y), monster.id);
+    sim.monsterAt.set(tileKey(sim, x, y), monster.id);
     monster.nextStepAt = nextStepTime(monster.nextStepAt, now, duration);
   }
 
@@ -1184,7 +1514,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     let bestDistance = Infinity;
     for (const player of this.players.values()) {
       const p = player.state;
-      if (inTown(p.x, p.y)) continue;
+      if (player.world !== monster.world || inSafe(monster.world, p.x, p.y)) continue;
       const distance = chebyshev(s.x, s.y, p.x, p.y);
       if (distance <= monster.def.aggroRange && distance < bestDistance) {
         best = player;
@@ -1223,7 +1553,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       this.broadcastHit(monster.id, attacker.id, amount, "damage");
     }
 
-    if (!monster.targetId && !inTown(attacker.state.x, attacker.state.y)) {
+    if (!monster.targetId && !inSafe(monster.world, attacker.state.x, attacker.state.y)) {
       monster.targetId = attacker.id;
       monster.nextAttackAt = Math.max(monster.nextAttackAt, Date.now() + 500);
     }
@@ -1232,6 +1562,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
 
   private killMonster(monster: MonsterSim) {
     const { def, state: s } = monster;
+    const sim = monster.world;
     this.removeMonster(monster.id);
     this.broadcast(ServerMsg.MonsterDeath, { id: monster.id, kind: def.kind, x: s.x, y: s.y } satisfies MonsterDeathEvent);
 
@@ -1245,23 +1576,29 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
         topDamage = damage;
         topDamager = player;
       }
-      const multiplier = XP_RATE * this.state.xpMultiplier * (1 + this.bonusesOf(player).xp);
+      const multiplier = XP_RATE * this.eventManager.xpMultiplierFor(sim) * (1 + this.bonusesOf(player).xp);
       this.giveXp(player, Math.max(1, Math.round((def.xp * multiplier * damage) / totalDamage)));
     }
 
     if (topDamager) {
       topDamager.kills += 1;
-      for (const drop of rollDrops(Math.random, def, this.bonusesOf(topDamager).gold)) {
-        this.dropLoot(drop, s.x, s.y, topDamager.id);
+      const goldBonus = this.bonusesOf(topDamager).gold + this.eventManager.goldMultiplierFor(sim) - 1;
+      for (const drop of rollDrops(Math.random, def, goldBonus)) {
+        this.dropLoot(sim, drop, s.x, s.y, topDamager.id);
       }
     }
 
-    if (monster.respawns) this.after(def.respawnMs, () => this.respawn(def.kind, monster.home));
+    if (monster.respawns) this.after(def.respawnMs, () => this.respawn(sim, def.kind, monster.home));
+    if (monster.nestId) {
+      const nest = sim.spawns.find((entry) => entry.id === monster.nestId);
+      sim.nestAlive.set(monster.nestId, Math.max(0, (sim.nestAlive.get(monster.nestId) ?? 1) - 1));
+      if (nest) this.after(nest.respawnMs || def.respawnMs || 30_000, () => this.spawnFromNest(sim, nest));
+    }
     monster.onDeath?.();
   }
 
-  private respawn(kind: MonsterKind, home: Point) {
-    if (!this.spawnMonster(kind, home, true)) this.after(5000, () => this.respawn(kind, home));
+  private respawn(sim: WorldSim, kind: MonsterKind, home: Point) {
+    if (!this.spawnMonster(sim, kind, home, { respawns: true })) this.after(5000, () => this.respawn(sim, kind, home));
   }
 
   private giveXp(player: PlayerSim, amount: number) {
@@ -1314,11 +1651,14 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       if (monster.targetId === player.id) monster.targetId = null;
     }
 
-    const spot = this.findFreeTile(TEMPLE_X, TEMPLE_Y, false) ?? { x: TEMPLE_X, y: TEMPLE_Y };
-    this.occupyPlayer(s.x, s.y, -1);
+    const sim = player.world;
+    const home = { x: sim.def.spawnX, y: sim.def.spawnY };
+    const spot = findFreeTile(sim, home.x, home.y, false) ?? home;
+    occupyPlayer(sim, s.x, s.y, -1);
     s.x = spot.x;
     s.y = spot.y;
-    this.occupyPlayer(s.x, s.y, 1);
+    occupyPlayer(sim, s.x, s.y, 1);
+    player.nextPortalAt = Date.now() + 800;
     s.hp = s.maxHp;
     s.mana = s.maxMana;
     s.target = "";
@@ -1329,16 +1669,16 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
   private regenerate() {
     for (const player of this.players.values()) {
       const s = player.state;
-      const boost = inTown(s.x, s.y) ? 3 : 1;
+      const boost = inSafe(player.world, s.x, s.y) ? 3 : 1;
       s.hp = Math.min(s.maxHp, s.hp + boost * (1 + Math.floor(s.level / 5)));
       s.mana = Math.min(s.maxMana, s.mana + boost * (2 + Math.floor(s.level / 4)));
     }
   }
 
-  private adjacentMonsters(center: Point): MonsterSim[] {
+  private adjacentMonsters(sim: WorldSim, center: Point): MonsterSim[] {
     const result: MonsterSim[] = [];
     for (const d of DIRS) {
-      const id = this.monsterAt.get(this.tileKey(center.x + d.x, center.y + d.y));
+      const id = sim.monsterAt.get(tileKey(sim, center.x + d.x, center.y + d.y));
       const monster = id ? this.monsters.get(id) : undefined;
       if (monster) result.push(monster);
     }
@@ -1347,67 +1687,72 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
 
   // ------------------------------------------------------------ drops
 
-  /** Põe um drop no chão, no tile da morte ou no mais perto que estiver livre. */
-  private dropLoot(drop: DropRoll, x: number, y: number, owner: string) {
-    const spot = this.freeLootTile(x, y);
-    if (!spot) return;
+  /**
+   * Põe um drop no chão, no tile da morte ou no mais perto que estiver livre.
+   * `forever` é para os tesouros do editor, que não somem com o tempo.
+   */
+  private dropLoot(
+    sim: WorldSim,
+    drop: DropRoll,
+    x: number,
+    y: number,
+    owner: string,
+    options: { forever?: boolean } = {},
+  ): string | null {
+    const spot = freeLootTile(sim, x, y);
+    if (!spot) return null;
     const now = Date.now();
     const id = `l${this.nextLootId++}`;
     const state = new LootState({
       kind: drop.kind,
+      world: sim.def.slug,
       x: spot.x,
       y: spot.y,
       gold: drop.gold,
       diamonds: drop.diamonds,
       owner,
-      freeAt: now + LOOT_OWNER_MS,
-      expiresAt: now + LOOT_TTL_MS,
+      freeAt: options.forever ? 0 : now + LOOT_OWNER_MS,
+      expiresAt: options.forever ? Number.MAX_SAFE_INTEGER : now + LOOT_TTL_MS,
     });
     this.state.loot.set(id, state);
-    const key = this.tileKey(spot.x, spot.y);
-    const ids = this.lootAt.get(key);
+    const key = tileKey(sim, spot.x, spot.y);
+    const ids = sim.lootAt.get(key);
     if (ids) ids.push(id);
-    else this.lootAt.set(key, [id]);
-  }
-
-  /** Tile andável e ainda sem drop, para dois drops não ficarem um em cima do outro. */
-  private freeLootTile(cx: number, cy: number): Point | null {
-    for (let radius = 0; radius <= 2; radius++) {
-      const candidates: Point[] = [];
-      for (let y = cy - radius; y <= cy + radius; y++) {
-        for (let x = cx - radius; x <= cx + radius; x++) {
-          if (chebyshev(x, y, cx, cy) !== radius) continue;
-          if (!isWalkable(this.gameMap, x, y) || this.lootAt.has(this.tileKey(x, y))) continue;
-          candidates.push({ x, y });
-        }
-      }
-      if (candidates.length > 0) return candidates[Math.floor(Math.random() * candidates.length)];
-    }
-    return null;
+    else sim.lootAt.set(key, [id]);
+    return id;
   }
 
   /** Quem está pisando no drop leva. Nos primeiros segundos, só quem derrubou o monstro. */
   private collectLoot(player: PlayerSim, now: number) {
-    const key = this.tileKey(player.state.x, player.state.y);
-    const ids = this.lootAt.get(key);
+    const sim = player.world;
+    const key = tileKey(sim, player.state.x, player.state.y);
+    const ids = sim.lootAt.get(key);
     if (!ids) return;
     for (const id of [...ids]) {
       const loot = this.state.loot.get(id);
       if (!loot) {
-        this.removeLoot(id, key);
+        this.removeLoot(sim, id, key);
         continue;
       }
       if (loot.owner && loot.owner !== player.id && now < loot.freeAt) continue;
-      this.removeLoot(id, key);
+      this.removeLoot(sim, id, key);
       this.giveLoot(player, loot);
     }
   }
 
-  private removeLoot(id: string, key: number) {
+  private removeLoot(sim: WorldSim, id: string, key: number) {
     this.state.loot.delete(id);
-    const ids = this.lootAt.get(key)?.filter((other) => other !== id) ?? [];
-    if (ids.length > 0) this.lootAt.set(key, ids);
-    else this.lootAt.delete(key);
+    const ids = sim.lootAt.get(key)?.filter((other) => other !== id) ?? [];
+    if (ids.length > 0) sim.lootAt.set(key, ids);
+    else sim.lootAt.delete(key);
+
+    // Era um tesouro fixo do editor: marca quando ele volta ao chão.
+    const itemId = sim.itemOfLoot.get(id);
+    if (itemId === undefined) return;
+    sim.itemOfLoot.delete(id);
+    sim.itemLoot.delete(itemId);
+    const item = sim.items.find((entry) => entry.id === itemId);
+    sim.itemReadyAt.set(itemId, Date.now() + (item?.respawnMs || 300_000));
   }
 
   private giveLoot(player: PlayerSim, loot: LootState) {
@@ -1441,53 +1786,24 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
   /** Tira do chão o que ninguém pegou a tempo. */
   private sweepLoot(now: number) {
     for (const [id, loot] of this.state.loot) {
-      if (now >= loot.expiresAt) this.removeLoot(id, this.tileKey(loot.x, loot.y));
+      if (now < loot.expiresAt) continue;
+      const sim = this.worldBySlug.get(loot.world);
+      if (sim) this.removeLoot(sim, id, tileKey(sim, loot.x, loot.y));
+      else this.state.loot.delete(id);
+    }
+  }
+
+  /** Repõe os tesouros fixos do editor que já foram pegos. */
+  private refillGroundItems(now: number) {
+    for (const sim of this.worlds.values()) {
+      for (const item of sim.items) {
+        if (sim.itemLoot.has(item.id) || now < (sim.itemReadyAt.get(item.id) ?? 0)) continue;
+        this.spawnGroundItem(sim, item);
+      }
     }
   }
 
   // ------------------------------------------------------------ utilidades
-
-  private tileKey(x: number, y: number): number {
-    return y * this.gameMap.width + x;
-  }
-
-  private occupyPlayer(x: number, y: number, delta: number) {
-    const key = this.tileKey(x, y);
-    const count = (this.playersAt.get(key) ?? 0) + delta;
-    if (count <= 0) this.playersAt.delete(key);
-    else this.playersAt.set(key, count);
-  }
-
-  /** Jogadores atravessam outros jogadores, mas não monstros. */
-  private blockedForPlayer(x: number, y: number): boolean {
-    return !isWalkable(this.gameMap, x, y) || this.monsterAt.has(this.tileKey(x, y));
-  }
-
-  /** Monstros não entram na cidade nem em tiles ocupados. */
-  private blockedForMonster(x: number, y: number, selfId?: string): boolean {
-    if (!isWalkable(this.gameMap, x, y) || inTown(x, y)) return true;
-    const key = this.tileKey(x, y);
-    const occupant = this.monsterAt.get(key);
-    if (occupant !== undefined && occupant !== selfId) return true;
-    return (this.playersAt.get(key) ?? 0) > 0;
-  }
-
-  private findFreeTile(cx: number, cy: number, forMonster: boolean, maxRadius = 6): Point | null {
-    for (let radius = 0; radius <= maxRadius; radius++) {
-      const candidates: Point[] = [];
-      for (let y = cy - radius; y <= cy + radius; y++) {
-        for (let x = cx - radius; x <= cx + radius; x++) {
-          if (chebyshev(x, y, cx, cy) !== radius) continue;
-          const blocked = forMonster
-            ? this.blockedForMonster(x, y)
-            : this.blockedForPlayer(x, y) || this.playersAt.has(this.tileKey(x, y));
-          if (!blocked) candidates.push({ x, y });
-        }
-      }
-      if (candidates.length > 0) return candidates[Math.floor(Math.random() * candidates.length)];
-    }
-    return null;
-  }
 
   private face(state: { x: number; y: number; dir: number }, target: Point) {
     const dir = dirIndex(target.x - state.x, target.y - state.y);

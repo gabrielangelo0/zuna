@@ -10,13 +10,14 @@ import {
   spellById,
   spellUnlocked,
   spellsUnlockedAt,
-  TEMPLE_X,
-  TEMPLE_Y,
+  applyCatalogOverrides,
+  buildWorldMap,
   catalogItem,
   chebyshev,
   frameKey,
   generateMap,
   type AnnounceEvent,
+  type CatalogEvent,
   type ChatEvent,
   type HitEvent,
   type LevelUpEvent,
@@ -27,10 +28,14 @@ import {
   type MonsterKind,
   type PlayerData,
   type PlayerDeathEvent,
+  type PortalDef,
   type ProfileEvent,
   type PurchaseEvent,
   type SpellEffectEvent,
   type SpellId,
+  type TravelEvent,
+  type WorldBlueprint,
+  type WorldPatchEvent,
   type XpEvent,
 } from "@zuna/shared";
 import { Actor } from "./actors.ts";
@@ -95,8 +100,17 @@ function tileHash(x: number, y: number): number {
   return (Math.imul(x, 73856093) ^ Math.imul(y, 19349663)) >>> 0;
 }
 
+/** Uma coisa do mundo sincronizada pelo servidor, com o mundo em que ela está. */
+interface Entity {
+  data: PlayerData | MonsterData;
+  isPlayer: boolean;
+}
+
 export class WorldScene extends Phaser.Scene {
-  private readonly worldMap = generateMap();
+  /** Mapas de todos os mundos abertos, pela chave. */
+  private readonly blueprints = new Map<string, WorldBlueprint>();
+  private worldSlug = "";
+  private worldMap = generateMap();
   private readonly hud = new Hud();
   private readonly wardrobe = new Wardrobe({
     appearance: (message) => this.room?.send(ClientMsg.Appearance, message),
@@ -108,8 +122,15 @@ export class WorldScene extends Phaser.Scene {
   private localId = "";
   private readonly actors = new Map<string, Actor>();
   private readonly monsterIds = new Set<string>();
+  private readonly entities = new Map<string, Entity>();
   private lootLayer!: LootLayer;
   private minimap!: Minimap;
+  private groundLayer: Phaser.GameObjects.Blitter | null = null;
+  private sceneryLayer: Phaser.GameObjects.GameObject[] = [];
+  private portalLayer: Phaser.GameObjects.GameObject[] = [];
+  private portals: PortalDef[] = [];
+  /** Troca a cada redesenho: o desenho antigo, se ainda estiver carregando, é descartado. */
+  private drawToken = 0;
   private readonly ranking = new Ranking();
   private readonly grimoire = new Grimoire((slots) => this.room?.send(ClientMsg.Shortcuts, { slots }));
   private nextMinimapAt = 0;
@@ -129,24 +150,24 @@ export class WorldScene extends Phaser.Scene {
     this.spriteTextures = new SpriteTextures(this);
     this.lootLayer = new LootLayer(this, this.spriteTextures);
     this.minimap = new Minimap(element<HTMLCanvasElement>("#minimap-canvas"), this.worldMap);
+    this.minimap.setMap(this.worldMap, this.blueprints.get(this.worldSlug)?.world);
     element("#minimap-in").addEventListener("click", () => this.minimap.zoom(1.35));
     element("#minimap-out").addEventListener("click", () => this.minimap.zoom(1 / 1.35));
     element("#minimap-expand").addEventListener("click", () => this.toggleMap());
     element("#minimap-canvas").addEventListener("click", () => this.toggleMap());
     createTextures(this);
-    this.drawGround();
-    void this.drawObjects();
+    this.drawWorld();
     // Os monstros aparecem logo ao entrar: carregar antes evita que surjam "atrasados".
     for (const kind of MONSTER_KINDS) void loadSheet(`monster_${kind}`).catch(() => undefined);
 
     this.hoverMarker = this.add.image(0, 0, "marker_hover").setDepth(DEPTH_DECAL + 1).setVisible(false);
     this.targetMarker = this.add.image(0, 0, "marker_target").setDepth(DEPTH_DECAL + 2).setVisible(false);
 
-    const temple = tileToScreen(TEMPLE_X, TEMPLE_Y);
-    this.cameraAnchor.x = temple.x;
-    this.cameraAnchor.y = temple.y;
+    const center = this.worldCenter();
+    this.cameraAnchor.x = center.x;
+    this.cameraAnchor.y = center.y;
     const camera = this.cameras.main;
-    camera.centerOn(temple.x, temple.y);
+    camera.centerOn(center.x, center.y);
     camera.startFollow(this.cameraAnchor, true, 0.15, 0.15);
 
     this.input.mouse?.disableContextMenu();
@@ -166,27 +187,36 @@ export class WorldScene extends Phaser.Scene {
 
     callbacks.onAdd("players", (value, key) => {
       const player = value as PlayerData;
-      const actor = this.addActor(String(key), player, true);
-      callbacks.onChange(player, () => this.syncActor(actor));
+      const id = String(key);
+      this.entities.set(id, { data: player, isPlayer: true });
+      this.refreshEntity(id);
+      callbacks.onChange(player, () => this.refreshEntity(id));
       this.hud.setOnline(state.players.size);
     });
     callbacks.onRemove("players", (_value, key) => {
-      this.removeActor(String(key));
+      const id = String(key);
+      this.entities.delete(id);
+      this.removeActor(id);
       this.hud.setOnline(state.players.size);
     });
     callbacks.onAdd("monsters", (value, key) => {
       const monster = value as MonsterData;
       const id = String(key);
-      const actor = this.addActor(id, monster, false);
+      this.entities.set(id, { data: monster, isPlayer: false });
       this.monsterIds.add(id);
-      callbacks.onChange(monster, () => this.syncActor(actor));
+      this.refreshEntity(id);
+      callbacks.onChange(monster, () => this.refreshEntity(id));
     });
     callbacks.onRemove("monsters", (_value, key) => {
       const id = String(key);
+      this.entities.delete(id);
       this.monsterIds.delete(id);
       this.removeActor(id);
     });
-    callbacks.onAdd("loot", (value, key) => this.lootLayer.add(String(key), value as LootData));
+    callbacks.onAdd("loot", (value, key) => {
+      const loot = value as LootData;
+      if (loot.world === this.worldSlug) this.lootLayer.add(String(key), loot);
+    });
     callbacks.onRemove("loot", (_value, key) => this.lootLayer.remove(String(key)));
     const updateEvent = () => this.hud.setEvent(state.eventName, state.eventEndsAt);
     callbacks.listen("eventName", updateEvent);
@@ -211,6 +241,15 @@ export class WorldScene extends Phaser.Scene {
       this.wardrobe.setProfile(event);
     });
     room.onMessage(ServerMsg.Purchase, (event: PurchaseEvent) => this.onPurchase(event));
+    room.onMessage(ServerMsg.Travel, (event: TravelEvent) => {
+      this.useWorld(event.world);
+      this.hud.showBanner(event.name);
+    });
+    room.onMessage(ServerMsg.WorldPatch, (event: WorldPatchEvent) => this.applyWorldPatch(event.blueprint));
+    room.onMessage(ServerMsg.Catalog, (event: CatalogEvent) => {
+      applyCatalogOverrides(event.catalog);
+      this.wardrobe.refresh();
+    });
     room.onLeave((code, reason) => {
       this.wardrobe.close();
       this.hud.showDisconnected(reason || CLOSE_REASON[code]);
@@ -269,9 +308,9 @@ export class WorldScene extends Phaser.Scene {
       this.cameraAnchor.y = position.y - 24;
     } else if (!this.room) {
       // Antes de entrar: a câmera passeia devagar pela cidade, atrás do menu.
-      const temple = tileToScreen(TEMPLE_X, TEMPLE_Y);
-      this.cameraAnchor.x = temple.x + Math.cos(time / 7000) * 280;
-      this.cameraAnchor.y = temple.y + Math.sin(time / 7000) * 140;
+      const center = this.worldCenter();
+      this.cameraAnchor.x = center.x + Math.cos(time / 7000) * 280;
+      this.cameraAnchor.y = center.y + Math.sin(time / 7000) * 140;
     }
 
     this.updateTarget();
@@ -292,6 +331,7 @@ export class WorldScene extends Phaser.Scene {
 
     this.minimap.follow(local.tileX, local.tileY);
     const blips = this.lootLayer.blips();
+    for (const portal of this.portals) blips.push({ x: portal.x, y: portal.y, color: 0xb07dff, size: 2 });
     for (const [id, actor] of this.actors) {
       if (id === this.localId || actor.dead) continue;
       const monster = this.monsterIds.has(id);
@@ -301,11 +341,123 @@ export class WorldScene extends Phaser.Scene {
     element("#minimap-where").textContent = `${local.tileX}, ${local.tileY}`;
   }
 
+  // ------------------------------------------------------------ mundos
+
+  /** Mapas que o servidor mandou antes de entrar. O primeiro é o mundo onde todo mundo nasce. */
+  setWorlds(list: WorldBlueprint[]) {
+    this.blueprints.clear();
+    for (const blueprint of list) this.blueprints.set(blueprint.world.slug, blueprint);
+    const start = list.find((entry) => entry.world.isDefault) ?? list[0];
+    if (start) this.useWorld(start.world.slug);
+  }
+
+  /** Troca o mundo desenhado na tela e recoloca quem está nele. */
+  private useWorld(slug: string) {
+    const blueprint = this.blueprints.get(slug);
+    if (!blueprint || slug === this.worldSlug) return;
+    this.worldSlug = slug;
+    this.worldMap = buildWorldMap(blueprint);
+    this.portals = blueprint.portals;
+    if (!this.scene.isActive()) return;
+
+    this.drawWorld();
+    this.minimap?.setMap(this.worldMap, this.blueprints.get(this.worldSlug)?.world);
+    for (const id of [...this.actors.keys()]) {
+      this.actors.get(id)?.destroy();
+      this.actors.delete(id);
+    }
+    this.lootLayer?.clear();
+    const loot = (this.room?.state as { loot?: Map<string, LootData> } | undefined)?.loot;
+    if (loot) for (const [id, data] of loot) if (data.world === this.worldSlug) this.lootLayer.add(String(id), data);
+    for (const id of this.entities.keys()) this.refreshEntity(id);
+  }
+
+  /** O painel editou o mundo: monta o terreno de novo sem tirar ninguém do jogo. */
+  private applyWorldPatch(blueprint: WorldBlueprint) {
+    this.blueprints.set(blueprint.world.slug, blueprint);
+    if (blueprint.world.slug !== this.worldSlug) return;
+    this.worldMap = buildWorldMap(blueprint);
+    this.portals = blueprint.portals;
+    this.drawWorld();
+    this.minimap?.setMap(this.worldMap, this.blueprints.get(this.worldSlug)?.world);
+  }
+
+  /** Centro do mundo em pixels: a praça, para a câmera começar olhando para ela. */
+  private worldCenter() {
+    const world = this.blueprints.get(this.worldSlug)?.world;
+    return tileToScreen(world?.spawnX ?? this.worldMap.width / 2, world?.spawnY ?? this.worldMap.height / 2);
+  }
+
+  /** Redesenha chão, cenário e portais do mundo atual. */
+  private drawWorld() {
+    const token = ++this.drawToken;
+    this.groundLayer?.destroy();
+    this.groundLayer = null;
+    for (const item of this.sceneryLayer) item.destroy();
+    this.sceneryLayer = [];
+    for (const item of this.portalLayer) item.destroy();
+    this.portalLayer = [];
+    this.waterBobs.length = 0;
+
+    this.drawGround();
+    void this.drawObjects(token);
+    this.drawPortals();
+  }
+
+  /** Portais: um losango brilhante no chão com o nome por cima. */
+  private drawPortals() {
+    for (const portal of this.portals) {
+      const screen = tileToScreen(portal.x, portal.y);
+      const mark = this.add
+        .image(screen.x, screen.y, "marker_goto")
+        .setDepth(DEPTH_DECAL + 1)
+        .setTint(0xb07dff)
+        .setAlpha(0.85);
+      this.tweens.add({ targets: mark, alpha: 0.35, scale: 1.12, duration: 900, yoyo: true, repeat: -1 });
+      this.portalLayer.push(mark);
+
+      const text = this.add
+        .text(screen.x, screen.y - 26, portal.name || "Portal", {
+          fontFamily: GAME_FONT,
+          fontSize: "12px",
+          color: "#e6d2ff",
+          stroke: "#1a1030",
+          strokeThickness: 4,
+        })
+        .setOrigin(0.5, 1)
+        .setResolution(TEXT_RESOLUTION)
+        .setDepth(DEPTH_FLOATING);
+      this.portalLayer.push(text);
+    }
+  }
+
+  /** Só entra em cena o que está no mesmo mundo do jogador. */
+  private refreshEntity(id: string) {
+    const entry = this.entities.get(id);
+    if (!entry) return;
+    if (id === this.localId && entry.data.world && entry.data.world !== this.worldSlug) {
+      this.useWorld(entry.data.world);
+      return;
+    }
+
+    const here = entry.data.world === this.worldSlug;
+    const actor = this.actors.get(id);
+    if (!here) {
+      if (!actor) return;
+      this.actors.delete(id);
+      actor.destroy();
+      return;
+    }
+    if (actor) this.syncActor(actor);
+    else this.syncActor(this.addActor(id, entry.data, entry.isPlayer));
+  }
+
   // ------------------------------------------------------------ mapa
 
   private drawGround() {
     const { width, height, ground } = this.worldMap;
     const blitter = this.add.blitter(0, 0, "ground").setDepth(DEPTH_GROUND);
+    this.groundLayer = blitter;
     // Por diagonais (x + y) para os losangos de baixo sobreporem os de cima.
     for (let sum = 0; sum <= width + height - 2; sum++) {
       for (let x = Math.max(0, sum - height + 1); x <= Math.min(sum, width - 1); x++) {
@@ -320,9 +472,11 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
-  private async drawObjects() {
+  private async drawObjects(token: number) {
     const ids = [...new Set(Object.values(OBJECT_PROPS).map((prop) => prop!.id))];
     const textures = new Map((await Promise.all(ids.map((id) => this.spriteTextures.acquire(id)))).map((t) => [t.meta.id, t]));
+    // O mundo pode ter mudado enquanto os desenhos carregavam.
+    if (token !== this.drawToken) return;
     const { width, height, objects } = this.worldMap;
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
@@ -333,11 +487,13 @@ export class WorldScene extends Phaser.Scene {
         const hash = tileHash(x, y);
         const variant = (hash >>> 3) % (meta.anims.idle?.frames ?? 1);
         const screen = tileToScreen(x, y);
-        this.add
-          .image(screen.x, screen.y, texture.key, frameKey("idle", "S", variant))
-          .setOrigin(meta.anchorX / meta.cellW, meta.anchorY / meta.cellH)
-          .setFlipX(prop.flip === true && (hash & 1) === 1)
-          .setDepth(prop.decal ? DEPTH_DECAL : screen.y);
+        this.sceneryLayer.push(
+          this.add
+            .image(screen.x, screen.y, texture.key, frameKey("idle", "S", variant))
+            .setOrigin(meta.anchorX / meta.cellW, meta.anchorY / meta.cellH)
+            .setFlipX(prop.flip === true && (hash & 1) === 1)
+            .setDepth(prop.decal ? DEPTH_DECAL : screen.y),
+        );
       }
     }
   }

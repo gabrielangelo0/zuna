@@ -3,9 +3,11 @@ import { fileURLToPath } from "node:url";
 import { defineRoom, defineServer } from "colyseus";
 import express from "express";
 import { ROOM_NAME, SERVER_PORT } from "@zuna/shared";
+import { applyCatalogOverrides } from "@zuna/shared";
 import { apiRouter } from "./api.ts";
 import { connectDatabase, disconnectDatabase } from "./db/index.ts";
 import { ensureAdmins } from "./adminRepository.ts";
+import { ensureWorldSeed, listItemOverrides } from "./worldRepository.ts";
 import { WorldRoom, waitForPendingWrites } from "./WorldRoom.ts";
 
 const production = process.env.NODE_ENV === "production";
@@ -25,6 +27,11 @@ function serveClient(app: express.Application) {
 }
 
 await connectDatabase();
+
+// Primeiro arranque: cria o mundo original e os eventos clássicos. Depois disso,
+// tudo o que o painel mudou (mapas, eventos, preços da loja) já sai do banco.
+await ensureWorldSeed();
+applyCatalogOverrides(await listItemOverrides());
 
 // ADMIN_USERS=gabriel,outro marca essas contas como administradoras ao subir o servidor.
 const admins = (process.env.ADMIN_USERS ?? "")

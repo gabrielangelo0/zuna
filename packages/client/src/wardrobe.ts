@@ -1,5 +1,5 @@
 import {
-  CATALOG,
+  catalogList,
   appearanceOf,
   describeBonus,
   ownsItem,
@@ -88,6 +88,11 @@ export class Wardrobe {
     this.render();
   }
 
+  /** Preços mudaram no painel: redesenha a vitrine com os valores novos. */
+  refresh() {
+    if (this.isOpen) this.render();
+  }
+
   showStatus(message: string, ok: boolean) {
     this.status.textContent = message;
     this.status.classList.toggle("ok", ok);
@@ -159,7 +164,11 @@ export class Wardrobe {
     const scroll = this.content.dataset.tab === kind ? this.content.scrollTop : 0;
     const grid = document.createElement("div");
     grid.className = "item-grid";
-    for (const item of CATALOG.filter((entry) => entry.kind === kind)) grid.append(this.itemCard(player, item));
+    // Item tirado da loja pelo painel some da lista, menos para quem já tem.
+    const items = catalogList().filter(
+      (entry) => entry.kind === kind && (entry.enabled !== false || ownsItem(entry, this.unlocks)),
+    );
+    for (const item of items) grid.append(this.itemCard(player, item));
     this.content.replaceChildren(grid);
     this.content.dataset.tab = kind;
     this.content.scrollTop = scroll;

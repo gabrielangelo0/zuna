@@ -32,6 +32,39 @@ export interface GameMap {
   objects: Uint8Array;
 }
 
+/** Jeitos de gerar o terreno de um mundo. O painel escolhe um ao criar o mapa. */
+export type MapStyle = "campina" | "caverna" | "ilha" | "vazio";
+
+export const MAP_STYLES: readonly { id: MapStyle; name: string; description: string }[] = [
+  { id: "campina", name: "Campina", description: "Cidade de pedra, estradas em cruz, lagos e floresta." },
+  { id: "caverna", name: "Caverna", description: "Salões de pedra, veios de terra e paredes de rocha." },
+  { id: "ilha", name: "Ilha", description: "Praia em volta, mata no meio, mar até a borda." },
+  { id: "vazio", name: "Vazio", description: "Campo liso com uma praça no centro, para desenhar à mão." },
+];
+
+/** Tudo de que o gerador precisa para desenhar o terreno de um mundo. */
+export interface MapShape {
+  width: number;
+  height: number;
+  seed: number;
+  style: MapStyle;
+  /** Centro do mundo: praça, ponto de nascimento e de volta à vida. */
+  spawnX: number;
+  spawnY: number;
+  /** Raio (Chebyshev) da zona protegida em volta do centro. */
+  townRadius: number;
+}
+
+export const DEFAULT_SHAPE: MapShape = {
+  width: MAP_W,
+  height: MAP_H,
+  seed: MAP_SEED,
+  style: "campina",
+  spawnX: TEMPLE_X,
+  spawnY: TEMPLE_Y,
+  townRadius: TOWN_RADIUS,
+};
+
 export function isWalkable(map: GameMap, x: number, y: number): boolean {
   if (x < 0 || y < 0 || x >= map.width || y >= map.height) return false;
   const i = y * map.width + x;
@@ -62,32 +95,66 @@ function fbm(x: number, y: number, seed: number): number {
 
 /**
  * Gera o mapa de forma determinística: cliente e servidor chegam ao mesmo resultado
- * sem precisar trafegar o mapa pela rede.
- *
- * Cidade de pedra no centro, estradas em cruz, lagos a oeste e floresta ao norte
- * (norte/oeste em relação à tela isométrica).
+ * sem precisar trafegar o mapa pela rede. O que foi pintado no painel vem por cima.
  */
-export function generateMap(seed: number = MAP_SEED): GameMap {
-  const width = MAP_W;
-  const height = MAP_H;
-  const ground = new Uint8Array(width * height);
-  const objects = new Uint8Array(width * height);
-  const rng = mulberry32(seed);
+export function generateMap(shape: MapShape = DEFAULT_SHAPE): GameMap {
+  const { width, height } = shape;
+  const map: GameMap = { width, height, ground: new Uint8Array(width * height), objects: new Uint8Array(width * height) };
+  const rng = mulberry32(shape.seed);
 
+  if (shape.style === "caverna") paintCave(map, shape, rng);
+  else if (shape.style === "ilha") paintIsland(map, shape, rng);
+  else if (shape.style === "vazio") paintEmpty(map, shape);
+  else paintMeadow(map, shape, rng);
+
+  return map;
+}
+
+/** Praça de pedra no centro, sem nada no caminho: vale para todos os estilos. */
+function clearPlaza(map: GameMap, shape: MapShape) {
+  const { spawnX, spawnY, townRadius } = shape;
+  for (let y = spawnY - townRadius; y <= spawnY + townRadius; y++) {
+    for (let x = spawnX - townRadius; x <= spawnX + townRadius; x++) {
+      if (x < 0 || y < 0 || x >= map.width || y >= map.height) continue;
+      const i = y * map.width + x;
+      map.ground[i] = Ground.Stone;
+      map.objects[i] = Obj.None;
+    }
+  }
+
+  // Colunas nos cantos da praça.
+  const c = Math.max(1, townRadius - 1);
+  for (const [px, py] of [[-c, -c], [c, -c], [-c, c], [c, c]]) {
+    const x = spawnX + px;
+    const y = spawnY + py;
+    if (x < 0 || y < 0 || x >= map.width || y >= map.height) continue;
+    map.objects[y * map.width + x] = Obj.Pillar;
+  }
+}
+
+/** Cerca na borda, para ninguém andar até o fim do mundo. */
+function fence(map: GameMap, ground: Ground, object: Obj) {
+  const { width, height } = map;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (x !== 0 && y !== 0 && x !== width - 1 && y !== height - 1) continue;
+      const i = y * width + x;
+      map.ground[i] = ground;
+      map.objects[i] = object;
+    }
+  }
+}
+
+/** O mundo clássico do Zuna: cidade no centro, estradas em cruz, lagos e floresta. */
+function paintMeadow(map: GameMap, shape: MapShape, rng: () => number) {
+  const { width, height, seed, spawnX, spawnY, townRadius } = shape;
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const i = y * width + x;
-      const dx = x - TEMPLE_X;
-      const dy = y - TEMPLE_Y;
-
-      if (chebyshev(x, y, TEMPLE_X, TEMPLE_Y) <= TOWN_RADIUS) {
-        ground[i] = Ground.Stone;
-        continue;
-      }
-
-      if (x === 0 || y === 0 || x === width - 1 || y === height - 1) {
-        ground[i] = Ground.GrassDark;
-        objects[i] = Obj.Pine;
+      const dx = x - spawnX;
+      const dy = y - spawnY;
+      if (chebyshev(x, y, spawnX, spawnY) <= townRadius) {
+        map.ground[i] = Ground.Stone;
         continue;
       }
 
@@ -98,32 +165,91 @@ export function generateMap(seed: number = MAP_SEED): GameMap {
       const west = dx < 0 && dy > 0;
       const wet = fbm(x / 11, y / 11, seed) - (west ? 0.1 : 0);
       const lush = fbm(x / 8, y / 8, seed + 101) + (north ? 0.12 : 0);
-      const farFromTown = dist > TOWN_RADIUS + 5;
+      const farFromTown = dist > townRadius + 5;
 
-      if (onRoad) ground[i] = Ground.Dirt;
-      else if (farFromTown && wet < 0.3) ground[i] = Ground.Water;
-      else if (farFromTown && wet < 0.35) ground[i] = Ground.Sand;
-      else ground[i] = lush > 0.55 ? Ground.GrassDark : Ground.Grass;
+      if (onRoad) map.ground[i] = Ground.Dirt;
+      else if (farFromTown && wet < 0.3) map.ground[i] = Ground.Water;
+      else if (farFromTown && wet < 0.35) map.ground[i] = Ground.Sand;
+      else map.ground[i] = lush > 0.55 ? Ground.GrassDark : Ground.Grass;
 
-      const grassy = ground[i] === Ground.Grass || ground[i] === Ground.GrassDark;
-      if (grassy && !nearRoad && dist > TOWN_RADIUS + 2) {
+      const grassy = map.ground[i] === Ground.Grass || map.ground[i] === Ground.GrassDark;
+      if (grassy && !nearRoad && dist > townRadius + 2) {
         const forest = lush > 0.62;
         const r = rng();
-        if (r < (forest ? 0.36 : 0.035)) objects[i] = north || rng() < 0.3 ? Obj.Pine : Obj.Tree;
-        else if (r < (forest ? 0.41 : 0.05)) objects[i] = Obj.Bush;
-        else if (r < (forest ? 0.43 : 0.065)) objects[i] = Obj.Rock;
-        else if (r < (forest ? 0.46 : 0.1)) objects[i] = Obj.Flowers;
-      } else if (ground[i] === Ground.Sand && rng() < 0.05) {
-        objects[i] = Obj.Rock;
+        if (r < (forest ? 0.36 : 0.035)) map.objects[i] = north || rng() < 0.3 ? Obj.Pine : Obj.Tree;
+        else if (r < (forest ? 0.41 : 0.05)) map.objects[i] = Obj.Bush;
+        else if (r < (forest ? 0.43 : 0.065)) map.objects[i] = Obj.Rock;
+        else if (r < (forest ? 0.46 : 0.1)) map.objects[i] = Obj.Flowers;
+      } else if (map.ground[i] === Ground.Sand && rng() < 0.05) {
+        map.objects[i] = Obj.Rock;
       }
     }
   }
+  fence(map, Ground.GrassDark, Obj.Pine);
+  clearPlaza(map, shape);
+}
 
-  // Colunas nos cantos da praça do templo.
-  const c = TOWN_RADIUS - 1;
-  for (const [px, py] of [[-c, -c], [c, -c], [-c, c], [c, c]]) {
-    objects[(TEMPLE_Y + py) * width + (TEMPLE_X + px)] = Obj.Pillar;
+/** Caverna: salões de pedra ligados por veios de terra, com paredes de rocha. */
+function paintCave(map: GameMap, shape: MapShape, rng: () => number) {
+  const { width, height, seed, spawnX, spawnY, townRadius } = shape;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      const dist = Math.hypot(x - spawnX, y - spawnY);
+      const rock = fbm(x / 9, y / 9, seed);
+      const vein = fbm(x / 6, y / 6, seed + 53);
+
+      if (vein > 0.62) map.ground[i] = Ground.Dirt;
+      else if (rock < 0.28 && dist > townRadius + 6) map.ground[i] = Ground.Water;
+      else map.ground[i] = Ground.Stone;
+
+      if (map.ground[i] === Ground.Water || dist <= townRadius + 2) continue;
+      // Paredes: manchas fechadas de rocha, deixando corredores no meio.
+      if (rock > 0.68) map.objects[i] = rng() < 0.75 ? Obj.Rock : Obj.Pillar;
+      else if (rock > 0.64 && rng() < 0.3) map.objects[i] = Obj.Bush;
+    }
   }
+  fence(map, Ground.Stone, Obj.Rock);
+  clearPlaza(map, shape);
+}
 
-  return { width, height, ground, objects };
+/** Ilha: mar até a borda, praia em volta e mata no miolo. */
+function paintIsland(map: GameMap, shape: MapShape, rng: () => number) {
+  const { width, height, seed, spawnX, spawnY, townRadius } = shape;
+  const radius = Math.min(width, height) / 2 - 3;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      const dx = (x - spawnX) / radius;
+      const dy = (y - spawnY) / radius;
+      // A linha da praia é irregular: o ruído empurra a borda para dentro e para fora.
+      const edge = Math.hypot(dx, dy) + (fbm(x / 10, y / 10, seed) - 0.5) * 0.35;
+
+      if (edge > 1) {
+        map.ground[i] = Ground.Water;
+        continue;
+      }
+      if (edge > 0.86) {
+        map.ground[i] = Ground.Sand;
+        if (rng() < 0.05) map.objects[i] = Obj.Rock;
+        continue;
+      }
+
+      const lush = fbm(x / 7, y / 7, seed + 91);
+      map.ground[i] = lush > 0.55 ? Ground.GrassDark : Ground.Grass;
+      if (Math.hypot(x - spawnX, y - spawnY) <= townRadius + 2) continue;
+      const r = rng();
+      if (r < 0.14) map.objects[i] = Obj.Pine;
+      else if (r < 0.19) map.objects[i] = Obj.Bush;
+      else if (r < 0.24) map.objects[i] = Obj.Flowers;
+    }
+  }
+  clearPlaza(map, shape);
+}
+
+/** Campo liso: o mapa em branco, para desenhar tudo no editor. */
+function paintEmpty(map: GameMap, shape: MapShape) {
+  map.ground.fill(Ground.Grass);
+  fence(map, Ground.GrassDark, Obj.Pine);
+  clearPlaza(map, shape);
 }

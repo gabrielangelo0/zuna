@@ -255,6 +255,68 @@ export function askConfirm(title: string, message: string, okLabel = "Confirmar"
   );
 }
 
+/** Um campo da caixinha de formulário. */
+export interface FormField {
+  id: string;
+  label: string;
+  kind?: "text" | "number" | "select" | "check";
+  value?: string | number | boolean;
+  options?: { id: string; label: string }[];
+  min?: number;
+  max?: number;
+  step?: string;
+  hint?: string;
+  width?: string;
+}
+
+/**
+ * Caixinha com vários campos. Devolve os valores em texto (o chamador converte),
+ * ou null quando cancelam.
+ */
+export function askForm(
+  title: string,
+  fields: FormField[],
+  okLabel = "Salvar",
+): Promise<Record<string, string> | null> {
+  const controls = new Map<string, HTMLInputElement | HTMLSelectElement>();
+  const box = h("div", { class: "form-grid" });
+
+  for (const spec of fields) {
+    let control: HTMLInputElement | HTMLSelectElement;
+    if (spec.kind === "select") {
+      control = select(spec.options ?? [], String(spec.value ?? ""));
+    } else if (spec.kind === "check") {
+      control = h("input", { type: "checkbox" });
+      (control as HTMLInputElement).checked = spec.value === true;
+    } else {
+      control = input(String(spec.value ?? ""), { type: spec.kind === "number" ? "number" : "text" });
+      if (spec.min !== undefined) control.min = String(spec.min);
+      if (spec.max !== undefined) control.max = String(spec.max);
+      if (spec.step) control.step = spec.step;
+    }
+    if (spec.width) control.style.width = spec.width;
+    controls.set(spec.id, control);
+    const label = field(spec.label, control);
+    if (spec.hint) label.append(h("small", { text: spec.hint }));
+    box.append(label);
+  }
+
+  const first = [...controls.values()][0];
+  return dialog(
+    title,
+    box,
+    () => {
+      const answer: Record<string, string> = {};
+      for (const [id, control] of controls) {
+        answer[id] = control instanceof HTMLInputElement && control.type === "checkbox" ? String(control.checked) : control.value;
+      }
+      return answer;
+    },
+    first,
+    okLabel,
+  );
+}
+
 function dialog<T>(
   title: string,
   content: HTMLElement,

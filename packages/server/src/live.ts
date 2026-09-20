@@ -1,4 +1,4 @@
-import type { AdminWorld, AdminWorldPlayer, MonsterKind } from "@zuna/shared";
+import type { AdminWorld, AdminWorldLive, AdminWorldPlayer, CatalogOverride, MonsterKind } from "@zuna/shared";
 
 // Ponte entre o painel de administração (API) e as salas do jogo rodando no mesmo processo:
 // o que o administrador muda no banco vale na hora para quem está online, e os comandos de
@@ -21,6 +21,12 @@ export interface LiveRoom {
   commandCharacter(characterId: number, command: LiveCommand): boolean;
   /** Liga ou desliga um evento do mundo. */
   runEvent(event: LiveEvent): LiveEventResult;
+  /** O painel salvou um mapa: monta o terreno de novo e avisa quem está jogando. */
+  reloadWorld(worldId: number, full?: boolean): Promise<void>;
+  /** O painel mexeu nos eventos: relê a lista. */
+  reloadEvents(): Promise<void>;
+  /** O painel mudou os preços: manda a tabela nova para quem está jogando. */
+  sendCatalog(overrides: CatalogOverride[]): void;
 }
 
 export interface LiveCharacterPatch {
@@ -45,12 +51,13 @@ export interface LiveAccountPatch {
 export type LiveCommand =
   | { kind: "whisper"; text: string }
   | { kind: "kick"; text: string }
-  | { kind: "teleport"; x: number; y: number }
+  | { kind: "teleport"; x: number; y: number; worldId?: number }
   | { kind: "heal" }
   | { kind: "summon"; monster: MonsterKind; count: number }
   | { kind: "mute"; minutes: number };
 
-export type LiveEvent = "xp" | "invasion" | "stop";
+/** Chave de um evento do painel, ou "stop" para encerrar o que estiver rodando. */
+export type LiveEvent = string;
 
 export type LiveEventResult = "ok" | "busy" | "none";
 
@@ -89,6 +96,7 @@ export function kickAccount(accountId: number, reason: string) {
 /** Junta o retrato de todas as salas num só. */
 export function liveWorld(): AdminWorld {
   const players: AdminWorldPlayer[] = [];
+  const worlds = new Map<number, AdminWorldLive>();
   let monsters = 0;
   let event = "";
   let eventEndsAt = 0;
@@ -97,6 +105,15 @@ export function liveWorld(): AdminWorld {
     const part = room.liveWorld();
     players.push(...part.players);
     monsters += part.monsters;
+    for (const world of part.worlds) {
+      const found = worlds.get(world.worldId);
+      if (!found) worlds.set(world.worldId, { ...world });
+      else {
+        found.players += world.players;
+        found.monsters += world.monsters;
+        found.loot += world.loot;
+      }
+    }
     if (part.event) {
       event = part.event;
       eventEndsAt = part.eventEndsAt;
@@ -104,7 +121,33 @@ export function liveWorld(): AdminWorld {
     xpMultiplier = Math.max(xpMultiplier, part.xpMultiplier);
   }
   players.sort((a, b) => b.level - a.level || a.name.localeCompare(b.name, "pt-BR"));
-  return { players, monsters, event, eventEndsAt, xpMultiplier, rooms: rooms.size, uptimeMs: Date.now() - startedAt };
+  return {
+    players,
+    monsters,
+    worlds: [...worlds.values()],
+    event,
+    eventEndsAt,
+    xpMultiplier,
+    rooms: rooms.size,
+    uptimeMs: Date.now() - startedAt,
+  };
+}
+
+/**
+ * Avisa todas as salas que um mundo mudou no painel. Só pintar o terreno não precisa
+ * repor monstros e tesouros: `full` faz isso quando os ninhos e os dados do mundo mudam.
+ */
+export async function reloadLiveWorld(worldId: number, full = true) {
+  await Promise.all([...rooms].map((room) => room.reloadWorld(worldId, full)));
+}
+
+export async function reloadLiveEvents() {
+  await Promise.all([...rooms].map((room) => room.reloadEvents()));
+}
+
+/** Preço novo chega na hora à loja de quem está jogando. */
+export function pushCatalog(overrides: CatalogOverride[]) {
+  for (const room of rooms) room.sendCatalog(overrides);
 }
 
 export function announceToWorld(text: string): number {

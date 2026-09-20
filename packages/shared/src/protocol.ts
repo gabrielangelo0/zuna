@@ -1,7 +1,8 @@
-import type { Appearance, ItemKind } from "./cosmetics.ts";
+import type { Appearance, CatalogOverride, ItemKind } from "./cosmetics.ts";
 import type { LootKind } from "./loot.ts";
 import type { MonsterKind } from "./monsters.ts";
 import type { SpellId } from "./spells.ts";
+import type { WorldBlueprint } from "./world.ts";
 
 // ---------------------------------------------------------------- API HTTP
 
@@ -40,6 +41,12 @@ export interface CreateCharacterResponse {
 
 export interface ApiErrorBody {
   message: string;
+}
+
+/** Mundos abertos e os preços em vigor: o cliente pede isso antes de entrar no jogo. */
+export interface WorldsResponse {
+  worlds: WorldBlueprint[];
+  catalog: CatalogOverride[];
 }
 
 // ---------------------------------------------------------------- cliente → servidor (sala)
@@ -210,6 +217,25 @@ export interface PurchaseEvent {
   message: string;
 }
 
+/** O jogador atravessou um portal (ou foi levado pelo painel) e trocou de mundo. */
+export interface TravelEvent {
+  world: string;
+  x: number;
+  y: number;
+  /** Nome do mundo, para o aviso na tela. */
+  name: string;
+}
+
+/** Um mundo foi editado no painel: o cliente redesenha o terreno na hora. */
+export interface WorldPatchEvent {
+  blueprint: WorldBlueprint;
+}
+
+/** Os preços da loja mudaram no painel: a vitrine de quem está jogando acompanha. */
+export interface CatalogEvent {
+  catalog: CatalogOverride[];
+}
+
 export const ServerMsg = {
   Hit: "hit",
   Xp: "xp",
@@ -222,4 +248,7 @@ export const ServerMsg = {
   Announce: "announce",
   Profile: "profile",
   Purchase: "purchase",
+  Travel: "travel",
+  WorldPatch: "worldPatch",
+  Catalog: "catalog",
 } as const;

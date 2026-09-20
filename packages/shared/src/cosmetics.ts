@@ -19,6 +19,18 @@ export interface CatalogItem {
   price: number;
   currency: Currency;
   bonus?: ItemBonus;
+  /** Fora da loja quando falso. Quem já tem continua com o item. */
+  enabled?: boolean;
+}
+
+/** O que o painel pode mudar num item do catálogo. Campo ausente = fica como veio de fábrica. */
+export interface CatalogOverride {
+  id: string;
+  name?: string;
+  description?: string;
+  price?: number;
+  currency?: Currency;
+  enabled?: boolean;
 }
 
 /** Sprite gerado pelo baker para cada item (packages/client/public/sprites/<id>). */
@@ -26,6 +38,7 @@ export function itemSpriteId(item: Pick<CatalogItem, "id" | "kind">): string {
   return `${item.kind}_${item.id}`;
 }
 
+/** Catálogo de fábrica. O que vale no jogo é `catalogList()`, que já traz as mudanças do painel. */
 export const CATALOG: readonly CatalogItem[] = [
   // Roupas: cada uma é um modelo; pele, cabelo e as 3 cores são escolhidos pelo jogador.
   { id: "aventureiro", kind: "outfit", name: "Aventureiro", description: "Capa, túnica e uma adaga fiel.", price: 0, currency: "gold" },
@@ -51,10 +64,42 @@ export const CATALOG: readonly CatalogItem[] = [
   { id: "dragao", kind: "mount", name: "Dragão Rubro", description: "A montaria mais rápida do reino.", price: 900, currency: "diamonds", bonus: { stepFactor: 0.6, xp: 0.05 } },
 ];
 
-const ITEMS_BY_ID = new Map(CATALOG.map((item) => [item.id, item]));
+let live: CatalogItem[] = CATALOG.map((item) => ({ ...item }));
+let liveById = new Map(live.map((item) => [item.id, item]));
+
+/**
+ * Aplica por cima do catálogo de fábrica o que o painel mudou (preço, moeda, nome, à venda ou não).
+ * Servidor e cliente chamam isto no arranque, com a mesma lista.
+ */
+export function applyCatalogOverrides(overrides: readonly CatalogOverride[]) {
+  const byId = new Map(overrides.map((entry) => [entry.id, entry]));
+  live = CATALOG.map((item) => {
+    const change = byId.get(item.id);
+    if (!change) return { ...item };
+    return {
+      ...item,
+      name: change.name || item.name,
+      description: change.description || item.description,
+      price: change.price ?? item.price,
+      currency: change.currency ?? item.currency,
+      enabled: change.enabled ?? true,
+    };
+  });
+  liveById = new Map(live.map((item) => [item.id, item]));
+}
+
+/** Catálogo em vigor, incluindo o que está fora da loja. */
+export function catalogList(): readonly CatalogItem[] {
+  return live;
+}
+
+/** Só o que está à venda agora. */
+export function shopItems(kind?: ItemKind): CatalogItem[] {
+  return live.filter((item) => item.enabled !== false && (kind === undefined || item.kind === kind));
+}
 
 export function catalogItem(id: string): CatalogItem | undefined {
-  return ITEMS_BY_ID.get(id);
+  return liveById.get(id);
 }
 
 export function ownsItem(item: CatalogItem, unlocks: ReadonlySet<string>): boolean {

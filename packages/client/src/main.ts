@@ -3,8 +3,8 @@ import "@fontsource/permanent-marker/400.css";
 import "@fontsource-variable/montserrat/wght.css";
 import Phaser from "phaser";
 import { Client, type Room } from "@colyseus/sdk";
-import { ROOM_NAME, type JoinOptions } from "@zuna/shared";
-import { wsEndpoint } from "./api.ts";
+import { ROOM_NAME, applyCatalogOverrides, type JoinOptions, type WorldsResponse } from "@zuna/shared";
+import { apiRequest, wsEndpoint } from "./api.ts";
 import { Menu } from "./menu.ts";
 import { WorldScene } from "./WorldScene.ts";
 
@@ -20,6 +20,16 @@ const game = new Phaser.Game({
 });
 
 if (import.meta.env.DEV) Object.assign(window, { game, scene });
+
+// Mapas dos mundos abertos e preços em vigor. Sem isso o jogo desenha o mundo original,
+// que é o mesmo que o servidor gera pela semente.
+try {
+  const response = await apiRequest<WorldsResponse>("/api/worlds");
+  scene.setWorlds(response.worlds);
+  applyCatalogOverrides(response.catalog);
+} catch {
+  // Servidor fora do ar: o menu já avisa quando o login falhar.
+}
 
 const menu = new Menu(async (token, characterId) => {
   // Os nomes e números do jogo são desenhados uma vez só: a fonte precisa estar pronta antes.

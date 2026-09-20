@@ -17,6 +17,7 @@ import {
   type RankingResponse,
 } from "@zuna/shared";
 import { adminRoutes } from "./adminApi.ts";
+import { adminWorldRoutes } from "./adminWorldApi.ts";
 import {
   accountFromToken,
   allowLoginAttempt,
@@ -27,6 +28,7 @@ import {
   hashPassword,
   verifyPasswordOrDummy,
 } from "./auth.ts";
+import { publicWorlds } from "./worldRepository.ts";
 import {
   createAccount,
   createCharacter,
@@ -139,7 +141,13 @@ const ranking = createEndpoint("/api/ranking", { method: "GET" }, async (ctx) =>
   return ctx.json(response);
 });
 
+/** Mundos abertos e preços em vigor: o cliente pede isto antes de entrar no jogo. */
+const worldsRoute = createEndpoint("/api/worlds", { method: "GET" }, async (ctx) => {
+  return ctx.json(await publicWorlds());
+});
+
 export const apiRouter = createRouter({
+  worldsRoute,
   register,
   login,
   logout,
@@ -147,4 +155,5 @@ export const apiRouter = createRouter({
   createMyCharacter,
   ranking,
   ...adminRoutes,
+  ...adminWorldRoutes,
 });

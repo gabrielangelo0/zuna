@@ -1,6 +1,8 @@
-import type { ItemKind } from "./cosmetics.ts";
+import type { CatalogItem, CatalogOverride, ItemKind } from "./cosmetics.ts";
+import type { EventDef } from "./events.ts";
 import type { MonsterKind } from "./monsters.ts";
 import type { RankingRow } from "./protocol.ts";
+import type { GroundItemDef, PortalDef, SpawnDef, WorldDef } from "./world.ts";
 
 // Tudo que o painel de administração troca com o servidor.
 
@@ -13,6 +15,8 @@ export const ADMIN_PAGE_SIZE = 40;
 export const ADMIN_MAX_SUMMON = 20;
 /** Silêncio máximo, em minutos. */
 export const ADMIN_MAX_MUTE_MIN = 120;
+/** Teto de preço de um item da loja. */
+export const ADMIN_MAX_PRICE = 1_000_000;
 
 // ---------------------------------------------------------------- lista de jogadores
 
@@ -145,6 +149,8 @@ export interface AdminAccountPatch {
 
 export interface AdminWorldPlayer {
   characterId: number;
+  /** Mundo onde o personagem está agora. */
+  world: string;
   accountId: number;
   name: string;
   username: string;
@@ -164,6 +170,8 @@ export interface AdminWorldPlayer {
 export interface AdminWorld {
   players: AdminWorldPlayer[];
   monsters: number;
+  /** Quanta gente e quantos monstros em cada mundo aberto. */
+  worlds: AdminWorldLive[];
   /** Evento em andamento ("" quando não há nenhum). */
   event: string;
   eventEndsAt: number;
@@ -176,19 +184,40 @@ export interface AdminWorldResponse {
   world: AdminWorld;
 }
 
+/** Retrato de um mundo em funcionamento. */
+export interface AdminWorldLive {
+  worldId: number;
+  slug: string;
+  name: string;
+  players: number;
+  monsters: number;
+  loot: number;
+}
+
 // ---------------------------------------------------------------- comandos do mestre
 
 export type AdminCommandKind =
-  "announce" | "event" | "stopEvent" | "whisper" | "kick" | "teleport" | "heal" | "summon" | "mute";
+  | "announce"
+  | "event"
+  | "stopEvent"
+  | "whisper"
+  | "kick"
+  | "teleport"
+  | "heal"
+  | "summon"
+  | "mute";
 
 export interface AdminCommandRequest {
   kind: AdminCommandKind;
   /** Texto do anúncio ou do recado. */
   text?: string;
   characterId?: number;
-  event?: "xp" | "invasion";
+  /** Chave do evento a começar (aba Eventos). */
+  event?: string;
   x?: number;
   y?: number;
+  /** Mundo do teleporte (0 = onde o jogador já está). */
+  worldId?: number;
   monster?: MonsterKind;
   count?: number;
   minutes?: number;
@@ -248,4 +277,126 @@ export interface AdminLogRow {
 
 export interface AdminLogResponse {
   entries: AdminLogRow[];
+}
+
+
+// ---------------------------------------------------------------- mundos e mapas
+
+/** Uma linha da lista de mundos do painel. */
+export interface AdminWorldRow {
+  world: WorldDef;
+  /** Tiles pintados à mão. */
+  painted: number;
+  portals: number;
+  spawns: number;
+  items: number;
+  /** Personagens que estão nesse mundo agora. */
+  online: number;
+  /** Personagens cujo ponto de volta é esse mundo. */
+  characters: number;
+}
+
+export interface AdminWorldsResponse {
+  worlds: AdminWorldRow[];
+}
+
+/** Tudo de um mundo, para abrir no editor. */
+export interface AdminMapResponse {
+  world: WorldDef;
+  /** Trincas [índice, chão, objeto] do que foi pintado. */
+  tiles: number[];
+  portals: PortalDef[];
+  spawns: SpawnDef[];
+  items: GroundItemDef[];
+}
+
+/** Mudanças nos dados do mundo. Campo ausente = não mexe. */
+export interface AdminWorldPatch {
+  worldId?: number;
+  name?: string;
+  style?: WorldDef["style"];
+  seed?: number;
+  width?: number;
+  height?: number;
+  spawnX?: number;
+  spawnY?: number;
+  townRadius?: number;
+  published?: boolean;
+  autoSpawns?: boolean;
+  isDefault?: boolean;
+}
+
+/** Um tile do pincel. `reset` devolve o tile ao que o gerador tinha feito. */
+export interface AdminTileEdit {
+  x: number;
+  y: number;
+  ground: number;
+  object: number;
+  reset?: boolean;
+}
+
+export interface AdminTilesRequest {
+  worldId: number;
+  tiles: AdminTileEdit[];
+}
+
+/** Portal, ninho ou tesouro: `id` 0 cria, `remove` apaga. */
+export interface AdminPlacementRequest {
+  worldId: number;
+  id?: number;
+  remove?: boolean;
+  x?: number;
+  y?: number;
+  /** Portal. */
+  toWorldId?: number;
+  toX?: number;
+  toY?: number;
+  name?: string;
+  minLevel?: number;
+  /** Ninho. */
+  monster?: MonsterKind;
+  amount?: number;
+  radius?: number;
+  respawnMs?: number;
+  /** Tesouro. */
+  loot?: string;
+  gold?: number;
+  diamonds?: number;
+}
+
+// ---------------------------------------------------------------- eventos
+
+export interface AdminEventsResponse {
+  events: EventDef[];
+  /** Evento em andamento agora, se houver. */
+  running: string;
+  runningEndsAt: number;
+}
+
+/** Salva um evento: `id` 0 cria. */
+export interface AdminEventRequest extends Partial<EventDef> {
+  remove?: boolean;
+}
+
+// ---------------------------------------------------------------- loja
+
+export interface AdminItemRow {
+  item: CatalogItem;
+  /** Valores de fábrica, para o painel mostrar o que mudou. */
+  base: CatalogItem;
+  /** Quantas contas já compraram. */
+  sold: number;
+  /** Quanto foi gasto nesse item. */
+  revenue: number;
+  /** Quantas contas têm o item liberado. */
+  owners: number;
+}
+
+export interface AdminItemsResponse {
+  items: AdminItemRow[];
+}
+
+export interface AdminItemRequest extends CatalogOverride {
+  /** Desfaz as mudanças e volta ao preço de fábrica. */
+  reset?: boolean;
 }

@@ -166,11 +166,29 @@ Cada sistema tem teto e é uma fonte de receita separada.
 |---|---|---|
 | **XP em Dobro** | 10 min (ou um fim de semana) com toda XP de monstro em dobro, anunciado para o servidor | ✅ No protótipo |
 | **Invasão** | Hordas atacam os arredores da cidade em ondas, com anúncios progressivos e um chefe no final | ✅ No protótipo (Invasão Orc) |
-| **Boss mundial** | Horários fixos; recompensa proporcional ao dano causado | Fase 3 |
+| **Loot em dobro / respawn rápido** | Variações do mesmo sistema de eventos | ✅ No painel (bônus de ouro e de XP por evento) |
+| **Boss mundial** | Horários fixos; recompensa proporcional ao dano causado | Falta só a recompensa por dano: as levas já invocam chefes |
 | **Sazonais** | Carnaval, Festa Junina, Halloween e Natal: monstros, missões e visuais temáticos, com pacotes na loja | Pós-lançamento |
-| **Loot em dobro / respawn rápido** | Variações do mesmo sistema de eventos | Pós-lançamento |
 
-No protótipo, um evento aleatório dispara a cada 20 min (`EVENT_INTERVAL_MIN`), e dá para iniciar pelo chat com `/evento xp` e `/evento invasao`.
+Os eventos são **dados, não código**: a aba Eventos do painel guarda nome, anúncios, duração, bônus de XP e de ouro, mundo, disparo automático e as levas de monstro (monstro, quantidade, atraso, raio e anúncio). `EVENT_INTERVAL_MIN=0` desliga os automáticos; `/evento <chave>` começa um na hora fora de produção.
+
+### 4.9 Mundos, mapas e portais
+
+O mundo deixou de ser um mapa só. O painel cria quantos mundos quiser, cada um com seu terreno
+(campina, caverna, ilha ou vazio para desenhar à mão), sua praça protegida, seus ninhos de monstro
+e seus tesouros no chão. **Portais** ligam os pontos, no mesmo mundo ou entre mundos, com nível mínimo.
+
+| Peça | Onde mora | Status |
+|---|---|---|
+| Terreno gerado pela semente | `packages/shared/src/map.ts` | ✅ Quatro estilos |
+| Pintura à mão por cima | tabela `world_tiles`, editor do painel | ✅ Ao vivo, sem ninguém sair do jogo |
+| Portais | tabela `portals` | ✅ Entre mundos, com nível mínimo |
+| Ninhos de monstro | tabela `world_spawns` | ✅ Quantidade viva, raio e tempo de volta |
+| Tesouros no chão | tabela `world_items` | ✅ Voltam sozinhos |
+| Masmorras com instância por grupo | — | Fase 3 |
+
+Isto é o que destrava o conteúdo sem fim da seção 4.5: mapas novos, zonas de nível alto e eventos
+sazonais passam a ser trabalho de painel, não de código.
 
 ---
 

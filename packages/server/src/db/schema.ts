@@ -76,6 +76,8 @@ export const characters = pgTable(
     pet: text("pet").notNull().default(""),
     mount: text("mount").notNull().default(""),
     mounted: boolean("mounted").notNull().default(false),
+    /** Mundo onde o personagem estava ao sair (0 = o mundo padrão). */
+    worldId: integer("world_id").notNull().default(0),
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
@@ -139,3 +141,134 @@ export const purchases = pgTable(
   },
   (table) => [index("purchases_account_idx").on(table.accountId)],
 );
+
+// ---------------------------------------------------------------- mundos
+// As tabelas de mundo guardam só o que foi feito à mão no painel: o terreno em si
+// continua sendo gerado pela semente, igual no servidor e no cliente.
+// Os campos `world_id` são números simples (sem chave estrangeira): apagar um mundo
+// limpa as linhas pelo repositório, e quem sobrar aponta para o mundo padrão.
+
+export const worlds = pgTable("worlds", {
+  id: serial("id").primaryKey(),
+  /** Chave curta, sem acento. */
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  /** Gerador do terreno: campina, caverna, ilha ou vazio. */
+  style: text("style").notNull().default("campina"),
+  seed: integer("seed").notNull(),
+  width: smallint("width").notNull(),
+  height: smallint("height").notNull(),
+  spawnX: smallint("spawn_x").notNull(),
+  spawnY: smallint("spawn_y").notNull(),
+  townRadius: smallint("town_radius").notNull().default(6),
+  /** Fechado: ninguém entra e os portais para ele ficam trancados. */
+  published: boolean("published").notNull().default(true),
+  /** Espalha ninhos de monstro sozinho pelo terreno. */
+  autoSpawns: boolean("auto_spawns").notNull().default(false),
+  /** Onde os personagens novos nascem. Só um mundo é o padrão. */
+  isDefault: boolean("is_default").notNull().default(false),
+  createdAt: createdAt(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Tiles pintados à mão, por cima do terreno gerado. */
+export const worldTiles = pgTable(
+  "world_tiles",
+  {
+    worldId: integer("world_id").notNull(),
+    x: smallint("x").notNull(),
+    y: smallint("y").notNull(),
+    ground: smallint("ground").notNull(),
+    object: smallint("object").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.worldId, table.x, table.y] })],
+);
+
+/** Portais: ligam um ponto a outro, no mesmo mundo ou em outro. */
+export const portals = pgTable(
+  "portals",
+  {
+    id: serial("id").primaryKey(),
+    worldId: integer("world_id").notNull(),
+    x: smallint("x").notNull(),
+    y: smallint("y").notNull(),
+    toWorldId: integer("to_world_id").notNull(),
+    toX: smallint("to_x").notNull(),
+    toY: smallint("to_y").notNull(),
+    name: text("name").notNull().default(""),
+    /** Nível mínimo para atravessar (0 = livre). */
+    minLevel: smallint("min_level").notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (table) => [index("portals_world_idx").on(table.worldId)],
+);
+
+/** Ninhos de monstro colocados no editor. */
+export const worldSpawns = pgTable(
+  "world_spawns",
+  {
+    id: serial("id").primaryKey(),
+    worldId: integer("world_id").notNull(),
+    x: smallint("x").notNull(),
+    y: smallint("y").notNull(),
+    monster: text("monster").notNull(),
+    /** Quantos ficam vivos ao mesmo tempo. */
+    amount: smallint("amount").notNull().default(1),
+    radius: smallint("radius").notNull().default(3),
+    /** 0 usa o tempo padrão do monstro. */
+    respawnMs: integer("respawn_ms").notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (table) => [index("world_spawns_world_idx").on(table.worldId)],
+);
+
+/** Tesouros fixos no chão, que voltam sozinhos depois de alguém pegar. */
+export const worldItems = pgTable(
+  "world_items",
+  {
+    id: serial("id").primaryKey(),
+    worldId: integer("world_id").notNull(),
+    x: smallint("x").notNull(),
+    y: smallint("y").notNull(),
+    loot: text("loot").notNull(),
+    gold: integer("gold").notNull().default(0),
+    diamonds: smallint("diamonds").notNull().default(0),
+    respawnMs: integer("respawn_ms").notNull().default(300000),
+    createdAt: createdAt(),
+  },
+  (table) => [index("world_items_world_idx").on(table.worldId)],
+);
+
+/** Eventos montados no painel. */
+export const gameEvents = pgTable("game_events", {
+  id: serial("id").primaryKey(),
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  startText: text("start_text").notNull().default(""),
+  endText: text("end_text").notNull().default(""),
+  winText: text("win_text").notNull().default(""),
+  minutes: smallint("minutes").notNull().default(10),
+  xpMultiplier: doublePrecision("xp_multiplier").notNull().default(1),
+  goldMultiplier: doublePrecision("gold_multiplier").notNull().default(1),
+  /** 0 = em todos os mundos. */
+  worldId: integer("world_id").notNull().default(0),
+  /** Dispara sozinho a cada tantos minutos (0 = só no comando). */
+  autoMinutes: smallint("auto_minutes").notNull().default(0),
+  enabled: boolean("enabled").notNull().default(true),
+  endsWithWaves: boolean("ends_with_waves").notNull().default(false),
+  /** Levas de monstros, em JSON. */
+  waves: text("waves").notNull().default("[]"),
+  createdAt: createdAt(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** O que o painel mudou nos itens da loja. Sem linha, vale o preço de fábrica. */
+export const itemOverrides = pgTable("item_overrides", {
+  itemId: text("item_id").primaryKey(),
+  name: text("name").notNull().default(""),
+  description: text("description").notNull().default(""),
+  price: integer("price"),
+  currency: text("currency"),
+  enabled: boolean("enabled").notNull().default(true),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});

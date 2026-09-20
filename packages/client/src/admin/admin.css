@@ -981,6 +981,196 @@ td .actions {
 
 /* ---------------------------------------------------------------- telas menores */
 
+/* ---------------------------------------------------------------- editor de mapa */
+
+.map-editor {
+  display: grid;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (min-width: 1180px) {
+  .map-editor {
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
+}
+
+.map-editor > .frame {
+  margin-bottom: 0;
+  min-width: 0;
+}
+
+.map-side {
+  display: grid;
+  gap: 12px;
+}
+
+.map-where {
+  padding: 4px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(4, 12, 18, 0.5);
+  color: var(--gold-bright);
+  font: 700 11.5px/1.5 var(--font-body);
+  font-variant-numeric: tabular-nums;
+}
+
+.map-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+button.tool.active {
+  border-color: var(--gold);
+  background: linear-gradient(rgba(102, 74, 24, 0.95), rgba(58, 42, 14, 0.95));
+  color: var(--gold-bright);
+}
+
+.map-palette {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0;
+  min-height: 30px;
+}
+
+.map-palette .note {
+  margin: 0;
+}
+
+.swatch {
+  padding: 4px 10px 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(4, 12, 18, 0.6);
+  color: var(--text);
+  font: 700 11px/1.3 var(--font-body);
+}
+
+.swatch::before {
+  content: "";
+  width: 14px;
+  height: 14px;
+  border: 1px solid rgba(0, 0, 0, 0.5);
+  border-radius: 4px;
+  background: var(--swatch);
+}
+
+.swatch.active {
+  border-color: var(--emerald);
+  color: var(--emerald-bright);
+}
+
+.brush-picker {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* A área do mapa rola sozinha: o desenho pode ser bem maior que a tela. */
+.map-stage {
+  max-height: 62vh;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #050c12;
+  padding: 8px;
+}
+
+.map-canvas {
+  display: block;
+  image-rendering: pixelated;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.mini-grid {
+  display: grid;
+  gap: 4px;
+}
+
+.mini-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  border-bottom: 1px dashed var(--line-soft);
+  font-size: 12px;
+}
+
+.mini-line:last-child {
+  border-bottom: 0;
+}
+
+.mini-line span {
+  color: var(--muted);
+}
+
+.mini-line b {
+  margin-left: auto;
+  color: var(--gold-bright);
+  font-variant-numeric: tabular-nums;
+}
+
+.place-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--line-soft);
+}
+
+.place-line:last-child {
+  border-bottom: 0;
+}
+
+.place-line > div:first-child {
+  display: grid;
+  min-width: 0;
+}
+
+.place-line strong {
+  font-size: 12.5px;
+}
+
+.place-line small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.place-line .actions {
+  margin-left: auto;
+  flex-wrap: nowrap;
+}
+
+/* Caixinha de formulário: dois campos por linha quando cabe. */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.form-grid label.field small {
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.form-grid input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--emerald);
+}
+
 @media (max-width: 900px) {
   .shell {
     display: block;
@@ -1014,6 +1204,10 @@ td .actions {
 
   .side-art {
     display: none;
+  }
+
+  .map-stage {
+    max-height: 52vh;
   }
 
   .banner {

@@ -5,6 +5,7 @@ import { schema, t, type SchemaType } from "@colyseus/schema";
 export const PlayerState = schema(
   {
     name: t.string(),
+    world: t.string(),
     x: t.int16(),
     y: t.int16(),
     dir: t.uint8(),
@@ -34,6 +35,7 @@ export type PlayerState = SchemaType<typeof PlayerState>;
 export const MonsterState = schema(
   {
     kind: t.string(),
+    world: t.string(),
     x: t.int16(),
     y: t.int16(),
     dir: t.uint8(),
@@ -48,6 +50,7 @@ export type MonsterState = SchemaType<typeof MonsterState>;
 export const LootState = schema(
   {
     kind: t.string(),
+    world: t.string(),
     x: t.int16(),
     y: t.int16(),
     gold: t.uint32(),

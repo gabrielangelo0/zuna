@@ -6,6 +6,8 @@ import type { MonsterKind } from "./monsters.ts";
 
 export interface PlayerData {
   name: string;
+  /** Mundo onde o personagem está (chave do mundo). */
+  world: string;
   x: number;
   y: number;
   dir: number;
@@ -34,6 +36,7 @@ export interface PlayerData {
 
 export interface MonsterData {
   kind: MonsterKind;
+  world: string;
   x: number;
   y: number;
   dir: number;
@@ -45,6 +48,7 @@ export interface MonsterData {
 /** Um drop no chão, esperando alguém passar por cima. */
 export interface LootData {
   kind: LootKind;
+  world: string;
   x: number;
   y: number;
   gold: number;

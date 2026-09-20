@@ -7,10 +7,9 @@ import {
   ADMIN_MAX_SUMMON,
   ADMIN_PAGE_SIZE,
   ADMIN_SORTS,
-  MAP_H,
-  MAP_W,
   MONSTERS,
   RANKING_SIZE,
+  WORLD_MAX_SIZE,
   catalogItem,
   normalizeCharacterName,
   validateCharacterName,
@@ -58,29 +57,31 @@ import { topCharacters } from "./repository.ts";
 
 const FORBIDDEN = "Acesso restrito ao painel.";
 
-interface Admin {
+export interface Admin {
   id: number;
   username: string;
 }
 
+export const ADMIN_FORBIDDEN = FORBIDDEN;
+
 /** Sessão válida de uma conta marcada como administradora, ou null. */
-async function adminFrom(authorization: string | null | undefined): Promise<Admin | null> {
+export async function adminFrom(authorization: string | null | undefined): Promise<Admin | null> {
   const account = await accountFromToken(bearerToken(authorization));
   if (!account) return null;
   return (await isAdminAccount(account.id)) ? { id: account.id, username: account.username } : null;
 }
 
-function readBody(body: unknown): Record<string, unknown> {
+export function readBody(body: unknown): Record<string, unknown> {
   return body && typeof body === "object" ? (body as Record<string, unknown>) : {};
 }
 
-function clamp(value: unknown, min: number, max: number): number | undefined {
+export function clamp(value: unknown, min: number, max: number): number | undefined {
   const number = Number(value);
   if (!Number.isFinite(number)) return undefined;
   return Math.min(max, Math.max(min, Math.round(number)));
 }
 
-function text(value: unknown, max: number): string {
+export function text(value: unknown, max: number): string {
   return String(value ?? "")
     .replace(/\p{Cc}/gu, "")
     .trim()
@@ -151,8 +152,8 @@ const adminCharacter = createEndpoint("/api/admin/character", { method: "POST" }
   if (body.xp !== undefined) patch.xp = clamp(body.xp, 0, Number.MAX_SAFE_INTEGER);
   if (body.gold !== undefined) patch.gold = clamp(body.gold, 0, ADMIN_MAX_GOLD);
   if (body.kills !== undefined) patch.kills = clamp(body.kills, 0, 100_000_000);
-  if (body.x !== undefined) patch.x = clamp(body.x, 0, MAP_W - 1);
-  if (body.y !== undefined) patch.y = clamp(body.y, 0, MAP_H - 1);
+  if (body.x !== undefined) patch.x = clamp(body.x, 0, WORLD_MAX_SIZE - 1);
+  if (body.y !== undefined) patch.y = clamp(body.y, 0, WORLD_MAX_SIZE - 1);
   for (const field of ["outfit", "pet", "mount"] as const) {
     if (body[field] === undefined) continue;
     const id = String(body[field]);
@@ -263,14 +264,13 @@ const adminCommand = createEndpoint("/api/admin/command", { method: "POST" }, as
       return ctx.json({ message: "Anúncio enviado a todo mundo." } satisfies AdminCommandResponse);
     }
     case "event": {
-      const event = body.event === "invasion" ? "invasion" : "xp";
+      const event = text(body.event, 40);
+      if (!event) throw ctx.error("BAD_REQUEST", { message: "Escolha um evento." });
       const result = runWorldEvent(event);
       if (result === "busy") throw ctx.error("BAD_REQUEST", { message: "Já existe um evento em andamento." });
-      if (result === "none") throw ctx.error("BAD_REQUEST", { message: "O mundo ainda não está de pé." });
+      if (result === "none") throw ctx.error("BAD_REQUEST", { message: "Esse evento não está disponível agora." });
       await logAdminAction({ accountId: admin.id, action: "evento", detail: { event } });
-      return ctx.json({
-        message: event === "xp" ? "XP em Dobro começou." : "A invasão começou.",
-      } satisfies AdminCommandResponse);
+      return ctx.json({ message: "O evento começou." } satisfies AdminCommandResponse);
     }
     case "stopEvent": {
       const result = runWorldEvent("stop");
@@ -288,10 +288,11 @@ const adminCommand = createEndpoint("/api/admin/command", { method: "POST" }, as
       return ctx.json(await toCharacter({ kind: "kick", text: reason }, "Jogador desconectado."));
     }
     case "teleport": {
-      const x = clamp(body.x, 0, MAP_W - 1);
-      const y = clamp(body.y, 0, MAP_H - 1);
+      const x = clamp(body.x, 0, WORLD_MAX_SIZE - 1);
+      const y = clamp(body.y, 0, WORLD_MAX_SIZE - 1);
+      const worldId = clamp(body.worldId ?? 0, 0, 2_000_000_000) ?? 0;
       if (x === undefined || y === undefined) throw ctx.error("BAD_REQUEST", { message: "Destino inválido." });
-      return ctx.json(await toCharacter({ kind: "teleport", x, y }, `Jogador movido para ${x}, ${y}.`));
+      return ctx.json(await toCharacter({ kind: "teleport", x, y, worldId }, `Jogador movido para ${x}, ${y}.`));
     }
     case "heal":
       return ctx.json(await toCharacter({ kind: "heal" }, "Vida e mana restauradas."));

@@ -1,10 +1,11 @@
 import {
-  CATALOG,
+  DEFAULT_APPEARANCE,
   HAIR_COLORS,
   OUTFIT_COLORS,
   SKIN_TONES,
   normalizeCharacterName,
   normalizeUsername,
+  shopItems,
   validateCharacterName,
   validatePassword,
   validateUsername,
@@ -23,7 +24,8 @@ import { paintMenuRanking } from "./ranking.ts";
 type Screen = "auth" | "characters" | "creator";
 type AuthMode = "login" | "register";
 
-const FREE_OUTFITS = CATALOG.filter((item) => item.kind === "outfit" && item.price === 0).map((item) => item.id);
+/** Roupas que qualquer um pode escolher ao criar o personagem (lidas na hora: o painel muda preços). */
+const freeOutfits = () => shopItems("outfit").filter((item) => item.price === 0).map((item) => item.id);
 
 const randomIndex = (length: number) => Math.floor(Math.random() * length);
 
@@ -31,7 +33,10 @@ function randomAppearance(): Appearance {
   return {
     skin: randomIndex(SKIN_TONES.length),
     hairColor: randomIndex(HAIR_COLORS.length),
-    outfit: FREE_OUTFITS[randomIndex(FREE_OUTFITS.length)],
+    outfit: (() => {
+      const free = freeOutfits();
+      return free[randomIndex(free.length)] ?? DEFAULT_APPEARANCE.outfit;
+    })(),
     primary: randomIndex(OUTFIT_COLORS.length),
     secondary: randomIndex(OUTFIT_COLORS.length),
     detail: randomIndex(OUTFIT_COLORS.length),
@@ -67,7 +72,7 @@ export class Menu {
   constructor(onPlay: (token: string, characterId: number) => Promise<void>) {
     this.onPlay = onPlay;
     this.editor = new AppearanceEditor(element("#creator-editor"), randomAppearance(), {
-      outfits: FREE_OUTFITS,
+      outfits: freeOutfits(),
       onChange: () => this.paintCreator(),
     });
 

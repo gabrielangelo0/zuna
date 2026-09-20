@@ -1,13 +1,13 @@
 import {
-  TEMPLE_X,
-  TEMPLE_Y,
+  MAP_W,
   chebyshev,
-  inTown,
+  inSafeZone,
   isWalkable,
   mulberry32,
   type GameMap,
   type MonsterKind,
   type Point,
+  type WorldDef,
 } from "@zuna/shared";
 
 export interface SpawnPoint extends Point {
@@ -24,7 +24,7 @@ interface Zone {
   quadrant?: Quadrant;
 }
 
-/** Quanto mais longe da cidade, mais perigoso. */
+/** Quanto mais longe da cidade, mais perigoso. As distâncias são do mapa original (96 tiles). */
 const ZONES: Zone[] = [
   { kind: "rat", count: 26, minDist: 9, maxDist: 20 },
   { kind: "snake", count: 16, minDist: 16, maxDist: 32, quadrant: "west" },
@@ -42,10 +42,10 @@ function quadrantOf(dx: number, dy: number): Quadrant {
   return "west";
 }
 
-/** Tiles alcançáveis a pé a partir do templo, para não nascer monstro preso numa ilha. */
-function reachableTiles(map: GameMap): Uint8Array {
+/** Tiles alcançáveis a pé a partir da praça, para não nascer monstro preso numa ilha. */
+function reachableTiles(map: GameMap, from: Point): Uint8Array {
   const seen = new Uint8Array(map.width * map.height);
-  const start = TEMPLE_Y * map.width + TEMPLE_X;
+  const start = from.y * map.width + from.x;
   const queue = [start];
   seen[start] = 1;
   for (let head = 0; head < queue.length; head++) {
@@ -65,27 +65,34 @@ function reachableTiles(map: GameMap): Uint8Array {
   return seen;
 }
 
-export function generateSpawns(map: GameMap, seed: number): SpawnPoint[] {
-  const rng = mulberry32(seed);
-  const reachable = reachableTiles(map);
+/** Ninhos espalhados sozinhos pelo terreno, para os mundos marcados como automáticos. */
+export function generateSpawns(world: WorldDef, map: GameMap): SpawnPoint[] {
+  const rng = mulberry32(world.seed + 1);
+  const center = { x: world.spawnX, y: world.spawnY };
+  const reachable = reachableTiles(map, center);
   const spawns: SpawnPoint[] = [];
+  // Mapas menores que o original recebem menos monstros, e mais perto da cidade.
+  const scale = Math.min(map.width, map.height) / MAP_W;
 
   for (const zone of ZONES) {
+    const minDist = Math.max(world.townRadius + 2, zone.minDist * scale);
+    const maxDist = Math.max(minDist + 3, zone.maxDist * scale);
+    const wanted = Math.max(1, Math.round(zone.count * scale));
     const candidates: Point[] = [];
     for (let y = 0; y < map.height; y++) {
       for (let x = 0; x < map.width; x++) {
-        if (!reachable[y * map.width + x] || inTown(x, y)) continue;
-        const dx = x - TEMPLE_X;
-        const dy = y - TEMPLE_Y;
+        if (!reachable[y * map.width + x] || inSafeZone(world, x, y)) continue;
+        const dx = x - center.x;
+        const dy = y - center.y;
         const dist = Math.hypot(dx, dy);
-        if (dist < zone.minDist || dist > zone.maxDist) continue;
+        if (dist < minDist || dist > maxDist) continue;
         if (zone.quadrant && quadrantOf(dx, dy) !== zone.quadrant) continue;
         candidates.push({ x, y });
       }
     }
 
     let placed = 0;
-    for (let attempt = 0; placed < zone.count && attempt < zone.count * 40 && candidates.length > 0; attempt++) {
+    for (let attempt = 0; placed < wanted && attempt < wanted * 40 && candidates.length > 0; attempt++) {
       const candidate = candidates[Math.floor(rng() * candidates.length)];
       if (spawns.some((s) => chebyshev(s.x, s.y, candidate.x, candidate.y) < 3)) continue;
       spawns.push({ kind: zone.kind, x: candidate.x, y: candidate.y });

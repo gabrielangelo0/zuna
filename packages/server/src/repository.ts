@@ -129,6 +129,8 @@ export interface CharacterSnapshot {
   gold: number;
   x: number;
   y: number;
+  /** Mundo onde o personagem estava (0 = o mundo padrão). */
+  worldId: number;
   appearance: Appearance;
   pet: string;
   mount: string;
@@ -149,6 +151,7 @@ export async function saveCharacter(snapshot: CharacterSnapshot) {
       shortcuts: snapshot.shortcuts.join(","),
       x: snapshot.x,
       y: snapshot.y,
+      worldId: snapshot.worldId,
       skin: appearance.skin,
       hairColor: appearance.hairColor,
       outfit: appearance.outfit,

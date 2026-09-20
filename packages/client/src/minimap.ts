@@ -1,26 +1,8 @@
-import { Ground, Obj, TEMPLE_X, TEMPLE_Y, TOWN_RADIUS, type GameMap } from "@zuna/shared";
+import { Obj, groundColor, objectColor, type GameMap, type WorldDef } from "@zuna/shared";
 import { rgba } from "./canvas.ts";
 
 // Minimapa no canto: o mapa inteiro é desenhado uma vez num canvas de 1 px por tile
 // e depois aparece com a mesma inclinação do jogo (x − y na horizontal, x + y na vertical).
-
-const GROUND_COLOR: Record<number, string> = {
-  [Ground.Grass]: "#39662f",
-  [Ground.GrassDark]: "#2d5527",
-  [Ground.Dirt]: "#6b5334",
-  [Ground.Sand]: "#b3a06a",
-  [Ground.Water]: "#1f4b7a",
-  [Ground.Stone]: "#5c6270",
-};
-
-const OBJECT_COLOR: Record<number, string> = {
-  [Obj.Tree]: "#1f4a24",
-  [Obj.Pine]: "#1b4030",
-  [Obj.Rock]: "#4a4f5c",
-  [Obj.Bush]: "#2c5a2c",
-  [Obj.Pillar]: "#8a5a3c",
-  [Obj.Flowers]: "#4d7a3a",
-};
 
 export interface Blip {
   x: number;
@@ -37,15 +19,25 @@ export class Minimap {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly world: HTMLCanvasElement;
-  private readonly map: GameMap;
+  private map: GameMap;
+  /** Praça do mundo atual, para o anel da cidade. */
+  private town: Pick<WorldDef, "spawnX" | "spawnY" | "townRadius"> | null = null;
   private scale = 3;
-  private center = { x: TEMPLE_X, y: TEMPLE_Y };
+  private center = { x: 0, y: 0 };
 
   constructor(canvas: HTMLCanvasElement, map: GameMap) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d")!;
     this.map = map;
     this.world = document.createElement("canvas");
+    this.center = { x: Math.floor(map.width / 2), y: Math.floor(map.height / 2) };
+    this.setMap(map);
+  }
+
+  /** Mundo novo (ou mapa editado no painel): repinta tudo. */
+  setMap(map: GameMap, town?: Pick<WorldDef, "spawnX" | "spawnY" | "townRadius">) {
+    this.map = map;
+    if (town) this.town = town;
     this.world.width = map.width;
     this.world.height = map.height;
     this.paintWorld();
@@ -58,7 +50,7 @@ export class Minimap {
     const image = ctx.createImageData(width, height);
     for (let i = 0; i < width * height; i++) {
       const object = objects[i];
-      const color = (object !== Obj.None ? OBJECT_COLOR[object] : undefined) ?? GROUND_COLOR[ground[i]] ?? "#000000";
+      const color = object !== Obj.None ? objectColor(object) : groundColor(ground[i]);
       image.data[i * 4] = parseInt(color.slice(1, 3), 16);
       image.data[i * 4 + 1] = parseInt(color.slice(3, 5), 16);
       image.data[i * 4 + 2] = parseInt(color.slice(5, 7), 16);
@@ -114,15 +106,17 @@ export class Minimap {
     ctx.drawImage(this.world, 0, 0);
     ctx.restore();
 
-    // Cidade: um anel claro em volta do templo.
-    const temple = this.project(TEMPLE_X, TEMPLE_Y, width, height);
-    ctx.save();
-    ctx.strokeStyle = "rgba(255, 235, 170, 0.45)";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.ellipse(temple.x, temple.y, TOWN_RADIUS * s * 1.6, TOWN_RADIUS * s * 0.8, 0, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
+    // Cidade: um anel claro em volta da praça.
+    if (this.town) {
+      const temple = this.project(this.town.spawnX, this.town.spawnY, width, height);
+      ctx.save();
+      ctx.strokeStyle = "rgba(255, 235, 170, 0.45)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(temple.x, temple.y, this.town.townRadius * s * 1.6, this.town.townRadius * s * 0.8, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
 
     for (const blip of blips) {
       const point = this.project(blip.x, blip.y, width, height);

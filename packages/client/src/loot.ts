@@ -69,6 +69,16 @@ export class LootLayer {
     this.scene.tweens.add({ targets: sprite, scale: 1, duration: 260, ease: "Back.easeOut" });
   }
 
+  /** Tira tudo da tela de uma vez (troca de mundo). */
+  clear() {
+    for (const [id, piece] of this.pieces) {
+      this.cancelled.add(id);
+      piece.glow?.destroy();
+      piece.sprite.destroy();
+    }
+    this.pieces.clear();
+  }
+
   remove(id: string) {
     this.cancelled.add(id);
     const piece = this.pieces.get(id);

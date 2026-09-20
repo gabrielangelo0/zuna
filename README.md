@@ -52,6 +52,14 @@ Abra http://localhost:5173, crie uma conta e um personagem. Para ver o multiplay
 - O drop cai no chão, no tile da morte, e é coletado ao passar por cima. Nos primeiros 20 s só quem derrubou o monstro pega; depois libera para todos. O que ninguém pegar some em 90 s.
 - O ranking tem três listas (nível, ouro e caçadas), servidas por `GET /api/ranking?board=level|gold|kills` com cache de 30 s. Aparecem na tecla `R` dentro do jogo e ao lado do menu de login.
 
+## Mundos e portais
+
+- O jogo tem vários mundos ao mesmo tempo. Todos rodam na mesma sala do Colyseus: quem está em outro mundo não aparece na sua tela, mas o chat e os anúncios chegam a todo mundo.
+- Cada mundo tem seu terreno (gerado por uma semente), sua praça protegida, seus ninhos de monstro e seus tesouros no chão.
+- **Portais** ligam um ponto a outro, no mesmo mundo ou entre mundos. Basta pisar em cima; um portal pode pedir nível mínimo.
+- O personagem volta para o mundo onde estava ao sair, e renasce na praça do mundo em que morreu.
+- Tudo isso é criado e editado no painel, sem tocar em código. Veja [Mapas, portais e eventos](#mapas-portais-e-eventos).
+
 ## Contas, personagens e loja
 
 - Conta com usuário e senha. A senha é guardada com scrypt; a sessão é um token de 30 dias, salvo no banco só como hash.
@@ -70,7 +78,7 @@ Abra http://localhost:5173, crie uma conta e um personagem. Para ver o multiplay
 | `DATABASE_URL` | — | Postgres de produção. Sem ela, usa o PGlite local |
 | `PGLITE_DIR` | `packages/server/.data/pglite` | Pasta do banco local |
 | `XP_RATE` | `1` | Multiplicador global de XP |
-| `EVENT_INTERVAL_MIN` | `20` | Minutos entre eventos automáticos (`0` desliga) |
+| `EVENT_INTERVAL_MIN` | `20` | `0` desliga os eventos automáticos (o intervalo de cada evento é definido no painel) |
 | `DEV_COMMANDS` | ligado fora de produção | `0` desliga e `1` liga os comandos de teste |
 | `ADMIN_USERS` | — | Contas que ganham acesso ao painel ao subir o servidor (separadas por vírgula) |
 
@@ -103,20 +111,37 @@ A interface do jogo começa fechada para sobrar tela: no alto à esquerda fica s
 
 ## Painel de administração
 
-Fica em `/admin` (a mesma URL do jogo), com login pela conta do jogo. A tela tem barra lateral, faixa ilustrada no topo e quatro telas:
+Fica em `/admin` (a mesma URL do jogo), com login pela conta do jogo. A tela tem barra lateral, faixa ilustrada no topo e sete telas:
 
 - **Visão geral** — contas, personagens, gente online, maior nível, ouro e diamantes do mundo, caçadas e compras; gráfico de cadastros dos últimos 14 dias; estado do servidor (evento em andamento, monstros vivos, salas, tempo no ar); os maiores heróis e as últimas ações do painel.
 - **Jogadores** — busca por conta ou personagem, ordenação (nível, ouro, caçadas, contas novas, nome) e páginas de 40. Dá para editar nível, XP, ouro, diamantes, caçadas e classe direto na linha, tornar a conta administradora ou bloqueá-la, e abrir a **ficha completa**: senha nova, motivo do bloqueio, itens liberados (dar e tirar), compras, histórico da conta e, para cada personagem, nome, posição, mascote, montaria, vida, mana e os comandos de mestre — curar, levar ao templo, mandar recado, expulsar, silenciar, invocar monstros e apagar o personagem.
-- **Mundo** — começa ou encerra os eventos (XP em Dobro e Invasão Orc), manda anúncio para todo o servidor e lista quem está jogando agora, com vida, mana, posição e as ações rápidas de mestre. Atualiza sozinho a cada 6 segundos.
+- **Mundo ao vivo** — começa ou encerra qualquer evento, manda anúncio para todo o servidor e lista quem está jogando agora, em que mundo, com vida, mana, posição e as ações rápidas de mestre (recado, curar, praça, levar para outro mundo, silenciar, expulsar). Atualiza sozinho a cada 6 segundos.
+- **Mapas** — cria, copia e apaga mundos, e abre o editor de mapa. Veja abaixo.
+- **Eventos** — monta os eventos do jogo: nome, anúncios, duração, bônus de XP e de ouro, mundo, disparo automático e as levas de monstros. Dá para começar um na hora.
+- **Loja** — preço, moeda e o que está à venda, com quanto cada item já vendeu, quanto arrecadou e quantas contas o têm. O preço novo vale na hora, até para quem está com a loja aberta no jogo.
 - **Histórico** — tudo que os administradores fizeram, com filtro por administrador, alvo ou ação.
+
+### Mapas, portais e eventos
+
+A aba **Mapas** lista os mundos e abre o editor. No editor, o mapa aparece de cima, um quadrado por tile:
+
+- **Pintar chão** e **pôr cenário** com pincel de 1, 3, 5 ou 7 tiles; **preencher área** troca a mancha inteira de uma vez; **apagar pintura** devolve o tile ao terreno que o gerador desenhou. O que foi pintado à mão fica com um contorno dourado.
+- **Portal** — clique num lugar para criar: nome, mundo de destino, onde chega e nível mínimo.
+- **Ninho de monstro** — que monstro, quantos ficam vivos ao mesmo tempo, o raio em que nascem e em quanto tempo voltam.
+- **Tesouro no chão** — moedas, baú ou cristal, com ouro, diamantes e o tempo para voltar depois de alguém pegar.
+- **Centro do mundo** — onde os jogadores nascem e voltam à vida; em volta dele fica a praça protegida.
+- O painel lateral mostra os dados do mundo (nome, terreno, semente, tamanho, raio da praça) e as listas de portais, ninhos e tesouros, com botões para mostrar no mapa, mudar e apagar.
+- Cada traço do pincel é salvo na hora e chega a quem está jogando **sem ninguém precisar sair** — o terreno é redesenhado ao vivo. `Desfazer` volta o último traço.
+- Um mundo novo escolhe o terreno (campina, caverna, ilha ou vazio), o tamanho (32 a 160 tiles) e se espalha monstros sozinho. Mundo **fechado** some do jogo e trava os portais que levam a ele; o mundo **principal** é onde os personagens novos nascem e não pode ser fechado nem apagado.
 
 Como funciona por dentro:
 
 - O acesso é por conta: `ADMIN_USERS=meu_usuario` marca a conta como administradora quando o servidor sobe. Depois disso, um administrador pode promover outros pelo painel. Ninguém consegue tirar o próprio acesso nem se bloquear.
+- Mapas, portais, ninhos, tesouros, eventos e preços ficam no banco, não no código. O terreno em si continua sendo gerado pela semente nos dois lados: só o que foi pintado à mão trafega pela rede.
 - Quem está jogando recebe as mudanças na hora, sem precisar sair: o painel avisa a sala do Colyseus pela ponte em `packages/server/src/live.ts`.
 - Conta bloqueada não entra no jogo nem no painel, e quem estiver online é desconectado; o motivo aparece na tela de quem tenta entrar.
 - Toda mudança fica registrada na aba Histórico (tabela `admin_actions`): quem fez, o quê, em quem e quando.
-- As rotas ficam em `packages/server/src/adminApi.ts`, as consultas em `adminRepository.ts` e a tela em `packages/client/src/admin/`.
+- As rotas ficam em `packages/server/src/adminApi.ts` (jogadores e comandos) e `adminWorldApi.ts` (mundos, mapas, eventos e loja); as consultas em `adminRepository.ts` e `worldRepository.ts`; as telas em `packages/client/src/admin/`.
 - A arte do painel (faixa, cena lateral e retratos das classes) sai do `npm run brand`, recortada da referência em `assets/brand/` e dos próprios sprites do jogo.
 
 ## Banco de dados
@@ -169,8 +194,8 @@ O primeiro gera só os itens citados. O `--overview` monta uma folha com todos o
 
 ## Estrutura
 
-- `packages/shared`: regras usadas por cliente e servidor (mapa determinístico, pathfinding A\*, curva de XP, monstros, magias, catálogo de cosméticos, validações, protocolo)
-- `packages/server`: sala do mundo no Colyseus (movimento, IA dos monstros, combate, XP, morte, eventos, compras), API de contas e personagens (`api.ts`), banco com Drizzle (`db/`, `repository.ts`)
+- `packages/shared`: regras usadas por cliente e servidor (mapa determinístico e os quatro terrenos, mundos e portais em `world.ts`, pathfinding A\*, curva de XP, monstros, magias, catálogo de cosméticos, eventos, validações, protocolo)
+- `packages/server`: sala do mundo no Colyseus (movimento, IA dos monstros, combate, XP, morte, portais, compras), um `worldSim.ts` por mundo aberto, eventos vindos do banco (`events.ts`), API de contas e personagens (`api.ts`), banco com Drizzle (`db/`, `repository.ts`, `worldRepository.ts`)
 - `packages/client`: Phaser 4 com interface em HTML (menu de conta e criação de personagem, HUD com orbes de vida e mana, minimapa, guarda-roupa, loja e ranking, renderização isométrica, efeitos). Sprites e tingimento em `sprites.ts`, personagens animados em `actors.ts`, drops no chão em `loot.ts`, minimapa em `minimap.ts`
 - `packages/baker`: gera os sprites a partir dos modelos 3D
 - `tools/download-assets.mjs`: baixa os modelos 3D originais para `assets/source/` (fora do git)
