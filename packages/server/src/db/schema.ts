@@ -435,3 +435,37 @@ export const characterQuests = pgTable(
   },
   (table) => [primaryKey({ columns: [table.characterId, table.questId] })],
 );
+
+// ---------------------------------------------------------------- check-in diário
+
+/** Os dias do ciclo do presente diário, montados no painel. */
+export const checkinDays = pgTable("checkin_days", {
+  id: serial("id").primaryKey(),
+  /** Posição no ciclo (1 = primeiro dia). */
+  day: smallint("day").notNull().default(1),
+  rewardGold: integer("reward_gold").notNull().default(0),
+  rewardDiamonds: integer("reward_diamonds").notNull().default(0),
+  rewardXp: doublePrecision("reward_xp").notNull().default(0),
+  rewardItem: text("reward_item").notNull().default(""),
+  rewardItemCount: integer("reward_item_count").notNull().default(1),
+  /** Dia de destaque (o prêmio bom do fim do ciclo). */
+  highlight: boolean("highlight").notNull().default(false),
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: createdAt(),
+});
+
+/** Em que ponto do ciclo cada conta está. Uma conta só pega um presente por dia. */
+export const accountCheckin = pgTable("account_checkin", {
+  accountId: integer("account_id")
+    .primaryKey()
+    .references(() => accounts.id, { onDelete: "cascade" }),
+  /** Dia do ciclo que ele pegou por último. */
+  day: smallint("day").notNull().default(0),
+  /** Chave do último dia pego ("2026-09-22"), no fuso configurado. */
+  lastDay: text("last_day").notNull().default(""),
+  /** Dias seguidos. */
+  streak: integer("streak").notNull().default(0),
+  /** Total de presentes abertos. */
+  total: integer("total").notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});

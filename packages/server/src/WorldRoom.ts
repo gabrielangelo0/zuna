@@ -6,6 +6,7 @@ import {
   questWaiting,
   type QuestBossMessage,
   type QuestClaimMessage,
+  type CheckinEvent,
   type QuestProgress,
   type QuestsEvent,
   cone,
@@ -115,6 +116,7 @@ import {
 import { accountFromToken } from "./auth.ts";
 import { EventManager } from "./events.ts";
 import { allQuests, listQuestProgress, liveQuests, questById, saveQuestProgress } from "./quests.ts";
+import { checkinDaysAll, checkinSettings, checkinStateFor, claimCheckin } from "./checkin.ts";
 import {
   addCharacterItem,
   buyGearWithDiamonds,
@@ -344,6 +346,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     this.onMessage(ClientMsg.QuickPotion, (client, message: QuickPotionMessage) => this.handleQuickPotion(client, message));
     this.onMessage(ClientMsg.QuestClaim, (client, message: QuestClaimMessage) => this.handleQuestClaim(client, message));
     this.onMessage(ClientMsg.QuestBoss, (client, message: QuestBossMessage) => this.handleQuestBoss(client, message));
+    this.onMessage(ClientMsg.CheckinClaim, (client) => void this.handleCheckinClaim(client));
     this.onMessage(ClientMsg.ItemSell, (client, message: ItemSellMessage) => this.handleItemSell(client, message));
     this.onMessage(ClientMsg.ItemBuy, (client, message: ItemBuyMessage) => this.handleItemBuy(client, message));
 
@@ -874,6 +877,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
 
     this.settleBag(player);
     this.sendQuests(player);
+    void this.sendCheckin(player);
     this.sendProfile(player);
     this.sendInventory(player);
     const greeting = row.lastLoginAt ? "Bem-vindo de volta" : "Bem-vindo";
@@ -2472,6 +2476,75 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     this.consume(player, ammo, 1);
     if (!player.items.includes(ammo)) this.sendChat(player.client, "system", "Suas flechas acabaram.");
     else this.sendInventory(player);
+  }
+
+  // ------------------------------------------------------------ check-in diário
+
+  private async sendCheckin(player: PlayerSim) {
+    const state = await checkinStateFor(player.accountId);
+    if (!this.players.has(player.id)) return;
+    player.client.send(ServerMsg.Checkin, {
+      days: checkinDaysAll(),
+      state,
+      enabled: checkinSettings().enabled,
+    } satisfies CheckinEvent);
+  }
+
+  /** O painel mexeu no ciclo: todo mundo recebe a lista nova. */
+  sendCheckinList() {
+    for (const player of this.players.values()) void this.sendCheckin(player);
+  }
+
+  /** Abre o presente do dia: ouro e XP no personagem, diamantes na conta, item na mochila. */
+  private async handleCheckinClaim(client: Client) {
+    const player = this.players.get(client.sessionId);
+    if (!player) return;
+    const result = await claimCheckin(player.accountId);
+    if (!this.players.has(player.id)) return;
+    if (!result.ok) {
+      const message =
+        result.reason === "already" ? "Você já abriu o presente de hoje. Volte amanhã!"
+        : result.reason === "off" ? "O presente diário está fechado agora."
+        : "Ainda não há presentes configurados.";
+      this.sendChat(client, "system", message);
+      void this.sendCheckin(player);
+      return;
+    }
+
+    const { day } = result;
+    const rewards: string[] = [];
+    if (day.rewardGold > 0) {
+      player.state.gold += day.rewardGold;
+      rewards.push(`${day.rewardGold.toLocaleString("pt-BR")} de ouro`);
+    }
+    if (day.rewardXp > 0) {
+      this.giveXp(player, Math.round(day.rewardXp));
+      rewards.push(`${Math.round(day.rewardXp).toLocaleString("pt-BR")} de XP`);
+    }
+    if (day.rewardDiamonds > 0) {
+      const amount = day.rewardDiamonds;
+      player.diamonds += amount;
+      rewards.push(`${amount.toLocaleString("pt-BR")} diamantes`);
+      void this.enqueue(player, async () => {
+        player.diamonds = await addDiamonds(player.accountId, amount);
+        this.sendProfile(player);
+      }).catch(() => undefined);
+    }
+    if (day.rewardItem) {
+      const item = gearItem(day.rewardItem);
+      const got = item ? this.grantItem(player, item.id, day.rewardItemCount) : 0;
+      if (item && got > 0) rewards.push(got > 1 ? `${got}× ${item.name}` : item.name);
+      else if (item) this.itemNotice(player, false, `A mochila estava cheia: ${item.name} não coube.`);
+    }
+    void this.persist(player);
+    this.sendProfile(player);
+    const streak = result.state.streak;
+    this.sendChat(
+      client,
+      "event",
+      `Presente do dia ${result.state.day}: você recebeu ${rewards.join(", ") || "nada"}. Sequência: ${streak} dia${streak === 1 ? "" : "s"}.`,
+    );
+    void this.sendCheckin(player);
   }
 
   // ------------------------------------------------------------ missões

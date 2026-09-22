@@ -76,7 +76,8 @@ body {
 #ranking,
 #shop,
 #inventory,
-#quests {
+#quests,
+#checkin {
   pointer-events: auto;
 }
 
@@ -117,7 +118,8 @@ kbd {
 #ranking.kit-panel::before,
 #shop.kit-panel::before,
 #inventory.kit-panel::before,
-#quests.kit-panel::before {
+#quests.kit-panel::before,
+#checkin.kit-panel::before {
   background: rgba(6, 9, 26, 0.95);
 }
 
@@ -3076,5 +3078,154 @@ input:focus {
   #banner {
     right: 8px;
     top: 58px;
+  }
+}
+
+/* ---------------------------------------------------------------- presente diário */
+
+#hud-checkin {
+  position: relative;
+}
+
+#hud-checkin b {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 16px;
+  border-radius: 99px;
+  background: var(--gold);
+  color: #2a1c00;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 16px;
+  text-align: center;
+  animation: checkin-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes checkin-pulse {
+  50% {
+    transform: scale(1.25);
+  }
+}
+
+#checkin {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 10px;
+  width: min(660px, calc(100% - 32px));
+  height: min(600px, calc(100% - 32px));
+  padding: 16px;
+  transform: translate(-50%, -50%);
+}
+
+.checkin-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+#checkin-body {
+  min-height: 0;
+  padding-right: 4px;
+  overflow-y: auto;
+}
+
+.checkin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.checkin-day {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* O dia grande do fim do ciclo ocupa a linha toda. */
+.checkin-day.big {
+  grid-column: 1 / -1;
+  border-color: var(--gold);
+  background: linear-gradient(180deg, rgba(255, 200, 87, 0.14), rgba(255, 255, 255, 0.04));
+}
+
+.checkin-day.today {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+
+.checkin-day.taken {
+  opacity: 0.5;
+}
+
+.checkin-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.checkin-day.today .checkin-label {
+  color: var(--accent);
+}
+
+.checkin-prizes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.reward.diamonds {
+  color: #9fe8ff;
+}
+
+.checkin-stamp {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  color: var(--accent);
+  font-size: 16px;
+  font-weight: 900;
+}
+
+#checkin-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.checkin-info {
+  display: grid;
+  gap: 2px;
+  margin-right: auto;
+}
+
+.checkin-streak {
+  color: var(--gold);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+@media (max-width: 760px) {
+  #checkin {
+    top: 8px;
+    left: 8px;
+    width: calc(100% - 16px);
+    height: calc(100% - 16px);
+    padding: 12px;
+    transform: none;
   }
 }

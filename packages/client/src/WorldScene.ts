@@ -9,6 +9,7 @@ import {
   type ShotEvent,
   type MonsterSpellEvent,
   type QuestsEvent,
+  type CheckinEvent,
   type InventoryEvent,
   ClientMsg,
   Ground,
@@ -54,6 +55,7 @@ import { SpellFx, createFxTextures } from "./effects.ts";
 import { Hud } from "./hud.ts";
 import { Inventory } from "./inventory.ts";
 import { QuestLog } from "./questLog.ts";
+import { Checkin } from "./checkin.ts";
 import { screenToTile, tileToScreen } from "./iso.ts";
 import { Grimoire } from "./grimoire.ts";
 import { LootLayer } from "./loot.ts";
@@ -185,6 +187,9 @@ export class WorldScene extends Phaser.Scene {
   private readonly questLog = new QuestLog({
     claim: (id) => this.room?.send(ClientMsg.QuestClaim, { id }),
     summon: (id) => this.room?.send(ClientMsg.QuestBoss, { id }),
+  });
+  private readonly checkin = new Checkin({
+    claim: () => this.room?.send(ClientMsg.CheckinClaim, {}),
   });
   private readonly inventory = new Inventory({
     move: (uid, to, index, count) => this.room?.send(ClientMsg.ItemMove, { uid, to, index, count }),
@@ -336,6 +341,10 @@ export class WorldScene extends Phaser.Scene {
       this.questLog.setQuests(event);
       this.hud.setQuestsReady(this.questLog.readyCount);
     });
+    room.onMessage(ServerMsg.Checkin, (event: CheckinEvent) => {
+      this.checkin.setCheckin(event);
+      this.hud.setCheckinReady(this.checkin.ready);
+    });
     room.onMessage(ServerMsg.Shot, (event: ShotEvent) => {
       const now = this.time.now;
       const from = this.actors.get(event.attacker);
@@ -373,6 +382,7 @@ export class WorldScene extends Phaser.Scene {
     this.hud.onShop(() => this.openShop(true));
     this.hud.onInventory(() => this.toggleInventory());
     this.hud.onQuests(() => this.questLog.toggle());
+    this.hud.onCheckin(() => this.checkin.toggle());
     // Clique no orbe (ou Q/E) toma a melhor poção que o nível permite.
     element(".orb-hp").addEventListener("click", () => room.send(ClientMsg.QuickPotion, { kind: "hp" }));
     element(".orb-mana").addEventListener("click", () => room.send(ClientMsg.QuickPotion, { kind: "mana" }));
@@ -387,7 +397,8 @@ export class WorldScene extends Phaser.Scene {
       },
       targetNearest: () => this.targetNearest(),
       escape: () => {
-        if (this.questLog.isOpen) this.questLog.close();
+        if (this.checkin.isOpen) this.checkin.close();
+        else if (this.questLog.isOpen) this.questLog.close();
         else if (this.shop.isOpen) this.shop.close();
         else if (this.grimoire.isOpen) this.grimoire.close();
         else if (this.ranking.isOpen) this.ranking.close();
@@ -408,6 +419,7 @@ export class WorldScene extends Phaser.Scene {
       toggleShop: () => this.openShop(true),
       toggleInventory: () => this.toggleInventory(),
       toggleQuests: () => this.questLog.toggle(),
+      toggleCheckin: () => this.checkin.toggle(),
       potion: (kind) => room.send(ClientMsg.QuickPotion, { kind }),
     });
   }

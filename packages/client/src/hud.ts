@@ -36,6 +36,8 @@ export class Hud {
   private readonly inventoryButton = element<HTMLButtonElement>("#hud-inventory");
   private readonly questsButton = element<HTMLButtonElement>("#hud-quests");
   private readonly questsBadge = element("#hud-quests-badge");
+  private readonly checkinButton = element<HTMLButtonElement>("#hud-checkin");
+  private readonly checkinBadge = element("#hud-checkin-badge");
   private readonly rankingButton = element<HTMLButtonElement>("#hud-ranking");
   private readonly powersButton = element<HTMLButtonElement>("#hud-powers");
   private readonly mountButton = element<HTMLButtonElement>("#hud-mount");
@@ -214,6 +216,18 @@ export class Hud {
   setQuestsReady(count: number) {
     this.questsBadge.textContent = String(count);
     this.questsBadge.hidden = count <= 0;
+  }
+
+  onCheckin(handler: () => void) {
+    this.checkinButton.addEventListener("click", () => {
+      handler();
+      this.checkinButton.blur();
+    });
+  }
+
+  /** Aviso no botão: tem presente esperando hoje. */
+  setCheckinReady(ready: boolean) {
+    this.checkinBadge.hidden = !ready;
   }
 
   onShop(handler: () => void) {

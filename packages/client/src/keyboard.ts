@@ -13,6 +13,7 @@ export interface KeyboardHandlers {
   toggleInventory(): void;
   potion(kind: "hp" | "mana"): void;
   toggleQuests(): void;
+  toggleCheckin(): void;
 }
 
 const UP = new Set(["w", "arrowup"]);
@@ -101,6 +102,9 @@ export class KeyboardInput {
         return;
       case "j":
         this.handlers.toggleQuests();
+        return;
+      case "c":
+        this.handlers.toggleCheckin();
         return;
     }
     if (/^[1-9]$/.test(key)) this.handlers.spell(key);

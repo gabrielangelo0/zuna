@@ -147,6 +147,8 @@ export const ClientMsg = {
   /** Missões: entregar e invocar o chefe do desafio. */
   QuestClaim: "questClaim",
   QuestBoss: "questBoss",
+  /** Check-in diário: abrir o presente do dia. */
+  CheckinClaim: "checkinClaim",
 } as const;
 
 /** Clique duplo: veste (ou tira) o item, ou usa a poção. */
@@ -326,4 +328,6 @@ export const ServerMsg = {
   MonsterSpell: "monsterSpell",
   /** Missões do jogador (só ele recebe). */
   Quests: "quests",
+  /** Check-in diário do jogador (só ele recebe). */
+  Checkin: "checkin",
 } as const;

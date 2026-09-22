@@ -140,6 +140,7 @@
               <button id="hud-ranking" type="button"><kbd>R</kbd> Ranking</button>
               <button id="hud-inventory" type="button"><kbd>I</kbd> Itens</button>
               <button id="hud-quests" type="button"><kbd>J</kbd> Missões<b id="hud-quests-badge" hidden></b></button>
+              <button id="hud-checkin" type="button"><kbd>C</kbd> Presente<b id="hud-checkin-badge" hidden>!</b></button>
               <button id="hud-shop" class="shop-button" type="button"><kbd>L</kbd> 💎 Comprar diamantes</button>
             </div>
           </div>
@@ -256,6 +257,16 @@
           <button type="button" class="tab" data-quest-tab="boss">Desafios de chefe</button>
         </nav>
         <div id="quests-body"></div>
+      </section>
+
+      <section id="checkin" class="card kit-panel" hidden>
+        <header class="panel-header">
+          <h2>Presente diário</h2>
+          <button id="checkin-close" class="icon" type="button" aria-label="Fechar">✕</button>
+        </header>
+        <p class="checkin-hint">Entre todo dia para abrir o presente. Faltou um dia, o ciclo volta ao começo.</p>
+        <div id="checkin-body"></div>
+        <div id="checkin-foot"></div>
       </section>
 
       <section id="inventory" class="card kit-panel" hidden>

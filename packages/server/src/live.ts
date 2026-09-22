@@ -33,6 +33,8 @@ export interface LiveRoom {
   sendGear(): void;
   /** O painel mexeu nas missões. */
   sendQuestList(): void;
+  /** O painel mexeu no presente diário. */
+  sendCheckinList(): void;
 }
 
 export interface LiveCharacterPatch {
@@ -191,4 +193,8 @@ export function pushGear() {
 
 export function pushQuests() {
   for (const room of rooms) room.sendQuestList();
+}
+
+export function pushCheckin() {
+  for (const room of rooms) room.sendCheckinList();
 }
