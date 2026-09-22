@@ -73,7 +73,8 @@ body {
 #chat,
 #wardrobe,
 #grimoire,
-#ranking {
+#ranking,
+#shop {
   pointer-events: auto;
 }
 
@@ -111,7 +112,8 @@ kbd {
 /* Painéis grandes cobrem o jogo por completo. */
 #wardrobe.kit-panel::before,
 #grimoire.kit-panel::before,
-#ranking.kit-panel::before {
+#ranking.kit-panel::before,
+#shop.kit-panel::before {
   background: rgba(6, 9, 26, 0.95);
 }
 
@@ -1229,6 +1231,7 @@ input:focus {
 
 .balances {
   display: flex;
+  align-items: center;
   gap: 14px;
   font-variant-numeric: tabular-nums;
 }
@@ -1374,6 +1377,398 @@ input:focus {
 .status.ok {
   background: var(--accent-soft);
   color: #c4fbd6;
+}
+
+/* ---------------------------------------------------------------- loja de diamantes */
+
+.hud-actions .shop-button {
+  border-color: rgba(125, 211, 252, 0.45);
+  background: linear-gradient(rgba(125, 211, 252, 0.22), rgba(167, 139, 250, 0.18));
+  color: #e4f6ff;
+  font-weight: 800;
+}
+
+.hud-actions .shop-button:hover:not(:disabled) {
+  border-color: var(--diamond);
+  background: linear-gradient(rgba(125, 211, 252, 0.34), rgba(167, 139, 250, 0.28));
+}
+
+.shop-plus {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid rgba(125, 211, 252, 0.5);
+  border-radius: 50%;
+  background: rgba(125, 211, 252, 0.16);
+  color: var(--diamond);
+  font-weight: 900;
+  line-height: 1;
+}
+
+.shop-plus:hover {
+  background: rgba(125, 211, 252, 0.3);
+}
+
+#shop {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 5;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  width: min(760px, calc(100% - 32px));
+  max-height: calc(100% - 32px);
+  padding: 16px;
+  transform: translate(-50%, -50%);
+}
+
+.shop-balance {
+  color: var(--diamond);
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+#shop-body {
+  min-height: 0;
+  padding-right: 4px;
+  overflow-y: auto;
+}
+
+.shop-note,
+.shop-foot {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.shop-foot {
+  margin-top: 12px;
+  font-size: 12px;
+}
+
+.shop-sandbox {
+  margin: 0 0 10px;
+  padding: 6px 10px;
+  border: 1px dashed rgba(242, 201, 76, 0.5);
+  border-radius: 8px;
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.shop-first {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border: 1px solid rgba(242, 201, 76, 0.55);
+  border-radius: 10px;
+  background: linear-gradient(90deg, rgba(242, 201, 76, 0.2), rgba(167, 139, 250, 0.16));
+  text-align: center;
+}
+
+.shop-first strong {
+  color: var(--gold);
+  font: 400 22px/1.1 var(--font-logo);
+  letter-spacing: 0.02em;
+  text-shadow: 0 2px 0 #050716;
+}
+
+.shop-first span {
+  color: #f5e8c0;
+  font-size: 13px;
+}
+
+.shop-packs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.shop-pack {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 16px 10px 12px;
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  border-radius: 12px;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 20%, rgba(125, 211, 252, 0.18), transparent 70%),
+    rgba(255, 255, 255, 0.04);
+  transition: transform 0.12s, border-color 0.12s;
+}
+
+.shop-pack:hover {
+  border-color: rgba(125, 211, 252, 0.6);
+  transform: translateY(-2px);
+}
+
+.shop-tag {
+  position: absolute;
+  top: -9px;
+  padding: 2px 10px;
+  border-radius: 99px;
+  background: linear-gradient(#ffd479, #e0a82e);
+  color: #3a2600;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.shop-gems {
+  min-height: 48px;
+  font-size: var(--gem-size, 30px);
+  line-height: 48px;
+  letter-spacing: -0.35em;
+  filter: drop-shadow(0 4px 10px rgba(125, 211, 252, 0.45));
+}
+
+.shop-amount {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.shop-amount strong {
+  color: var(--diamond);
+  font: 400 26px/1 var(--font-logo);
+  text-shadow: 0 2px 0 #050716;
+}
+
+.shop-amount s {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.shop-extras {
+  display: flex;
+  gap: 4px;
+  min-height: 20px;
+}
+
+.shop-bonus {
+  padding: 2px 7px;
+  border-radius: 99px;
+  background: rgba(94, 240, 143, 0.14);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.shop-bonus.double {
+  background: rgba(242, 201, 76, 0.2);
+  color: var(--gold);
+}
+
+.shop-pack .primary {
+  width: 100%;
+  font-size: 14px;
+}
+
+.shop-checkout,
+.shop-waiting,
+.shop-done,
+.shop-center {
+  display: grid;
+  gap: 12px;
+  width: min(420px, 100%);
+  margin: 0 auto;
+}
+
+.shop-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border: 1px solid rgba(125, 211, 252, 0.3);
+  border-radius: 10px;
+  background: rgba(125, 211, 252, 0.08);
+}
+
+.shop-summary-gems {
+  color: var(--diamond);
+  font-weight: 800;
+}
+
+.shop-summary-price {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.shop-methods {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.shop-method {
+  display: grid;
+  gap: 2px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  text-align: left;
+}
+
+.shop-method small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.shop-method.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 2px rgba(94, 240, 143, 0.15);
+}
+
+.shop-fields {
+  display: grid;
+  gap: 8px;
+}
+
+.shop-fields .shop-note {
+  text-align: left;
+}
+
+.shop-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.shop-consent input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 1px 0 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+.shop-actions {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+}
+
+.shop-waiting {
+  justify-items: center;
+  text-align: center;
+}
+
+.shop-waiting-title {
+  margin: 0;
+  color: var(--diamond);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.shop-qr {
+  width: 220px;
+  height: 220px;
+  padding: 10px;
+  border-radius: 12px;
+  background: #fff;
+  image-rendering: pixelated;
+}
+
+.shop-pix-code {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.shop-waiting a.primary {
+  text-decoration: none;
+}
+
+.shop-spinner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.shop-spinner::before {
+  content: "";
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(125, 211, 252, 0.25);
+  border-top-color: var(--diamond);
+  border-radius: 50%;
+  animation: shop-spin 0.8s linear infinite;
+}
+
+@keyframes shop-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.shop-done {
+  justify-items: center;
+  padding: 12px 0;
+  text-align: center;
+}
+
+.shop-done p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.shop-done-gem {
+  font-size: 72px;
+  line-height: 1;
+  filter: drop-shadow(0 6px 22px rgba(125, 211, 252, 0.7));
+  animation: shop-pop 0.6s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
+.shop-done-amount {
+  color: var(--diamond);
+  font: 400 44px/1 var(--font-logo);
+  text-shadow: 0 3px 0 #050716;
+}
+
+@keyframes shop-pop {
+  from {
+    transform: scale(0.3) rotate(-20deg);
+    opacity: 0;
+  }
+}
+
+@media (max-width: 700px) {
+  #shop {
+    top: 8px;
+    left: 8px;
+    width: calc(100% - 16px);
+    max-height: calc(100% - 16px);
+    padding: 12px;
+    transform: none;
+  }
+
+  .shop-packs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .shop-amount strong {
+    font-size: 22px;
+  }
 }
 
 /* ---------------------------------------------------------------- grimório */

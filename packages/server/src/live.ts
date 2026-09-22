@@ -46,6 +46,8 @@ export interface LiveAccountPatch {
   diamonds?: number;
   unlock?: string;
   revoke?: string;
+  /** Aviso para o jogador no lugar do "Um administrador atualizou sua conta". */
+  notice?: string;
 }
 
 export type LiveCommand =

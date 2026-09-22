@@ -18,6 +18,7 @@ import {
 } from "@zuna/shared";
 import { adminRoutes } from "./adminApi.ts";
 import { adminWorldRoutes } from "./adminWorldApi.ts";
+import { paymentRoutes } from "./payments.ts";
 import {
   accountFromToken,
   allowLoginAttempt,
@@ -156,4 +157,5 @@ export const apiRouter = createRouter({
   ranking,
   ...adminRoutes,
   ...adminWorldRoutes,
+  ...paymentRoutes,
 });

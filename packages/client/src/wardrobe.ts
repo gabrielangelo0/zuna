@@ -20,6 +20,7 @@ export interface WardrobeHandlers {
   appearance(message: AppearanceMessage): void;
   equip(kind: ItemKind, id: string): void;
   buy(id: string): void;
+  buyDiamonds(): void;
 }
 
 /** Guarda-roupa e loja: aparência, roupas, mascotes e montarias. */
@@ -51,6 +52,7 @@ export class Wardrobe {
     this.handlers = handlers;
     for (const tab of this.tabs) tab.addEventListener("click", () => this.selectTab(tab.dataset.tab as Tab));
     element("#wardrobe-close").addEventListener("click", () => this.close());
+    element("#wardrobe-buy").addEventListener("click", () => handlers.buyDiamonds());
   }
 
   get isOpen(): boolean {
@@ -236,7 +238,7 @@ export class Wardrobe {
         if (balance >= item.price) {
           this.handlers.buy(item.id);
         } else if (item.currency === "diamonds") {
-          this.showStatus("Diamantes insuficientes. A compra de diamantes (Pix e cartão) chega na próxima fase.", false);
+          this.handlers.buyDiamonds();
         } else {
           this.showStatus(`Faltam ${formatNumber(item.price - balance)} moedas de ouro. Continue caçando!`, false);
         }

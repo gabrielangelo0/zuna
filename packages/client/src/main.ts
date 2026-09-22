@@ -38,6 +38,6 @@ const menu = new Menu(async (token, characterId) => {
   const options: JoinOptions = { token, characterId };
   const room: Room = await client.joinOrCreate(ROOM_NAME, options);
   menu.hide();
-  scene.attachRoom(room);
+  scene.attachRoom(room, token);
 });
 void menu.start();

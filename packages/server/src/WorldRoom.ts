@@ -546,7 +546,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
         }
       }
       this.sendProfile(player);
-      this.sendChat(player.client, "system", "Um administrador atualizou sua conta.");
+      this.sendChat(player.client, "system", patch.notice ?? "Um administrador atualizou sua conta.");
     }
   }
 

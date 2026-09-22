@@ -8,6 +8,7 @@ import { apiRouter } from "./api.ts";
 import { connectDatabase, disconnectDatabase } from "./db/index.ts";
 import { ensureAdmins } from "./adminRepository.ts";
 import { ensureContent } from "./content.ts";
+import { startPaymentReconciler } from "./payments.ts";
 import { ensureWorldSeed, listItemOverrides } from "./worldRepository.ts";
 import { WorldRoom, waitForPendingWrites } from "./WorldRoom.ts";
 
@@ -60,4 +61,5 @@ server.onShutdown(async () => {
 });
 
 await server.listen(port);
+startPaymentReconciler();
 console.log(production ? `Servidor do jogo rodando na porta ${port}` : `Servidor do jogo rodando em ws://localhost:${port}`);

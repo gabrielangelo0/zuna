@@ -29,6 +29,10 @@ export const accounts = pgTable("accounts", {
   banned: boolean("banned").notNull().default(false),
   /** Motivo do bloqueio, mostrado a quem tenta entrar. */
   banReason: text("ban_reason").notNull().default(""),
+  /** Total já pago em dinheiro, em centavos (0 = nunca comprou: a primeira recarga vale em dobro). */
+  spentCents: integer("spent_cents").notNull().default(0),
+  /** Cliente desta conta na Asaas. O CPF fica só lá, nunca aqui. */
+  payerId: text("payer_id").notNull().default(""),
   createdAt: createdAt(),
 });
 
@@ -279,3 +283,41 @@ export const serverMeta = pgTable("server_meta", {
   value: text("value").notNull().default(""),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------------------------------------------------------------- pagamentos
+
+/** Pedidos de diamantes. Só vira diamante na conta quando a Asaas confirma o pagamento. */
+export const paymentOrders = pgTable(
+  "payment_orders",
+  {
+    id: serial("id").primaryKey(),
+    accountId: integer("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    pack: text("pack").notNull(),
+    /** pix ou card. */
+    method: text("method").notNull(),
+    priceCents: integer("price_cents").notNull(),
+    /** Diamantes do pacote, sem o dobro da primeira recarga. */
+    diamonds: integer("diamonds").notNull(),
+    /** pending, paid, refunded ou canceled. */
+    status: text("status").notNull().default("pending"),
+    /** Diamantes que de fato entraram na conta. */
+    credited: integer("credited").notNull().default(0),
+    /** asaas, ou dev (pagamento de mentira, só em desenvolvimento). */
+    provider: text("provider").notNull(),
+    /** Id da cobrança na Asaas ("pay_..."). */
+    providerId: text("provider_id").notNull().default(""),
+    checkoutUrl: text("checkout_url").notNull().default(""),
+    pixPayload: text("pix_payload").notNull().default(""),
+    pixExpiresAt: text("pix_expires_at").notNull().default(""),
+    createdAt: createdAt(),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    refundedAt: timestamp("refunded_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("payment_orders_account_idx").on(table.accountId),
+    index("payment_orders_provider_idx").on(table.providerId),
+    index("payment_orders_status_idx").on(table.status, table.createdAt),
+  ],
+);

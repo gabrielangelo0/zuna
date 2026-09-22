@@ -138,6 +138,7 @@
               <button id="hud-mount" type="button"><kbd>M</kbd> <span id="hud-mount-label">Montar</span></button>
               <button id="hud-powers" type="button"><kbd>P</kbd> Poderes</button>
               <button id="hud-ranking" type="button"><kbd>R</kbd> Ranking</button>
+              <button id="hud-shop" class="shop-button" type="button"><kbd>L</kbd> 💎 Comprar diamantes</button>
             </div>
           </div>
         </div>
@@ -200,6 +201,7 @@
           <div class="balances">
             <span title="Ouro">🪙 <strong id="wardrobe-gold">0</strong></span>
             <span title="Diamantes" class="diamonds">💎 <strong id="wardrobe-diamonds">0</strong></span>
+            <button id="wardrobe-buy" class="shop-plus" type="button" title="Comprar diamantes">+</button>
           </div>
           <button id="wardrobe-close" class="icon" type="button" aria-label="Fechar">✕</button>
         </header>
@@ -240,6 +242,15 @@
           <button type="button" class="tab" data-board="kills">Caçadas</button>
         </nav>
         <div id="ranking-body"></div>
+      </section>
+
+      <section id="shop" class="card kit-panel" hidden>
+        <header class="panel-header">
+          <h2>Diamantes</h2>
+          <span class="shop-balance diamonds" title="Seu saldo">💎 <strong id="shop-diamonds">0</strong></span>
+          <button id="shop-close" class="icon" type="button" aria-label="Fechar">✕</button>
+        </header>
+        <div id="shop-body"></div>
       </section>
 
       <div id="death" hidden>

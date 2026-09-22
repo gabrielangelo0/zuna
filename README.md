@@ -84,7 +84,22 @@ A praça de Zuna tem seis portais, cada um para um mundo temático maior que a c
 - **Customização:** pele, cabelo e 3 cores por roupa, grátis. Roupas, mascotes e montarias extras são comprados com ouro ou diamantes e ficam na conta. O catálogo está em `packages/shared/src/cosmetics.ts`.
 - Mascotes dão bônus de XP ou ouro; montarias aumentam a velocidade.
 - Toda compra é uma transação: debita o saldo, desbloqueia o item e registra em `purchases`, ou não faz nada.
-- A compra de diamantes com dinheiro real (Pix e cartão) ainda não existe: é a fase 2 do plano.
+
+## Compra de diamantes (Asaas)
+
+- Tecla **L**, o botão "Comprar diamantes" da HUD ou o **+** do guarda-roupa abrem a loja. Os 7 pacotes estão em `packages/shared/src/payments.ts` (R$ 4,90 = 50 até R$ 499,90 = 6.500). A **primeira recarga da conta vale em dobro**.
+- **Pix:** o QR Code e o copia e cola aparecem dentro do jogo. **Cartão:** abre a página segura da Asaas (o jogo nunca vê o número do cartão).
+- Na primeira compra o jogador informa nome e CPF (a Asaas exige para o Pix). O CPF vai só para a Asaas; o jogo guarda apenas o id do cliente (`accounts.payer_id`).
+- O diamante só entra quando a Asaas confirma. A confirmação chega pelo webhook, pela tela de pagamento (que pergunta a cada 3 s) ou pela conferência automática a cada 90 s. Qualquer um deles credita **uma vez só** (`payment_orders.status` passa de `pending` para `paid` numa única atualização), e o jogador online vê o saldo mudar na hora.
+- Estorno ou chargeback tira os diamantes de volta (o saldo não fica negativo). `accounts.spent_cents` soma tudo o que a conta já pagou e nunca desce, então o dobro da primeira recarga não se repete.
+- Sem `ASAAS_API_KEY`, em desenvolvimento, os pedidos são de mentira e a tela mostra "Simular pagamento (teste)". Em produção sem chave, a loja aparece como "abre em breve".
+- O painel tem a aba **Vendas**: receita de hoje, 30 dias e total, pagantes, ticket médio, estornos e todos os pedidos, com um botão para conferir o pedido na Asaas na hora.
+
+**Para ligar em produção:**
+
+1. Crie a conta na [Asaas](https://www.asaas.com) e pegue a chave em *Integrações → Chaves de API*. Para testar antes, use uma conta do [sandbox](https://sandbox.asaas.com) (a chave de sandbox não cobra nada).
+2. Em *Integrações → Webhooks*, crie um webhook com a URL `https://api.zuna.devfly.net/api/payments/webhook`, um **token de autenticação** inventado por você (uma senha longa), envio sequencial e os eventos de **Cobranças**.
+3. Na Railway: `ASAAS_API_KEY=<chave>` e `ASAAS_WEBHOOK_TOKEN=<o mesmo token do passo 2>`, e publique de novo.
 
 ## Variáveis de ambiente do servidor
 
@@ -98,6 +113,8 @@ A praça de Zuna tem seis portais, cada um para um mundo temático maior que a c
 | `EVENT_INTERVAL_MIN` | `20` | `0` desliga os eventos automáticos (o intervalo de cada evento é definido no painel) |
 | `DEV_COMMANDS` | ligado fora de produção | `0` desliga e `1` liga os comandos de teste |
 | `ADMIN_USERS` | — | Contas que ganham acesso ao painel ao subir o servidor (separadas por vírgula) |
+| `ASAAS_API_KEY` | — | Chave da Asaas. `$aact_prod_...` cobra de verdade; qualquer outra usa o sandbox. Sem ela, a loja de diamantes fica fechada em produção |
+| `ASAAS_WEBHOOK_TOKEN` | — | O token configurado no webhook da Asaas. Sem ele, os avisos da Asaas são recusados |
 
 ## Publicação
 

@@ -288,6 +288,8 @@ A 4ª classe entra numa atualização futura, com evento e pacote de lançamento
 
 **Pix é obrigatório.** Os preços são ponto de partida: testar e ajustar com dados.
 
+✅ **Implementado** com a Asaas: os 7 pacotes, Pix com QR Code dentro do jogo, cartão pela página da Asaas, primeira recarga em dobro, estorno automático e a aba Vendas no painel (detalhes no README).
+
 ### 8.3 Ofertas de maior conversão
 
 1. **Primeira recarga (qualquer valor):** diamantes em dobro + arma exclusiva com brilho, forte até o nível ~80. É a oferta que mais converte o primeiro pagamento.
@@ -430,7 +432,8 @@ Tudo o que é comprado fica na **conta** (vale para todos os personagens) e tem 
 - O guarda-roupa (tecla `O`) permite **experimentar** qualquer item antes de comprar.
 - Catálogo e preços são dados em `packages/shared/src/cosmetics.ts`, fáceis de balancear.
 - Cada compra é **uma transação no banco**: debita o saldo, desbloqueia o item e registra em `purchases`, ou não faz nada.
-- Falta: comprar diamantes com dinheiro real (fase 2), estrelas e atributos de combate nas montarias, nível nos mascotes, asas e auras.
+- ✅ Compra de diamantes com dinheiro real (Pix e cartão, pela Asaas).
+- Falta: estrelas e atributos de combate nas montarias, nível nos mascotes, asas e auras.
 
 ---
 

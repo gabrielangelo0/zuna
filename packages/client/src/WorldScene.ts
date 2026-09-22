@@ -51,6 +51,7 @@ import { Ranking } from "./ranking.ts";
 import { KeyboardInput } from "./keyboard.ts";
 import { SpriteTextures, loadSheet } from "./sprites.ts";
 import { GROUND_FRAMES, TILE_CELL_H, TILE_CELL_W, createTextures, type GroundFrameName } from "./textures.ts";
+import { DiamondShop } from "./shop.ts";
 import { Wardrobe } from "./wardrobe.ts";
 import {
   FOAM_FRAMES,
@@ -163,7 +164,9 @@ export class WorldScene extends Phaser.Scene {
     appearance: (message) => this.room?.send(ClientMsg.Appearance, message),
     equip: (kind, id) => this.room?.send(ClientMsg.Equip, { kind, id }),
     buy: (id) => this.room?.send(ClientMsg.Buy, { id }),
+    buyDiamonds: () => this.openShop(),
   });
+  private readonly shop = new DiamondShop();
   private spriteTextures!: SpriteTextures;
   private room: Room | null = null;
   private localId = "";
@@ -235,8 +238,9 @@ export class WorldScene extends Phaser.Scene {
     this.time.addEvent({ delay: 260, loop: true, callback: () => this.animateFoam() });
   }
 
-  attachRoom(room: Room) {
+  attachRoom(room: Room, token: string) {
     this.room = room;
+    this.shop.setToken(token);
     this.localId = room.sessionId;
     const state = room.state as { players: { size: number }; eventName: string; eventEndsAt: number };
     const callbacks = Callbacks.get(room as Room<any, any>);
@@ -292,6 +296,7 @@ export class WorldScene extends Phaser.Scene {
     room.onMessage(ServerMsg.Announce, (event: AnnounceEvent) => this.hud.showBanner(event.text));
     room.onMessage(ServerMsg.Profile, (event: ProfileEvent) => {
       this.hud.setDiamonds(event.diamonds);
+      this.shop.setDiamonds(event.diamonds);
       this.hud.setShortcuts(event.shortcuts);
       this.grimoire.setShortcuts(event.shortcuts);
       this.wardrobe.setProfile(event);
@@ -308,6 +313,7 @@ export class WorldScene extends Phaser.Scene {
     });
     room.onLeave((code, reason) => {
       this.wardrobe.close();
+      this.shop.close();
       this.hud.showDisconnected(reason || CLOSE_REASON[code]);
     });
 
@@ -316,6 +322,7 @@ export class WorldScene extends Phaser.Scene {
     this.hud.onSpell((id) => this.castSpell(id));
     this.hud.onWardrobe(() => this.wardrobe.toggle());
     this.hud.onRanking(() => this.ranking.toggle());
+    this.hud.onShop(() => this.openShop(true));
     this.hud.onPowers(() => this.grimoire.toggle());
     this.hud.onMount(() => room.send(ClientMsg.ToggleMount));
     this.keyboard = new KeyboardInput({
@@ -327,7 +334,8 @@ export class WorldScene extends Phaser.Scene {
       },
       targetNearest: () => this.targetNearest(),
       escape: () => {
-        if (this.grimoire.isOpen) this.grimoire.close();
+        if (this.shop.isOpen) this.shop.close();
+        else if (this.grimoire.isOpen) this.grimoire.close();
         else if (this.ranking.isOpen) this.ranking.close();
         else if (this.wardrobe.isOpen) this.wardrobe.close();
         else if (element("#minimap").classList.contains("expanded")) this.toggleMap();
@@ -342,6 +350,7 @@ export class WorldScene extends Phaser.Scene {
       toggleRanking: () => this.ranking.toggle(),
       togglePowers: () => this.grimoire.toggle(),
       toggleMap: () => this.toggleMap(),
+      toggleShop: () => this.openShop(true),
     });
   }
 
@@ -762,6 +771,18 @@ export class WorldScene extends Phaser.Scene {
     if (candidates.length === 0) return;
     const index = candidates.findIndex((candidate) => candidate.actor.id === current);
     this.room.send(ClientMsg.Target, { id: candidates[(index + 1) % candidates.length].actor.id });
+  }
+
+  /** Loja de diamantes por cima de tudo: fecha os outros painéis grandes. */
+  private openShop(toggle = false) {
+    if (toggle && this.shop.isOpen) {
+      this.shop.close();
+      return;
+    }
+    this.wardrobe.close();
+    this.grimoire.close();
+    this.ranking.close();
+    this.shop.open();
   }
 
   private castSpell(id: SpellId) {

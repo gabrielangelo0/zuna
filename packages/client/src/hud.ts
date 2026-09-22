@@ -32,6 +32,7 @@ export class Hud {
   private readonly diamonds = element("#hud-diamonds");
   private readonly online = element("#hud-online");
   private readonly wardrobeButton = element<HTMLButtonElement>("#hud-wardrobe");
+  private readonly shopButton = element<HTMLButtonElement>("#hud-shop");
   private readonly rankingButton = element<HTMLButtonElement>("#hud-ranking");
   private readonly powersButton = element<HTMLButtonElement>("#hud-powers");
   private readonly mountButton = element<HTMLButtonElement>("#hud-mount");
@@ -189,6 +190,13 @@ export class Hud {
     this.wardrobeButton.addEventListener("click", () => {
       handler();
       this.wardrobeButton.blur();
+    });
+  }
+
+  onShop(handler: () => void) {
+    this.shopButton.addEventListener("click", () => {
+      handler();
+      this.shopButton.blur();
     });
   }
 
