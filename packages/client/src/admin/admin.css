@@ -14,8 +14,8 @@
   --blood: #e05a5a;
   --text: #dbe8f0;
   --muted: #7f98a8;
-  --font-title: "Cinzel", Georgia, "Times New Roman", serif;
-  --font-body: "Montserrat Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-title: "Plus Jakarta Sans Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-body: "Plus Jakarta Sans Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
   /* Losango dourado que marca as quinas de cada moldura. */
   --corner: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='13'%3E%3Cpath d='M6.5 1 12 6.5 6.5 12 1 6.5z' fill='none' stroke='%23d9a94b' stroke-opacity='.75' stroke-width='1.3'/%3E%3C/svg%3E");
 }
@@ -31,7 +31,7 @@ body {
     radial-gradient(ellipse 60% 45% at 50% 0%, rgba(70, 217, 138, 0.07), transparent 70%),
     linear-gradient(var(--deep), var(--night));
   color: var(--text);
-  font: 500 14px/1.5 var(--font-body);
+  font: 450 14px/1.5 var(--font-body);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -45,7 +45,7 @@ h3 {
   margin: 0;
   font-family: var(--font-title);
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: -0.01em;
 }
 
 .icon {
@@ -140,7 +140,8 @@ h3 {
   cursor: default;
   font-family: var(--font-title);
   font-size: 14px;
-  letter-spacing: 0.03em;
+  font-weight: 750;
+  letter-spacing: -0.01em;
 }
 
 .side-art {
@@ -161,7 +162,7 @@ h3 {
 .side-art p {
   margin: 0;
   color: var(--parchment, #e7d9b6);
-  font: italic 600 13px/1.5 var(--font-title);
+  font: 500 13px/1.55 var(--font-title);
   text-shadow: 0 2px 6px #000;
 }
 
@@ -268,8 +269,8 @@ h3 {
   border-radius: 10px;
   background: linear-gradient(rgba(16, 36, 49, 0.9), rgba(10, 22, 30, 0.9));
   color: var(--text);
-  font: 700 12.5px/1 var(--font-title);
-  letter-spacing: 0.05em;
+  font: 650 13px/1 var(--font-title);
+  letter-spacing: 0;
   cursor: pointer;
 }
 
@@ -315,9 +316,13 @@ main {
   gap: 9px;
   padding: 11px 20px;
   border-bottom: 1px solid var(--line-soft);
+  color: #eef6fa;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.frame > h2 .icon {
   color: var(--emerald);
-  font-size: 13.5px;
-  text-transform: uppercase;
 }
 
 .frame > h2 .icon {
@@ -399,14 +404,16 @@ main {
 
 .stat-text b {
   color: #fff;
-  font: 700 21px/1.15 var(--font-title);
+  font: 750 22px/1.15 var(--font-title);
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
 
 .stat-text span {
   color: var(--muted);
-  font-size: 10.5px;
-  letter-spacing: 0.07em;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
@@ -431,7 +438,7 @@ th {
   background: rgba(10, 24, 33, 0.9);
   color: var(--gold);
   font: 700 10.5px/1.3 var(--font-body);
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
   text-align: left;
   text-transform: uppercase;
   white-space: nowrap;
@@ -695,8 +702,8 @@ td .actions {
   background: linear-gradient(rgba(29, 116, 78, 0.95), rgba(13, 64, 44, 0.95));
   color: var(--emerald-bright);
   font-family: var(--font-title);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.01em;
 }
 
 /* ---------------------------------------------------------------- selos e barras */
@@ -711,8 +718,8 @@ td .actions {
   padding: 1px 7px;
   border: 1px solid rgba(0, 0, 0, 0.35);
   border-radius: 5px;
-  font: 800 9.5px/1.7 var(--font-body);
-  letter-spacing: 0.08em;
+  font: 700 9.5px/1.7 var(--font-body);
+  letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 

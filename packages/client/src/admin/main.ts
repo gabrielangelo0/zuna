@@ -1,6 +1,4 @@
-import "@fontsource/cinzel/600.css";
-import "@fontsource/cinzel/700.css";
-import "@fontsource-variable/montserrat/wght.css";
+import "@fontsource-variable/plus-jakarta-sans/wght.css";
 import { applyCatalogOverrides, type AuthResponse, type WorldsResponse } from "@zuna/shared";
 import { apiRequest, httpEndpoint } from "../api.ts";
 import { renderEvents } from "./events.ts";
