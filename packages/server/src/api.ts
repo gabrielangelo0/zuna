@@ -4,6 +4,7 @@ import {
   RANKING_BOARDS,
   RANKING_SIZE,
   catalogItem,
+  liveVocations,
   normalizeCharacterName,
   normalizeUsername,
   parseAppearance,
@@ -21,6 +22,7 @@ import { adminGearRoutes } from "./adminGearApi.ts";
 import { adminQuestRoutes } from "./adminQuestApi.ts";
 import { adminCheckinRoutes } from "./adminCheckinApi.ts";
 import { adminProgressRoutes } from "./adminProgressApi.ts";
+import { adminVocationRoutes } from "./adminVocationApi.ts";
 import { adminWorldRoutes } from "./adminWorldApi.ts";
 import { paymentRoutes } from "./payments.ts";
 import {
@@ -124,7 +126,13 @@ const createMyCharacter = createEndpoint("/api/characters", { method: "POST" }, 
     throw ctx.error("BAD_REQUEST", { message: "Aparência inválida." });
   }
 
-  const result = await createCharacter(account.id, name, appearance);
+  // A classe é escolhida aqui e vale desde o nível 1; trocar depois custa diamantes.
+  const vocation = String(data.vocation ?? "");
+  if (vocation && !liveVocations().some((entry) => entry.id === vocation)) {
+    throw ctx.error("BAD_REQUEST", { message: "Classe inválida." });
+  }
+
+  const result = await createCharacter(account.id, name, appearance, vocation);
   if (!result.ok) throw ctx.error("CONFLICT", { message: result.message });
 
   const response: CreateCharacterResponse = { character: summaryFromRow(result.row) };
@@ -166,4 +174,5 @@ export const apiRouter = createRouter({
   ...adminQuestRoutes,
   ...adminCheckinRoutes,
   ...adminProgressRoutes,
+  ...adminVocationRoutes,
 });

@@ -19,4 +19,5 @@ export * from "./payments.ts";
 export * from "./quests.ts";
 export * from "./checkin.ts";
 export * from "./progress.ts";
+export * from "./vocations.ts";
 export * from "./items.ts";

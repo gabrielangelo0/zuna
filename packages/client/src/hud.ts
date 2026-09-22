@@ -3,6 +3,7 @@ import {
   SHORTCUT_SLOTS,
   levelProgress,
   spellById,
+  vocationById,
   type ChatEvent,
   type PlayerData,
   type SpellId,
@@ -36,6 +37,7 @@ export class Hud {
   private readonly inventoryButton = element<HTMLButtonElement>("#hud-inventory");
   private readonly questsButton = element<HTMLButtonElement>("#hud-quests");
   private readonly questsBadge = element("#hud-quests-badge");
+  private readonly vocationLabel = element("#hud-vocation");
   private readonly checkinButton = element<HTMLButtonElement>("#hud-checkin");
   private readonly checkinBadge = element("#hud-checkin-badge");
   private readonly rankingButton = element<HTMLButtonElement>("#hud-ranking");
@@ -216,6 +218,13 @@ export class Hud {
   setQuestsReady(count: number) {
     this.questsBadge.textContent = String(count);
     this.questsBadge.hidden = count <= 0;
+  }
+
+  /** Nome da classe ao lado do nível (vazio = ainda não escolheu). */
+  setVocation(vocation: string) {
+    const name = vocationById(vocation)?.name ?? "";
+    this.vocationLabel.textContent = name || "sem classe";
+    this.vocationLabel.classList.toggle("empty", name === "");
   }
 
   onCheckin(handler: () => void) {

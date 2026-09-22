@@ -269,9 +269,9 @@ export function spellsUpTo(level: number): SpellDef[] {
 }
 
 /** Poderes que abrem exatamente ao chegar neste nível. */
-export function spellsUnlockedAt(level: number): SpellDef[] {
+export function spellsUnlockedAt(level: number, families?: readonly string[]): SpellDef[] {
   const spells: SpellDef[] = [];
-  for (const family of SPELL_FAMILIES) {
+  for (const family of familiesFor(families)) {
     const tier = tierFor(family, level);
     if (tier >= 1 && family.baseLevel + (tier - 1) * family.everyLevels === level) spells.push(build(family, tier));
   }
@@ -293,10 +293,21 @@ export const SHORTCUT_SLOTS = 8;
 
 export const SHORTCUT_KEYS: readonly string[] = ["1", "2", "3", "4", "5", "6", "7", "8"];
 
+/** Famílias que a classe aprende. `undefined` = todas (personagem sem classe). */
+export function familiesFor(families?: readonly string[]): readonly SpellFamily[] {
+  if (!families || families.length === 0) return SPELL_FAMILIES;
+  return SPELL_FAMILIES.filter((family) => families.includes(family.family));
+}
+
+/** A classe aprende este poder? */
+export function spellInFamilies(spell: SpellDef, families?: readonly string[]): boolean {
+  return !families || families.length === 0 || families.includes(spell.family);
+}
+
 /** Atalhos de quem nunca mexeu neles: o melhor grau de cada família, na ordem em que abriram. */
-export function defaultShortcuts(level: number): string[] {
+export function defaultShortcuts(level: number, families?: readonly string[]): string[] {
   const slots: string[] = [];
-  for (const family of SPELL_FAMILIES) {
+  for (const family of familiesFor(families)) {
     const tier = tierFor(family, level);
     if (tier >= 1 && slots.length < SHORTCUT_SLOTS) slots.push(`${family.family}${tier}`);
   }
@@ -308,12 +319,12 @@ export function defaultShortcuts(level: number): string[] {
  * Limpa a lista de atalhos: só poderes liberados, sem repetição, no tamanho certo.
  * Graus antigos sobem sozinhos para o melhor grau já liberado da mesma família.
  */
-export function sanitizeShortcuts(slots: readonly string[], level: number): string[] {
+export function sanitizeShortcuts(slots: readonly string[], level: number, families?: readonly string[]): string[] {
   const used = new Set<string>();
   const clean: string[] = [];
   for (let i = 0; i < SHORTCUT_SLOTS; i++) {
     const spell = spellById(slots[i] ?? "");
-    const family = spell ? SPELL_FAMILIES.find((entry) => entry.family === spell.family) : undefined;
+    const family = spell && spellInFamilies(spell, families) ? SPELL_FAMILIES.find((entry) => entry.family === spell.family) : undefined;
     if (!spell || !family) {
       clean.push("");
       continue;
@@ -328,10 +339,10 @@ export function sanitizeShortcuts(slots: readonly string[], level: number): stri
     clean.push(id);
   }
   // Poder novo entra sozinho numa vaga livre (famílias que ainda não estão na barra).
-  const families = new Set([...used].map((id) => spellById(id)?.family));
-  for (const family of SPELL_FAMILIES) {
+  const onBar = new Set([...used].map((id) => spellById(id)?.family));
+  for (const family of familiesFor(families)) {
     const tier = tierFor(family, level);
-    if (tier < 1 || families.has(family.family)) continue;
+    if (tier < 1 || onBar.has(family.family)) continue;
     const id = `${family.family}${tier}`;
     if (used.has(id)) continue;
     const free = clean.indexOf("");

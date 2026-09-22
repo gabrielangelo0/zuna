@@ -3,6 +3,7 @@ import type { EquipSlot, GearDef } from "./items.ts";
 import type { LootKind } from "./loot.ts";
 import type { MonsterKind } from "./monsters.ts";
 import type { SpellElement, SpellId } from "./spells.ts";
+import type { VocationDef } from "./vocations.ts";
 import type { WorldBlueprint } from "./world.ts";
 
 // ---------------------------------------------------------------- API HTTP
@@ -34,6 +35,8 @@ export interface CharactersResponse {
 export interface CreateCharacterRequest {
   name: string;
   appearance: Appearance;
+  /** Classe escolhida na criação. */
+  vocation: string;
 }
 
 export interface CreateCharacterResponse {
@@ -50,6 +53,8 @@ export interface WorldsResponse {
   catalog: CatalogOverride[];
   /** Equipamentos em vigor (nomes, ícones e atributos editados no painel). */
   gear: GearDef[];
+  /** Classes abertas, para a tela de criação. */
+  vocations: VocationDef[];
 }
 
 // ---------------------------------------------------------------- cliente → servidor (sala)
@@ -149,6 +154,8 @@ export const ClientMsg = {
   QuestBoss: "questBoss",
   /** Check-in diário: abrir o presente do dia. */
   CheckinClaim: "checkinClaim",
+  /** Escolher a classe (a primeira é de graça; trocar custa diamantes). */
+  Vocation: "vocation",
 } as const;
 
 /** Clique duplo: veste (ou tira) o item, ou usa a poção. */
@@ -166,6 +173,11 @@ export interface ItemMoveMessage {
 
 export interface ItemUseMessage {
   uid: number;
+}
+
+/** Escolha (ou troca) de classe. A primeira é de graça; trocar custa diamantes. */
+export interface VocationMessage {
+  id: string;
 }
 
 /** Teclas Q (vida) e E (mana). */
@@ -278,6 +290,10 @@ export interface ProfileEvent {
   unlocks: string[];
   /** Poderes na barra de atalhos, na ordem das teclas. */
   shortcuts: string[];
+  /** Classe do personagem (vazio = ainda não escolheu). */
+  vocation: string;
+  /** Quanto custa trocar de classe, em diamantes. */
+  vocationPrice: number;
 }
 
 export interface PurchaseEvent {

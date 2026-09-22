@@ -190,6 +190,7 @@ export class WorldScene extends Phaser.Scene {
     equip: (kind, id) => this.room?.send(ClientMsg.Equip, { kind, id }),
     buy: (id) => this.room?.send(ClientMsg.Buy, { id }),
     buyDiamonds: () => this.openShop(),
+    vocation: (id) => this.room?.send(ClientMsg.Vocation, { id }),
   });
   private readonly shop = new DiamondShop();
   private readonly questLog = new QuestLog({
@@ -340,6 +341,8 @@ export class WorldScene extends Phaser.Scene {
       this.inventory.setDiamonds(event.diamonds);
       this.hud.setShortcuts(event.shortcuts);
       this.grimoire.setShortcuts(event.shortcuts);
+      this.grimoire.setVocation(event.vocation);
+      this.hud.setVocation(event.vocation);
       this.wardrobe.setProfile(event);
     });
     room.onMessage(ServerMsg.Purchase, (event: PurchaseEvent) => this.onPurchase(event));

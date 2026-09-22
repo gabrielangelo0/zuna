@@ -86,19 +86,25 @@ export type CreateCharacterResult =
   | { ok: true; row: CharacterRow }
   | { ok: false; status: 409; message: string };
 
-export async function createCharacter(accountId: number, name: string, appearance: Appearance): Promise<CreateCharacterResult> {
+export async function createCharacter(
+  accountId: number,
+  name: string,
+  appearance: Appearance,
+  vocation: string,
+): Promise<CreateCharacterResult> {
   return db().transaction(async (tx): Promise<CreateCharacterResult> => {
     const [{ total }] = await tx.select({ total: count() }).from(characters).where(eq(characters.accountId, accountId));
     if (total >= MAX_CHARACTERS) {
       return { ok: false, status: 409, message: `Cada conta pode ter até ${MAX_CHARACTERS} personagens.` };
     }
-    const stats = playerStats(1);
+    const stats = playerStats(1, vocation);
     const [row] = await tx
       .insert(characters)
       .values({
         accountId,
         name,
         nameKey: name.toLowerCase(),
+        vocation,
         hp: stats.maxHp,
         mana: stats.maxMana,
         x: TEMPLE_X,

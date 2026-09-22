@@ -259,7 +259,7 @@ export function askConfirm(title: string, message: string, okLabel = "Confirmar"
 export interface FormField {
   id: string;
   label: string;
-  kind?: "text" | "number" | "select" | "check";
+  kind?: "text" | "number" | "select" | "check" | "checks";
   value?: string | number | boolean;
   options?: { id: string; label: string }[];
   min?: number;
@@ -288,6 +288,27 @@ export function askForm(
     } else if (spec.kind === "check") {
       control = h("input", { type: "checkbox" });
       (control as HTMLInputElement).checked = spec.value === true;
+    } else if (spec.kind === "checks") {
+      // Vários de uma vez: as marcadas viram uma lista separada por vírgula num campo escondido.
+      const chosen = new Set(String(spec.value ?? "").split(",").filter(Boolean));
+      control = h("input", { type: "hidden" });
+      control.value = [...chosen].join(",");
+      const group = h("div", { class: "check-group" });
+      for (const option of spec.options ?? []) {
+        const tick = h("input", { type: "checkbox" }) as HTMLInputElement;
+        tick.checked = chosen.has(option.id);
+        tick.addEventListener("change", () => {
+          if (tick.checked) chosen.add(option.id);
+          else chosen.delete(option.id);
+          control.value = [...chosen].join(",");
+        });
+        group.append(h("label", { class: "check-item" }, tick, h("span", { text: option.label })));
+      }
+      controls.set(spec.id, control);
+      const label = field(spec.label, group);
+      if (spec.hint) label.append(h("small", { text: spec.hint }));
+      box.append(label, control);
+      continue;
     } else {
       control = input(String(spec.value ?? ""), { type: spec.kind === "number" ? "number" : "text" });
       if (spec.min !== undefined) control.min = String(spec.min);

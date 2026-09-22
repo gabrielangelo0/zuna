@@ -12,6 +12,7 @@ import { ensureGearSeed } from "./gear.ts";
 import { reloadQuests } from "./quests.ts";
 import { ensureCheckinSeed } from "./checkin.ts";
 import { ensureProgressSeed } from "./progress.ts";
+import { ensureVocationSeed } from "./vocations.ts";
 import { ensurePaymentSeed } from "./paymentCatalog.ts";
 import { startPaymentReconciler } from "./payments.ts";
 import { ensureWorldSeed, listItemOverrides } from "./worldRepository.ts";
@@ -44,6 +45,7 @@ await ensureGearSeed();
 await reloadQuests();
 await ensureCheckinSeed();
 await ensureProgressSeed();
+await ensureVocationSeed();
 applyCatalogOverrides(await listItemOverrides());
 
 // ADMIN_USERS=gabriel,outro marca essas contas como administradoras ao subir o servidor.

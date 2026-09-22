@@ -1245,3 +1245,17 @@ button.tool.active {
   display: block;
   background-repeat: no-repeat;
 }
+
+/* Grupo de marcações do formulário (as famílias de poder de uma classe). */
+.check-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+
+.check-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}

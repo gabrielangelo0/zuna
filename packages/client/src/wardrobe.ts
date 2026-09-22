@@ -2,6 +2,8 @@ import {
   catalogList,
   appearanceOf,
   describeBonus,
+  familiesFor,
+  liveVocations,
   ownsItem,
   type Appearance,
   type AppearanceMessage,
@@ -14,13 +16,23 @@ import { AppearanceEditor } from "./appearanceEditor.ts";
 import { element, formatNumber } from "./dom.ts";
 import { LookPreview, paintItem } from "./lookPreview.ts";
 
-type Tab = "visual" | ItemKind;
+type Tab = "visual" | "vocation" | ItemKind;
+
+/** Etiqueta curta de atributo, usada nos cartões de classe. */
+function chip(text: string): HTMLElement {
+  const span = document.createElement("span");
+  span.className = "vocation-chip";
+  span.textContent = text;
+  return span;
+}
 
 export interface WardrobeHandlers {
   appearance(message: AppearanceMessage): void;
   equip(kind: ItemKind, id: string): void;
   buy(id: string): void;
   buyDiamonds(): void;
+  /** Escolher ou trocar de classe. */
+  vocation(id: string): void;
 }
 
 /** Guarda-roupa e loja: aparência, roupas, mascotes e montarias. */
@@ -41,7 +53,7 @@ export class Wardrobe {
   private readonly handlers: WardrobeHandlers;
   private tab: Tab = "visual";
   private player: PlayerData | null = null;
-  private profile: ProfileEvent = { diamonds: 0, unlocks: [], shortcuts: [] };
+  private profile: ProfileEvent = { diamonds: 0, unlocks: [], shortcuts: [], vocation: "", vocationPrice: 0 };
   private unlocks = new Set<string>();
   private editor: AppearanceEditor | null = null;
   private tryOn: CatalogItem | null = null;
@@ -129,12 +141,14 @@ export class Wardrobe {
       player.secondary,
       player.detail,
       this.tryOn?.id ?? "",
+      this.profile.vocation,
     ].join("|");
     if (key === this.renderedKey) return;
     this.renderedKey = key;
 
     this.paintLook(player);
     if (this.tab === "visual") this.renderVisual(player);
+    else if (this.tab === "vocation") this.renderVocations();
     else this.renderItems(player, this.tab);
   }
 
@@ -160,6 +174,59 @@ export class Wardrobe {
       onChange: ({ skin, hairColor, primary, secondary, detail }) =>
         this.handlers.appearance({ skin, hairColor, primary, secondary, detail }),
     });
+  }
+
+  /** Aba Classe: a atual em destaque e as outras com o preço da troca. */
+  private renderVocations() {
+    const current = this.profile.vocation;
+    const price = this.profile.vocationPrice;
+    const grid = document.createElement("div");
+    grid.className = "vocation-grid wide";
+    for (const vocation of liveVocations()) {
+      const card = document.createElement("article");
+      card.className = "vocation-card";
+      card.classList.toggle("active", vocation.id === current);
+
+      const name = document.createElement("strong");
+      name.textContent = vocation.name;
+      const text = document.createElement("small");
+      text.textContent = vocation.description;
+      card.append(name, text);
+
+      // Do que ela é feita: vida e mana por nível, e as famílias de poder.
+      const stats = document.createElement("div");
+      stats.className = "vocation-stats";
+      stats.append(
+        chip(`❤ ${formatNumber(vocation.hpBase)} +${formatNumber(vocation.hpPerLevel)}/nível`),
+        chip(`💧 ${formatNumber(vocation.manaBase)} +${formatNumber(vocation.manaPerLevel)}/nível`),
+        chip(`⚔ ×${vocation.attackFactor.toLocaleString("pt-BR")}`),
+        chip(`✨ ×${vocation.magicFactor.toLocaleString("pt-BR")}`),
+      );
+      card.append(stats);
+
+      const powers = document.createElement("small");
+      powers.className = "vocation-powers";
+      powers.textContent = `Poderes: ${familiesFor(vocation.families).map((family) => family.name).join(", ")}`;
+      card.append(powers);
+
+      if (vocation.id === current) {
+        const tag = document.createElement("span");
+        tag.className = "vocation-tag";
+        tag.textContent = "Sua classe";
+        card.append(tag);
+      } else {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "primary small";
+        button.textContent = current === "" ? "Escolher (grátis)" : price > 0 ? `Trocar por 💎 ${formatNumber(price)}` : "Trocar";
+        button.disabled = current !== "" && price > 0 && this.profile.diamonds < price;
+        button.addEventListener("click", () => this.handlers.vocation(vocation.id));
+        card.append(button);
+      }
+      grid.append(card);
+    }
+    this.content.replaceChildren(grid);
+    this.content.dataset.tab = "vocation";
   }
 
   private renderItems(player: PlayerData, kind: ItemKind) {

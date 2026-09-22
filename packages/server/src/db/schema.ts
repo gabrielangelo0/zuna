@@ -69,6 +69,8 @@ export const characters = pgTable(
     kills: integer("kills").notNull().default(0),
     /** Poderes na barra de atalhos, separados por vírgula (slot vazio = nada). */
     shortcuts: text("shortcuts").notNull().default(""),
+    /** Classe do personagem (vazio = ainda não escolheu). */
+    vocation: text("vocation").notNull().default(""),
     x: smallint("x").notNull(),
     y: smallint("y").notNull(),
     skin: smallint("skin").notNull(),
@@ -498,3 +500,25 @@ export const characterMilestones = pgTable(
   },
   (table) => [primaryKey({ columns: [table.characterId, table.level] })],
 );
+
+// ---------------------------------------------------------------- classes
+
+/** As classes do jogo, montadas no painel. */
+export const vocations = pgTable("vocations", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description").notNull().default(""),
+  hpBase: integer("hp_base").notNull().default(150),
+  hpPerLevel: doublePrecision("hp_per_level").notNull().default(15),
+  manaBase: integer("mana_base").notNull().default(50),
+  manaPerLevel: doublePrecision("mana_per_level").notNull().default(10),
+  attackFactor: doublePrecision("attack_factor").notNull().default(1),
+  magicFactor: doublePrecision("magic_factor").notNull().default(1),
+  armorFactor: doublePrecision("armor_factor").notNull().default(1),
+  /** Famílias de poder separadas por vírgula. */
+  families: text("families").notNull().default(""),
+  outfit: text("outfit").notNull().default(""),
+  enabled: boolean("enabled").notNull().default(true),
+  sort: smallint("sort").notNull().default(0),
+  createdAt: createdAt(),
+});

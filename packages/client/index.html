@@ -79,6 +79,8 @@
             </div>
             <div class="creator-form">
               <input id="creator-name" maxlength="16" placeholder="Nome do personagem" autocomplete="off" />
+              <p class="creator-hint">Escolha a classe. Ela vale desde o nível 1 e muda vida, mana e poderes.</p>
+              <div id="creator-vocations" class="vocation-grid"></div>
               <div id="creator-editor" class="editor"></div>
             </div>
           </div>
@@ -129,6 +131,7 @@
           </button>
           <div class="hud-body">
             <div class="hud-row"><span>Nível</span><strong id="hud-level">1</strong></div>
+            <div class="hud-row"><span>Classe</span><strong id="hud-vocation" class="empty">sem classe</strong></div>
             <div class="hud-row"><span>Ouro</span><strong id="hud-gold">0</strong></div>
             <div class="hud-row"><span>Diamantes</span><strong id="hud-diamonds" class="diamonds">0</strong></div>
             <div class="hud-row"><span>Online</span><strong id="hud-online">0</strong></div>
@@ -213,6 +216,7 @@
           <button type="button" class="tab" data-tab="outfit">Roupas</button>
           <button type="button" class="tab" data-tab="pet">Mascotes</button>
           <button type="button" class="tab" data-tab="mount">Montarias</button>
+          <button type="button" class="tab" data-tab="vocation">Classe</button>
         </nav>
         <div class="wardrobe-body">
           <figure class="wardrobe-preview">

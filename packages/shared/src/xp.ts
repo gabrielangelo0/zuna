@@ -1,3 +1,5 @@
+import { vocationStats } from "./vocations.ts";
+
 /**
  * XP total necessária para alcançar um nível. Sem limite de nível.
  * nível 10 = 4.095, nível 50 = 430.628, nível 100 ≈ 3,4 milhões.
@@ -39,11 +41,13 @@ export interface PlayerStats {
   armor: number;
 }
 
-export function playerStats(level: number): PlayerStats {
+/** Atributos do nível, já com a classe. Sem classe valem os números de antes delas. */
+export function playerStats(level: number, vocation = ""): PlayerStats {
+  const stats = vocationStats(vocation);
   return {
-    maxHp: 150 + 15 * (level - 1),
-    maxMana: 50 + 10 * (level - 1),
-    maxDamage: 12 + 3 * level,
-    armor: 2 + Math.floor(level * 0.6),
+    maxHp: Math.round(stats.hpBase + stats.hpPerLevel * (level - 1)),
+    maxMana: Math.round(stats.manaBase + stats.manaPerLevel * (level - 1)),
+    maxDamage: Math.round((12 + 3 * level) * stats.attackFactor),
+    armor: Math.round((2 + level * 0.6) * stats.armorFactor),
   };
 }

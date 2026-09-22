@@ -2,6 +2,8 @@ import {
   SHORTCUT_KEYS,
   SHORTCUT_SLOTS,
   SPELL_FAMILIES,
+  familiesFor,
+  vocationFamilies,
   nextTierOf,
   spellById,
   spellsUpTo,
@@ -19,6 +21,7 @@ export class Grimoire {
   private readonly hint = element("#grimoire-hint");
   private readonly onChange: (slots: string[]) => void;
   private level = 1;
+  private vocation = "";
   private shortcuts: string[] = Array.from({ length: SHORTCUT_SLOTS }, () => "");
   private picked: string | null = null;
 
@@ -44,6 +47,13 @@ export class Grimoire {
   close() {
     this.root.hidden = true;
     this.picked = null;
+  }
+
+  /** A classe decide quais famílias aparecem aqui. */
+  setVocation(vocation: string) {
+    if (vocation === this.vocation) return;
+    this.vocation = vocation;
+    if (this.isOpen) this.render();
   }
 
   setLevel(level: number) {
@@ -105,7 +115,7 @@ export class Grimoire {
     const unlocked = spellsUpTo(this.level);
     const groups = document.createElement("div");
     groups.className = "spell-groups";
-    for (const family of SPELL_FAMILIES) {
+    for (const family of familiesFor(vocationFamilies(this.vocation))) {
       const tiers = unlocked.filter((spell) => spell.family === family.family);
       const group = document.createElement("section");
       group.className = "spell-group";

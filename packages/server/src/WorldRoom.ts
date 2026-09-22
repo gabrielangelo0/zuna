@@ -8,6 +8,11 @@ import {
   type QuestClaimMessage,
   type CheckinEvent,
   type MilestonesEvent,
+  type VocationMessage,
+  vocationById,
+  vocationFamilies,
+  vocationStats,
+  liveVocations,
   type QuestProgress,
   type QuestsEvent,
   cone,
@@ -119,6 +124,7 @@ import { EventManager } from "./events.ts";
 import { allQuests, listQuestProgress, liveQuests, questById, saveQuestProgress } from "./quests.ts";
 import { checkinDaysAll, checkinSettings, checkinStateFor, claimCheckin } from "./checkin.ts";
 import { claimMilestones, levelRewardsAll, pendingMilestones, takenMilestones, xpRate } from "./progress.ts";
+import { chargeDiamonds, saveCharacterVocation, vocationChangeCost, vocationSettings } from "./vocations.ts";
 import {
   addCharacterItem,
   buyGearWithDiamonds,
@@ -223,6 +229,8 @@ interface PlayerSim {
   characterId: number;
   unlocks: Set<string>;
   diamonds: number;
+  /** Classe do personagem (vazio = ainda não escolheu). */
+  vocation: string;
   /** Monstros derrubados (o golpe final vale para quem mais causou dano). */
   kills: number;
   /** Poderes na barra, na ordem das teclas. */
@@ -349,6 +357,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     this.onMessage(ClientMsg.QuestClaim, (client, message: QuestClaimMessage) => this.handleQuestClaim(client, message));
     this.onMessage(ClientMsg.QuestBoss, (client, message: QuestBossMessage) => this.handleQuestBoss(client, message));
     this.onMessage(ClientMsg.CheckinClaim, (client) => void this.handleCheckinClaim(client));
+    this.onMessage(ClientMsg.Vocation, (client, message: VocationMessage) => void this.handleVocation(client, message));
     this.onMessage(ClientMsg.ItemSell, (client, message: ItemSellMessage) => this.handleItemSell(client, message));
     this.onMessage(ClientMsg.ItemBuy, (client, message: ItemBuyMessage) => this.handleItemBuy(client, message));
 
@@ -619,7 +628,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       s.hp = Math.min(s.hp, stats.maxHp) || stats.maxHp;
       s.mana = Math.min(s.mana, stats.maxMana);
       s.xp = Math.max(s.xp, xpForLevel(patch.level));
-      player.shortcuts = sanitizeShortcuts(player.shortcuts, s.level);
+      player.shortcuts = sanitizeShortcuts(player.shortcuts, s.level, vocationFamilies(player.vocation));
       this.sendProfile(player);
       this.broadcast(ServerMsg.LevelUp, { id: player.id, level: s.level } satisfies LevelUpEvent);
     }
@@ -821,7 +830,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     const gear = equippedStats(items);
     // O nível sai da XP, e não do que está gravado: se a curva mudou, ele já entra no nível novo.
     const level = Math.max(row.level, levelForXp(row.xp));
-    const stats = withGear(playerStats(level), gear);
+    const stats = withGear(playerStats(level, row.vocation), gear);
     const sim = this.worldFor(row.worldId);
     const spot = this.spawnPointFor(sim, row);
 
@@ -857,8 +866,9 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       characterId: row.id,
       unlocks,
       diamonds: account?.diamonds ?? 0,
+      vocation: row.vocation,
       kills: row.kills,
-      shortcuts: sanitizeShortcuts(row.shortcuts ? row.shortcuts.split(",") : [], level),
+      shortcuts: sanitizeShortcuts(row.shortcuts ? row.shortcuts.split(",") : [], level, vocationFamilies(row.vocation)),
       items,
       gear,
       bagFullWarnAt: 0,
@@ -1170,7 +1180,8 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     this.broadcast(ServerMsg.SpellEffect, { caster: player.id, spell: spell.id, x: at.x, y: at.y, tiles: shown } satisfies SpellEffectEvent);
 
     if (spell.kind === "heal") {
-      const amount = Math.round(healAmount(s.level) * spell.power) + randInt(Math.random, 0, 10);
+      const magic = vocationStats(player.vocation).magicFactor;
+      const amount = Math.round(healAmount(s.level) * spell.power * magic) + randInt(Math.random, 0, 10);
       const healed = Math.min(amount, s.maxHp - s.hp);
       s.hp += healed;
       this.broadcastHit(player.id, player.id, healed, "heal");
@@ -1178,10 +1189,11 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     }
 
     const { maxDamage } = this.statsOf(player);
+    const magic = vocationStats(player.vocation).magicFactor;
     let dealt = 0;
     for (const monster of targets) {
       const crit = Math.random() < CRIT_CHANCE;
-      const roll = Math.round(maxDamage * spell.power * (0.85 + Math.random() * 0.3) * (crit ? CRIT_MULTIPLIER : 1));
+      const roll = Math.round(maxDamage * spell.power * magic * (0.85 + Math.random() * 0.3) * (crit ? CRIT_MULTIPLIER : 1));
       dealt += Math.max(0, roll - monster.def.armor);
       this.damageMonster(monster, player, roll - monster.def.armor, crit);
     }
@@ -1214,7 +1226,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     const player = this.players.get(client.sessionId);
     if (!player) return;
     const slots = Array.isArray(message?.slots) ? message.slots.map((slot) => String(slot ?? "")) : [];
-    player.shortcuts = sanitizeShortcuts(slots, player.state.level);
+    player.shortcuts = sanitizeShortcuts(slots, player.state.level, vocationFamilies(player.vocation));
     this.sendProfile(player);
     void this.persist(player);
   }
@@ -1840,12 +1852,12 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     this.broadcast(ServerMsg.LevelUp, { id: player.id, level: newLevel } satisfies LevelUpEvent);
     this.sendChat(player.client, "system", `Você avançou do nível ${oldLevel} para o nível ${newLevel}.`);
     for (let level = oldLevel + 1; level <= newLevel; level++) {
-      for (const spell of spellsUnlockedAt(level)) {
+      for (const spell of spellsUnlockedAt(level, vocationFamilies(player.vocation))) {
         this.sendChat(player.client, "event", `Novo poder: ${spell.name} — ${spell.description}.`);
       }
     }
     // Graus antigos sobem sozinhos, e poder novo entra numa vaga livre da barra.
-    const shortcuts = sanitizeShortcuts(player.shortcuts, s.level);
+    const shortcuts = sanitizeShortcuts(player.shortcuts, s.level, vocationFamilies(player.vocation));
     if (shortcuts.join(",") !== player.shortcuts.join(",")) {
       player.shortcuts = shortcuts;
       this.sendProfile(player);
@@ -2156,7 +2168,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
 
   /** Atributos com os equipamentos. */
   private statsOf(player: PlayerSim): PlayerStats {
-    return withGear(playerStats(player.state.level), player.gear);
+    return withGear(playerStats(player.state.level, player.vocation), player.gear);
   }
 
   /** Recalcula atributos e visual depois de vestir, tirar ou o painel mudar um item. */
@@ -2486,6 +2498,53 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     else this.sendInventory(player);
   }
 
+  // ------------------------------------------------------------ classes
+
+  /**
+   * Escolhe ou troca a classe. A primeira escolha é de graça; depois custa diamantes, e a
+   * conta só é debitada se tiver o saldo — quem não tem, não troca e não perde nada.
+   */
+  private async handleVocation(client: Client, message: VocationMessage) {
+    const player = this.players.get(client.sessionId);
+    if (!player) return;
+    const wanted = vocationById(String(message?.id ?? ""));
+    if (!wanted || !wanted.enabled) {
+      this.sendChat(client, "system", "Essa classe não existe.");
+      return;
+    }
+    if (wanted.id === player.vocation) return;
+
+    const cost = vocationChangeCost(player.vocation);
+    if (cost > 0) {
+      const left = await chargeDiamonds(player.accountId, cost);
+      if (!this.players.has(player.id)) return;
+      if (left === null) {
+        this.sendChat(client, "system", `Trocar de classe custa ${cost} diamantes e você não tem esse tanto.`);
+        return;
+      }
+      player.diamonds = left;
+    }
+
+    const first = player.vocation === "";
+    player.vocation = wanted.id;
+    const s = player.state;
+    // A classe muda vida, mana e os poderes: recalcula tudo e enche as barras.
+    const stats = this.statsOf(player);
+    s.maxHp = stats.maxHp;
+    s.maxMana = stats.maxMana;
+    s.hp = stats.maxHp;
+    s.mana = stats.maxMana;
+    player.shortcuts = sanitizeShortcuts(player.shortcuts, s.level, vocationFamilies(wanted.id));
+    void this.enqueue(player, () => saveCharacterVocation(player.characterId, wanted.id)).catch(() => undefined);
+    void this.persist(player);
+    this.sendProfile(player);
+    this.sendChat(
+      client,
+      "event",
+      first ? `Agora você é ${wanted.name}. ${wanted.description}` : `Você virou ${wanted.name}${cost > 0 ? ` por ${cost} diamantes` : ""}.`,
+    );
+  }
+
   // ------------------------------------------------------------ baús de marco
 
   private async sendMilestones(player: PlayerSim) {
@@ -2629,6 +2688,24 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       worldNames,
       worldId: player.world.def.id,
     } satisfies QuestsEvent);
+  }
+
+  /**
+   * O painel mexeu nas classes: quem perdeu a classe (apagada) fica sem, e todo mundo
+   * recebe os números novos na hora, com vida, mana e atalhos recalculados.
+   */
+  sendVocations() {
+    for (const player of this.players.values()) {
+      if (player.vocation && !vocationById(player.vocation)) player.vocation = "";
+      const s = player.state;
+      const stats = this.statsOf(player);
+      s.maxHp = stats.maxHp;
+      s.maxMana = stats.maxMana;
+      s.hp = Math.min(s.hp, s.maxHp);
+      s.mana = Math.min(s.mana, s.maxMana);
+      player.shortcuts = sanitizeShortcuts(player.shortcuts, s.level, vocationFamilies(player.vocation));
+      this.sendProfile(player);
+    }
   }
 
   /** Avisa todo mundo que a lista de missões mudou no painel. */
@@ -2823,6 +2900,8 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       diamonds: player.diamonds,
       unlocks: [...player.unlocks],
       shortcuts: player.shortcuts,
+      vocation: player.vocation,
+      vocationPrice: vocationSettings().changePrice,
     } satisfies ProfileEvent);
   }
 

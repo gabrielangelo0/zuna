@@ -37,6 +37,8 @@ export interface LiveRoom {
   sendCheckinList(): void;
   /** O painel mexeu nos baús de marco. */
   sendMilestoneList(): void;
+  /** O painel mexeu nas classes. */
+  sendVocations(): void;
 }
 
 export interface LiveCharacterPatch {
@@ -203,4 +205,8 @@ export function pushCheckin() {
 
 export function pushMilestones() {
   for (const room of rooms) room.sendMilestoneList();
+}
+
+export function pushVocations() {
+  for (const room of rooms) room.sendVocations();
 }

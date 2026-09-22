@@ -22,6 +22,7 @@ import {
   type WorldDef,
   type WorldsResponse,
   gearList,
+  liveVocations,
 } from "@zuna/shared";
 import { db } from "./db/index.ts";
 import {
@@ -604,6 +605,7 @@ export async function publicWorlds(): Promise<WorldsResponse> {
       worlds: contents.filter((content) => content.world.published).map(blueprintOf),
       catalog: await listItemOverrides(),
       gear: gearList(),
+      vocations: liveVocations(),
     };
   }
   return worldsCache;

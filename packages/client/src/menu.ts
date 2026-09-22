@@ -3,6 +3,7 @@ import {
   HAIR_COLORS,
   OUTFIT_COLORS,
   SKIN_TONES,
+  liveVocations,
   normalizeCharacterName,
   normalizeUsername,
   shopItems,
@@ -14,6 +15,7 @@ import {
   type CharacterSummary,
   type CharactersResponse,
   type CreateCharacterResponse,
+  type VocationDef,
 } from "@zuna/shared";
 import { ApiError, apiRequest, clearToken, loadToken, saveToken } from "./api.ts";
 import { AppearanceEditor } from "./appearanceEditor.ts";
@@ -61,6 +63,8 @@ export class Menu {
   private readonly characterList = element("#character-list");
   private readonly newCharacterButton = element<HTMLButtonElement>("#character-new");
   private readonly creatorName = element<HTMLInputElement>("#creator-name");
+  private readonly creatorVocations = element("#creator-vocations");
+  private vocation = "";
   private readonly creatorCanvas = element<HTMLCanvasElement>("#creator-canvas");
   private readonly creatorCreate = element<HTMLButtonElement>("#creator-create");
   private readonly creatorPreview = new LookPreview(this.creatorCanvas, { dir: "SE", scale: 2.3, footY: 250, animate: true });
@@ -225,8 +229,43 @@ export class Menu {
   private showCreator() {
     this.creatorName.value = "";
     this.editor.set(randomAppearance());
+    this.paintVocations();
     this.paintCreator();
     this.show("creator");
+  }
+
+  /** Cartões das classes: o escolhido fica marcado e já veste a roupa que combina. */
+  private paintVocations() {
+    const classes = liveVocations();
+    this.vocation = classes[0]?.id ?? "";
+    this.creatorVocations.replaceChildren(...classes.map((vocation) => this.vocationCard(vocation)));
+    this.applyVocationLook();
+  }
+
+  private vocationCard(vocation: VocationDef): HTMLElement {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "vocation-card";
+    card.classList.toggle("active", vocation.id === this.vocation);
+    const name = document.createElement("strong");
+    name.textContent = vocation.name;
+    const text = document.createElement("small");
+    text.textContent = vocation.description;
+    card.append(name, text);
+    card.addEventListener("click", () => {
+      this.vocation = vocation.id;
+      for (const other of this.creatorVocations.children) other.classList.remove("active");
+      card.classList.add("active");
+      this.applyVocationLook();
+    });
+    return card;
+  }
+
+  /** A roupa sugerida pela classe entra no visual (o jogador ainda pode trocar). */
+  private applyVocationLook() {
+    const outfit = liveVocations().find((entry) => entry.id === this.vocation)?.outfit ?? "";
+    if (outfit && freeOutfits().includes(outfit)) this.editor.set({ ...this.editor.value, outfit });
+    this.paintCreator();
   }
 
   private paintCreator() {
@@ -247,7 +286,7 @@ export class Menu {
       const response = await apiRequest<CreateCharacterResponse>("/api/characters", {
         method: "POST",
         token,
-        body: { name, appearance: this.editor.value },
+        body: { name, appearance: this.editor.value, vocation: this.vocation },
       });
       await this.onPlay(token, response.character.id);
     });
