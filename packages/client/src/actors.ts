@@ -212,12 +212,14 @@ export class Actor {
     this.fromY = this.toY = y;
 
     const name = isPlayer ? (data as PlayerData).name : MONSTERS[(data as MonsterData).kind].name;
+    // Chefe ganha nome dourado e maior: dá para achar de longe.
+    const boss = !isPlayer && MONSTERS[(data as MonsterData).kind].boss === true;
     this.label = scene.add
-      .text(x, y, name, {
+      .text(x, y, boss ? `★ ${name}` : name, {
         fontFamily: GAME_FONT,
-        fontSize: "12px",
+        fontSize: boss ? "14px" : "12px",
         fontStyle: "bold",
-        color: "#4ade80",
+        color: boss ? "#ffc857" : "#4ade80",
         stroke: "#000000",
         strokeThickness: 3,
         resolution: TEXT_RESOLUTION,

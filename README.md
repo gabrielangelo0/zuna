@@ -45,6 +45,7 @@ Abra http://localhost:5173, crie uma conta e um personagem. Para ver o multiplay
 - O jogador tem **6 atalhos** (teclas `1` a `6`) e escolhe quais poderes ficam neles no grimório (`P`): clica no poder e depois no atalho. Dá para trocar a qualquer momento, e os atalhos ficam salvos no personagem.
 - Quando abre um grau melhor, o atalho sobe sozinho (Raio II vira Raio III), e poder novo entra numa vaga livre.
 - As famílias e os números de cada uma estão em `packages/shared/src/spells.ts`.
+- Cada poder tem efeito visual próprio, em camadas (`packages/client/src/effects.ts`): a Cura abre um círculo mágico verde com coluna de luz; o Golpe Giratório gira duas lâminas em volta do herói; o Raio Flamejante é uma bola de fogo com rastro que explode no alvo e deixa o chão queimado; o Tremor racha o chão com brilho de lava, levanta pedras e poeira; o Drenar Vida puxa almas roxas em curva do alvo até o herói; e a Tempestade escurece o céu e derruba raios em zigue-zague por toda a área.
 
 ## Drops e ranking
 
@@ -59,6 +60,22 @@ Abra http://localhost:5173, crie uma conta e um personagem. Para ver o multiplay
 - **Portais** ligam um ponto a outro, no mesmo mundo ou entre mundos. Basta pisar em cima; um portal pode pedir nível mínimo.
 - O personagem volta para o mundo onde estava ao sair, e renasce na praça do mundo em que morreu.
 - Tudo isso é criado e editado no painel, sem tocar em código. Veja [Mapas, portais e eventos](#mapas-portais-e-eventos).
+
+A praça de Zuna tem seis portais, cada um para um mundo temático maior que a cidade (120 a 144 tiles de lado), com quatro estradas sinuosas saindo da praça, monstros mais fortes quanto mais longe e um **chefe** no fundo do mapa (nome dourado com ★; quando cai, o servidor inteiro fica sabendo):
+
+| Mundo | Nível do portal | Monstros | Chefe |
+|---|---|---|---|
+| Floresta Sombria | 8 | Raposa Sombria, Lobo, Cogumelo Venenoso, Morcego do Musgo | Rei Cogumelo |
+| Pântano Nebuloso | 12 | Gosma Espinhenta, Cogumelo, Sapo Gigante, Glub do Brejo | Sapo Rei |
+| Deserto Escaldante | 25 | Cactinho, Vespa Gigante, Raptor, Cacto Guerreiro | Raptor Alfa |
+| Montanhas Geladas | 35 | Yeti Filhote, Espírito do Gelo, Bisão das Neves, Yeti | Yeti Ancião |
+| Cripta Esquecida | 45 | Esqueleto, Caveira Assombrada, Esqueleto Mago | Lorde Necromante |
+| Vulcão Rubro | 60 | Diabrete, Demônio, Demônio Azul | Dragão Ancião |
+
+- Cada terreno tem chão e cenário próprios: mata escura com árvores retorcidas e samambaias; lama, poças e vitórias-régias; dunas, oásis e ruínas; neve, pinheiros nevados, lagos e cristais; salões escuros com paredes de rocha; cinza vulcânica com rios de lava animada.
+- Cada mundo tem quatro baús escondidos longe da praça, que voltam a cada 10 minutos.
+- Os mundos, os portais, os baús e dois eventos (Caçada Dourada e Noite dos Mortos) são criados sozinhos no primeiro arranque (`packages/server/src/content.ts`) e marcados em `server_meta`: depois disso são dados comuns, e o que for apagado no painel não volta.
+- Os monstros de cada mundo só são baixados quando o jogador chega lá.
 
 ## Contas, personagens e loja
 

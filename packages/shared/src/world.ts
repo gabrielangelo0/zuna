@@ -102,6 +102,11 @@ export const GROUND_PAINTS: readonly Paint[] = [
   { id: Ground.Sand, name: "Areia", color: "#b3a06a" },
   { id: Ground.Water, name: "Água", color: "#1f4b7a" },
   { id: Ground.Stone, name: "Pedra", color: "#5c6270" },
+  { id: Ground.Snow, name: "Neve", color: "#c9d8e2" },
+  { id: Ground.Lava, name: "Lava", color: "#d9531e" },
+  { id: Ground.Cave, name: "Cripta", color: "#34323c" },
+  { id: Ground.Ash, name: "Cinza", color: "#4a4040" },
+  { id: Ground.Mud, name: "Lama", color: "#4f4a2c" },
 ];
 
 export const OBJECT_PAINTS: readonly Paint[] = [
@@ -112,7 +117,20 @@ export const OBJECT_PAINTS: readonly Paint[] = [
   { id: Obj.Bush, name: "Arbusto", color: "#2c5a2c" },
   { id: Obj.Pillar, name: "Coluna", color: "#8a5a3c" },
   { id: Obj.Flowers, name: "Flores", color: "#4d7a3a" },
+  { id: Obj.DeadTree, name: "Árvore morta", color: "#5a4632" },
+  { id: Obj.TwistedTree, name: "Árvore retorcida", color: "#6a3a2a" },
+  { id: Obj.Mushroom, name: "Cogumelos", color: "#b0503c" },
+  { id: Obj.SnowPine, name: "Pinheiro nevado", color: "#e8f0f4" },
+  { id: Obj.Crystal, name: "Cristal", color: "#8a7dff" },
+  { id: Obj.LavaRock, name: "Rocha queimada", color: "#2a2020" },
+  { id: Obj.Lily, name: "Vitória-régia", color: "#3f8a4a" },
+  { id: Obj.Fern, name: "Samambaia", color: "#3f7a36" },
+  { id: Obj.Barrel, name: "Barril", color: "#8a6a3a" },
 ];
+
+/** Maior id de chão e de cenário: o painel recusa o que passar disso. */
+export const MAX_GROUND = Math.max(...GROUND_PAINTS.map((paint) => paint.id));
+export const MAX_OBJECT = Math.max(...OBJECT_PAINTS.map((paint) => paint.id));
 
 export function groundColor(ground: number): string {
   return GROUND_PAINTS.find((paint) => paint.id === ground)?.color ?? "#000000";

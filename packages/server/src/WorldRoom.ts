@@ -1582,6 +1582,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
 
     if (topDamager) {
       topDamager.kills += 1;
+      if (def.boss) this.announce(`${topDamager.state.name} derrotou ${def.name} em ${sim.def.name}!`);
       const goldBonus = this.bonusesOf(topDamager).gold + this.eventManager.goldMultiplierFor(sim) - 1;
       for (const drop of rollDrops(Math.random, def, goldBonus)) {
         this.dropLoot(sim, drop, s.x, s.y, topDamager.id);

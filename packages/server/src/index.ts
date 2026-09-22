@@ -7,6 +7,7 @@ import { applyCatalogOverrides } from "@zuna/shared";
 import { apiRouter } from "./api.ts";
 import { connectDatabase, disconnectDatabase } from "./db/index.ts";
 import { ensureAdmins } from "./adminRepository.ts";
+import { ensureContent } from "./content.ts";
 import { ensureWorldSeed, listItemOverrides } from "./worldRepository.ts";
 import { WorldRoom, waitForPendingWrites } from "./WorldRoom.ts";
 
@@ -31,6 +32,7 @@ await connectDatabase();
 // Primeiro arranque: cria o mundo original e os eventos clássicos. Depois disso,
 // tudo o que o painel mudou (mapas, eventos, preços da loja) já sai do banco.
 await ensureWorldSeed();
+await ensureContent();
 applyCatalogOverrides(await listItemOverrides());
 
 // ADMIN_USERS=gabriel,outro marca essas contas como administradoras ao subir o servidor.

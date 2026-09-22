@@ -10,6 +10,8 @@ import {
   EVENT_TEXT_MAX,
   LOOT,
   MAP_STYLES,
+  MAX_GROUND,
+  MAX_OBJECT,
   MONSTERS,
   PORTAL_NAME_MAX,
   SPAWN_MAX_AMOUNT,
@@ -265,8 +267,8 @@ const adminTiles = createEndpoint("/api/admin/world/tiles", { method: "POST" }, 
       edits.push({ ...at, ground: 0, object: 0, reset: true });
       continue;
     }
-    const ground = clamp(entry.ground, 0, 5);
-    const object = clamp(entry.object, 0, 6);
+    const ground = clamp(entry.ground, 0, MAX_GROUND);
+    const object = clamp(entry.object, 0, MAX_OBJECT);
     if (ground === undefined || object === undefined) continue;
     edits.push({ ...at, ground, object });
   }

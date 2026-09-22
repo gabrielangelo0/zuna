@@ -272,3 +272,10 @@ export const itemOverrides = pgTable("item_overrides", {
   enabled: boolean("enabled").notNull().default(true),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** Marcas do servidor: o que já rodou uma vez (ex.: o conteúdo inicial dos mundos). */
+export const serverMeta = pgTable("server_meta", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull().default(""),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});

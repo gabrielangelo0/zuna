@@ -41,6 +41,7 @@ import {
 import { Actor } from "./actors.ts";
 import { GAME_FONT } from "./canvas.ts";
 import { element } from "./dom.ts";
+import { SpellFx, createFxTextures } from "./effects.ts";
 import { Hud } from "./hud.ts";
 import { screenToTile, tileToScreen } from "./iso.ts";
 import { Grimoire } from "./grimoire.ts";
@@ -51,7 +52,16 @@ import { KeyboardInput } from "./keyboard.ts";
 import { SpriteTextures, loadSheet } from "./sprites.ts";
 import { GROUND_FRAMES, TILE_CELL_H, TILE_CELL_W, createTextures, type GroundFrameName } from "./textures.ts";
 import { Wardrobe } from "./wardrobe.ts";
-import { FOAM_FRAMES, WATER_FRAMES, foamFrameName, shallowEdgeName, waterFramePrefix } from "./water.ts";
+import {
+  FOAM_FRAMES,
+  LAVA,
+  WATER,
+  WATER_FRAMES,
+  foamFrameName,
+  shallowEdgeName,
+  waterFramePrefix,
+  type Liquid,
+} from "./water.ts";
 
 // Profundidade: chão < decalques (flores, marcadores) < cenário e personagens (ordenados por Y) < nomes < textos.
 const DEPTH_GROUND = -1_000_000;
@@ -67,14 +77,24 @@ const CLOSE_REASON: Record<number, string> = {
 
 const TEXT_RESOLUTION = Math.min(2, window.devicePixelRatio || 1);
 
-/** Quadro do chão de cada tipo. A água tem camada própria (water.ts). */
-const GROUND_FRAME: Record<Exclude<Ground, typeof Ground.Water>, GroundFrameName> = {
+/** Quadro do chão de cada tipo. Água e lava têm camadas próprias (water.ts). */
+const GROUND_FRAME: Record<Exclude<Ground, typeof Ground.Water | typeof Ground.Lava>, GroundFrameName> = {
   [Ground.Grass]: "grass",
   [Ground.GrassDark]: "grassDark",
   [Ground.Dirt]: "dirt",
   [Ground.Sand]: "sand",
   [Ground.Stone]: "stone",
+  [Ground.Snow]: "snow",
+  [Ground.Cave]: "cave",
+  [Ground.Ash]: "ash",
+  [Ground.Mud]: "mud",
 };
+
+/** Líquidos: cada um com ondas, beira e espuma próprias. A lava anda na metade da velocidade. */
+const LIQUIDS: readonly { ground: Ground; liquid: Liquid; slow: boolean }[] = [
+  { ground: Ground.Water, liquid: WATER, slow: false },
+  { ground: Ground.Lava, liquid: LAVA, slow: true },
+];
 
 /** Vizinhos de um tile de água: o lado do losango que encosta em cada um. */
 const SHORE_EDGES: readonly { dx: number; dy: number; part: string }[] = [
@@ -100,9 +120,19 @@ const OBJECT_PROPS: Partial<Record<Obj, { id: string; decal?: boolean; flip?: bo
   [Obj.Bush]: { id: "prop_bush", flip: true },
   [Obj.Pillar]: { id: "prop_banner" },
   [Obj.Flowers]: { id: "prop_flowers", decal: true, flip: true },
+  [Obj.DeadTree]: { id: "prop_deadtree", flip: true },
+  [Obj.TwistedTree]: { id: "prop_twisted", flip: true },
+  [Obj.Mushroom]: { id: "prop_mushroom", decal: true, flip: true },
+  [Obj.SnowPine]: { id: "prop_snowpine", flip: true },
+  [Obj.Crystal]: { id: "prop_crystal", flip: true },
+  [Obj.LavaRock]: { id: "prop_lavarock", flip: true },
+  [Obj.Lily]: { id: "prop_lily", decal: true, flip: true },
+  [Obj.Fern]: { id: "prop_fern", decal: true, flip: true },
+  [Obj.Barrel]: { id: "prop_barrel", flip: true },
 };
 
-const MONSTER_KINDS = Object.keys(MONSTERS) as MonsterKind[];
+/** Monstros do mundo inicial, baixados antes de o jogador entrar. */
+const STARTER_MONSTERS: readonly MonsterKind[] = ["rat", "snake", "wolf", "orc", "troll", "cyclops"];
 
 interface BurstOptions {
   tints: number[];
@@ -140,6 +170,7 @@ export class WorldScene extends Phaser.Scene {
   private readonly actors = new Map<string, Actor>();
   private readonly monsterIds = new Set<string>();
   private readonly entities = new Map<string, Entity>();
+  private fx!: SpellFx;
   private lootLayer!: LootLayer;
   private minimap!: Minimap;
   /** Chão, água e espuma: três camadas de losangos, refeitas quando o mundo muda. */
@@ -153,9 +184,9 @@ export class WorldScene extends Phaser.Scene {
   private readonly grimoire = new Grimoire((slots) => this.room?.send(ClientMsg.Shortcuts, { slots }));
   private nextMinimapAt = 0;
   private corpses: Actor[] = [];
-  /** Cada tile de água guarda o começo do nome do quadro; a animação só troca o número do fim. */
-  private readonly waterBobs: { bob: Phaser.GameObjects.Bob; prefix: string }[] = [];
-  private readonly foamBobs: { bob: Phaser.GameObjects.Bob; part: string }[] = [];
+  /** Cada tile de líquido guarda o começo do nome do quadro; a animação só troca o número do fim. */
+  private readonly waterBobs: { bob: Phaser.GameObjects.Bob; prefix: string; slow: boolean }[] = [];
+  private readonly foamBobs: { bob: Phaser.GameObjects.Bob; part: string; slow: boolean }[] = [];
   private waterFrame = 0;
   private foamFrame = 0;
   private readonly cameraAnchor = { x: 0, y: 0 };
@@ -177,9 +208,12 @@ export class WorldScene extends Phaser.Scene {
     element("#minimap-expand").addEventListener("click", () => this.toggleMap());
     element("#minimap-canvas").addEventListener("click", () => this.toggleMap());
     createTextures(this);
+    createFxTextures(this);
+    this.fx = new SpellFx(this, { ground: DEPTH_DECAL + 5, air: DEPTH_FLOATING - 1 });
     this.drawWorld();
-    // Os monstros aparecem logo ao entrar: carregar antes evita que surjam "atrasados".
-    for (const kind of MONSTER_KINDS) void loadSheet(`monster_${kind}`).catch(() => undefined);
+    // Os monstros da cidade aparecem logo ao entrar: carregar antes evita que surjam "atrasados".
+    // Os dos outros mundos carregam quando o jogador chega lá (são mais de 20 folhas).
+    for (const kind of STARTER_MONSTERS) void loadSheet(`monster_${kind}`).catch(() => undefined);
 
     this.hoverMarker = this.add.image(0, 0, "marker_hover").setDepth(DEPTH_DECAL + 1).setVisible(false);
     this.targetMarker = this.add.image(0, 0, "marker_target").setDepth(DEPTH_DECAL + 2).setVisible(false);
@@ -427,25 +461,63 @@ export class WorldScene extends Phaser.Scene {
     this.drawPortals();
   }
 
-  /** Portais: um losango brilhante no chão com o nome por cima. */
+  /** Portais: círculo mágico girando no chão, brilho, faíscas subindo e o nome por cima. */
   private drawPortals() {
     for (const portal of this.portals) {
       const screen = tileToScreen(portal.x, portal.y);
-      const mark = this.add
-        .image(screen.x, screen.y, "marker_goto")
-        .setDepth(DEPTH_DECAL + 1)
-        .setTint(0xb07dff)
-        .setAlpha(0.85);
-      this.tweens.add({ targets: mark, alpha: 0.35, scale: 1.12, duration: 900, yoyo: true, repeat: -1 });
-      this.portalLayer.push(mark);
+      // Portal com nível mínimo é dourado; os livres são roxos.
+      const tint = portal.minLevel > 0 ? 0xffc857 : 0xb07dff;
 
+      const rune = this.add
+        .image(screen.x, screen.y, "fx_rune")
+        .setTint(tint)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setDepth(DEPTH_DECAL + 1)
+        .setScale(58 / 256, 29 / 256)
+        .setAlpha(0.9);
+      const spin = { angle: 0 };
+      this.tweens.add({
+        targets: spin,
+        angle: Math.PI * 2,
+        duration: 6000,
+        repeat: -1,
+        onUpdate: () => rune.setRotation(spin.angle),
+      });
+
+      const glow = this.add
+        .image(screen.x, screen.y - 6, "fx_glow")
+        .setTint(tint)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setDepth(DEPTH_DECAL + 2)
+        .setScale(1.3, 0.8)
+        .setAlpha(0.55);
+      this.tweens.add({ targets: glow, alpha: 0.25, scaleX: 1.6, duration: 1100, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
+
+      const sparks = this.add.particles(screen.x, screen.y, "fx_glow", {
+        x: { min: -18, max: 18 },
+        y: { min: -6, max: 6 },
+        speedY: { min: -60, max: -25 },
+        lifespan: { min: 700, max: 1200 },
+        scale: { start: 0.14, end: 0 },
+        alpha: { start: 0.9, end: 0 },
+        tint: [tint, 0xffffff],
+        blendMode: Phaser.BlendModes.ADD,
+        frequency: 110,
+      });
+      sparks.setDepth(screen.y + 1);
+      this.portalLayer.push(rune, glow, sparks);
+
+      const title = portal.name || "Portal";
+      const label = portal.minLevel > 0 ? `${title}\nnível ${portal.minLevel}` : title;
       const text = this.add
-        .text(screen.x, screen.y - 26, portal.name || "Portal", {
+        .text(screen.x, screen.y - 30, label, {
           fontFamily: GAME_FONT,
           fontSize: "12px",
-          color: "#e6d2ff",
+          fontStyle: "bold",
+          color: portal.minLevel > 0 ? "#ffe3a3" : "#e6d2ff",
           stroke: "#1a1030",
           strokeThickness: 4,
+          align: "center",
         })
         .setOrigin(0.5, 1)
         .setResolution(TEXT_RESOLUTION)
@@ -479,15 +551,22 @@ export class WorldScene extends Phaser.Scene {
 
   private drawGround() {
     const { width, height, ground } = this.worldMap;
-    // A água fica por baixo, a água rasa clareia por cima dela, a borda da terra cobre
-    // o losango vizinho e a espuma vem por cima de tudo.
-    const water = this.add.blitter(0, 0, "water").setDepth(DEPTH_GROUND - 2);
-    const shallow = this.add.blitter(0, 0, "shallow").setDepth(DEPTH_GROUND - 1);
+    // O líquido fica por baixo, a beira clareia por cima dele, a borda da terra cobre
+    // o losango vizinho e a espuma (ou a crosta da lava) vem por cima de tudo.
     const land = this.add.blitter(0, 0, "ground").setDepth(DEPTH_GROUND);
-    const foam = this.add.blitter(0, 0, "foam").setDepth(DEPTH_GROUND + 1);
-    this.groundLayers = [water, shallow, land, foam];
-    const isLand = (x: number, y: number) =>
-      x >= 0 && y >= 0 && x < width && y < height && ground[y * width + x] !== Ground.Water;
+    this.groundLayers = [land];
+    const layers = new Map(
+      LIQUIDS.map(({ ground: type, liquid, slow }) => {
+        const layer = {
+          slow,
+          waves: this.add.blitter(0, 0, liquid.key).setDepth(DEPTH_GROUND - 2),
+          shallow: this.add.blitter(0, 0, `${liquid.key}_shallow`).setDepth(DEPTH_GROUND - 1),
+          foam: this.add.blitter(0, 0, `${liquid.key}_foam`).setDepth(DEPTH_GROUND + 1),
+        };
+        this.groundLayers.push(layer.waves, layer.shallow, layer.foam);
+        return [type as number, layer];
+      }),
+    );
 
     // Por diagonais (x + y) para os losangos de baixo sobreporem os de cima.
     for (let sum = 0; sum <= width + height - 2; sum++) {
@@ -498,14 +577,19 @@ export class WorldScene extends Phaser.Scene {
         const left = screen.x - TILE_CELL_W / 2;
         const top = screen.y - TILE_CELL_H / 2;
 
-        if (type !== Ground.Water) {
-          const frame = GROUND_FRAME[type];
+        const layer = layers.get(type);
+        if (!layer) {
+          const frame = GROUND_FRAME[type as keyof typeof GROUND_FRAME];
           land.create(left, top, `${frame}_${tileHash(x, y) % GROUND_FRAMES[frame]}`);
           continue;
         }
 
+        // Para um líquido, "terra" é tudo o que não for ele mesmo (lava encostada na água também tem beira).
+        const isLand = (tx: number, ty: number) =>
+          tx >= 0 && ty >= 0 && tx < width && ty < height && ground[ty * width + tx] !== type;
+        const { waves, shallow, foam, slow } = layer;
         const prefix = waterFramePrefix(x, y);
-        this.waterBobs.push({ bob: water.create(left, top, `${prefix}${this.waterFrame}`), prefix });
+        this.waterBobs.push({ bob: waves.create(left, top, `${prefix}${this.liquidFrame(slow)}`), prefix, slow });
 
         const touching = SHORE_EDGES.map((edge) => isLand(x + edge.dx, y + edge.dy));
         const corners = SHORE_CORNERS.filter(
@@ -513,7 +597,8 @@ export class WorldScene extends Phaser.Scene {
         ).map((corner) => corner.part);
         const edges = SHORE_EDGES.filter((_, index) => touching[index]).map((edge) => edge.part);
         for (const part of [...edges, ...corners]) {
-          this.foamBobs.push({ bob: foam.create(left, top, foamFrameName(part, this.foamFrame)), part });
+          const frame = foamFrameName(part, (slow ? this.foamFrame >> 1 : this.foamFrame) % FOAM_FRAMES);
+          this.foamBobs.push({ bob: foam.create(left, top, frame), part, slow });
         }
 
         // Água rasa: o lado que encosta na terra, e também o tile de trás, para o degradê continuar.
@@ -552,15 +637,22 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
-  /** Todos os tiles de água andam juntos: é o que mantém as ondas emendadas de um losango ao outro. */
+  /** Quadro atual de um líquido. A lava conta devagar: um quadro a cada dois da água. */
+  private liquidFrame(slow: boolean): number {
+    return slow ? (this.waterFrame >> 1) % WATER_FRAMES : this.waterFrame % WATER_FRAMES;
+  }
+
+  /** Todos os tiles andam juntos: é o que mantém as ondas emendadas de um losango ao outro. */
   private animateWater() {
-    this.waterFrame = (this.waterFrame + 1) % WATER_FRAMES;
-    for (const { bob, prefix } of this.waterBobs) bob.setFrame(`${prefix}${this.waterFrame}`);
+    this.waterFrame = (this.waterFrame + 1) % (WATER_FRAMES * 2);
+    for (const { bob, prefix, slow } of this.waterBobs) bob.setFrame(`${prefix}${this.liquidFrame(slow)}`);
   }
 
   private animateFoam() {
-    this.foamFrame = (this.foamFrame + 1) % FOAM_FRAMES;
-    for (const { bob, part } of this.foamBobs) bob.setFrame(foamFrameName(part, this.foamFrame));
+    this.foamFrame = (this.foamFrame + 1) % (FOAM_FRAMES * 2);
+    for (const { bob, part, slow } of this.foamBobs) {
+      bob.setFrame(foamFrameName(part, (slow ? this.foamFrame >> 1 : this.foamFrame) % FOAM_FRAMES));
+    }
   }
 
   // ------------------------------------------------------------ personagens e monstros
@@ -842,90 +934,27 @@ export class WorldScene extends Phaser.Scene {
     const at = tileToScreen(event.x, event.y);
     const local = event.caster === this.localId;
 
-    switch (spellById(event.spell)?.family) {
+    const spell = spellById(event.spell);
+    switch (spell?.family) {
       case "heal":
-        this.burst(from.x, from.y - 30, { tints: [0x7dff9b, 0xc8ffd4, 0x34d399], count: 26, speed: 70, gravityY: -140, lifespan: 900 });
+        this.fx.heal(from);
         return;
-
       case "whirl":
-        this.spellRing(from.x, from.y, 40, 190, 0xfff1c1, 380);
-        this.burst(from.x, from.y - 20, { tints: [0xffffff, 0xffe08a], count: 22, speed: 280, gravityY: 0, lifespan: 420 });
+        this.fx.whirl(from);
         return;
-
       case "quake":
-        this.spellRing(from.x, from.y, 60, 380, 0xffb057, 620);
-        this.spellRing(from.x, from.y, 30, 260, 0xffe3b0, 480);
-        this.burst(from.x, from.y, {
-          tints: [0xb98a52, 0x7a5a34, 0xd9c7a8],
-          count: 40,
-          speed: 240,
-          gravityY: 420,
-          lifespan: 900,
-          angle: { min: 200, max: 340 },
-        });
-        if (local) this.cameras.main.shake(320, 0.006);
+        this.fx.quake(from, local);
         return;
-
       case "bolt":
-        this.spellBeam(from.x, from.y - 26, at.x, at.y - 20, 0xffa53c);
-        this.burst(at.x, at.y - 16, { tints: [0xffd166, 0xff7b2c, 0xffffff], count: 26, speed: 200, gravityY: 60, lifespan: 600 });
+        this.fx.fireball(from, at);
         return;
-
       case "drain":
-        this.spellBeam(at.x, at.y - 20, from.x, from.y - 26, 0xa78bfa);
-        this.burst(at.x, at.y - 16, { tints: [0xa78bfa, 0x7c3aed, 0xe9d5ff], count: 24, speed: 120, gravityY: -120, lifespan: 800 });
+        this.fx.drain(from, at);
         return;
-
       case "storm":
-        this.spellRing(from.x, from.y, 80, 520, 0x8ec5ff, 700);
-        for (let i = 0; i < 5; i++) {
-          const offset = { x: from.x + (Math.random() - 0.5) * 320, y: from.y + (Math.random() - 0.5) * 170 };
-          this.time.delayedCall(i * 90, () => {
-            this.spellBeam(offset.x, offset.y - 320, offset.x, offset.y, 0xbfe0ff);
-            this.burst(offset.x, offset.y, { tints: [0xffffff, 0x8ec5ff], count: 14, speed: 160, lifespan: 500 });
-          });
-        }
-        if (local) this.cameras.main.shake(420, 0.005);
+        this.fx.storm(from, (spell.range + 0.5) * 64, local);
         return;
     }
-  }
-
-  /** Anel que cresce no chão, em perspectiva isométrica. */
-  private spellRing(x: number, y: number, from: number, to: number, color: number, duration: number) {
-    const ring = this.add.graphics({ x, y }).setDepth(y + 3).setBlendMode(Phaser.BlendModes.ADD);
-    const animation = { t: 0 };
-    this.tweens.add({
-      targets: animation,
-      t: 1,
-      duration,
-      ease: "Cubic.easeOut",
-      onUpdate: () => {
-        const size = from + animation.t * (to - from);
-        ring.clear();
-        ring.lineStyle(7 * (1 - animation.t) + 1, color, 1 - animation.t);
-        ring.strokeEllipse(0, 0, size, size / 2);
-      },
-      onComplete: () => ring.destroy(),
-    });
-  }
-
-  /** Risco de energia entre dois pontos (raio e drenagem). */
-  private spellBeam(x1: number, y1: number, x2: number, y2: number, color: number) {
-    const beam = this.add.graphics().setDepth(DEPTH_FLOATING - 1).setBlendMode(Phaser.BlendModes.ADD);
-    const animation = { t: 0 };
-    this.tweens.add({
-      targets: animation,
-      t: 1,
-      duration: 320,
-      onUpdate: () => {
-        beam.clear();
-        beam.lineStyle(7 * (1 - animation.t) + 2, color, 1 - animation.t * 0.8);
-        beam.lineBetween(x1, y1, x2, y2);
-        beam.lineStyle(2, 0xffffff, (1 - animation.t) * 0.8);
-        beam.lineBetween(x1, y1, x2, y2);
-      },
-      onComplete: () => beam.destroy(),
-    });
   }
 
   private floatingText(x: number, y: number, text: string, color: string, size: number, rise = 34, duration = 900) {

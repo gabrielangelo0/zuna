@@ -203,6 +203,11 @@ export class BakeModel {
       }
       const recolor = this.spec.recolor?.[source.name];
       if (recolor !== undefined) lit.color.setHex(recolor);
+      const flat = this.spec.flat?.[source.name];
+      if (flat !== undefined) {
+        lit.map = null;
+        lit.color.setHex(flat);
+      }
       const texture = textures.get(source.name);
       if (texture) lit.map = texture;
 

@@ -185,6 +185,7 @@ e seus tesouros no chão. **Portais** ligam os pontos, no mesmo mundo ou entre m
 | Portais | tabela `portals` | ✅ Entre mundos, com nível mínimo |
 | Ninhos de monstro | tabela `world_spawns` | ✅ Quantidade viva, raio e tempo de volta |
 | Tesouros no chão | tabela `world_items` | ✅ Voltam sozinhos |
+| Seis mundos temáticos com chefes | `packages/server/src/content.ts` | ✅ Floresta, Pântano, Deserto, Neve, Cripta e Vulcão |
 | Masmorras com instância por grupo | — | Fase 3 |
 
 Isto é o que destrava o conteúdo sem fim da seção 4.5: mapas novos, zonas de nível alto e eventos

@@ -7,7 +7,8 @@ import { TILE_H, TILE_W } from "@zuna/shared";
 // do mesmo desenho contínuo, e por isso não aparece a grade entre um tile e outro. O desenho
 // se repete a cada 4 tiles, então bastam 16 variações (x % 4, y % 4) para cobrir o mapa todo.
 // Por cima vêm a água rasa (um degradê que clareia perto da terra e atravessa dois tiles
-// sem emenda) e a espuma da praia.
+// sem emenda) e a espuma da praia. A lava usa o mesmo desenho com outra paleta: brilha
+// mais perto da margem e ganha uma crosta escura no lugar da espuma.
 
 /** Célula do atlas: 1 px a mais de cada lado, igual ao chão, para os losangos se sobreporem. */
 const CELL_W = TILE_W + 2;
@@ -23,12 +24,45 @@ export const FOAM_FRAMES = 6;
 /** O degradê da água rasa vai da terra até dois tiles mar adentro. */
 export const SHALLOW_BANDS = 2;
 
-/** Mar aberto; a água rasa clareia isto por cima. */
-const SEA: [number, number, number] = [36, 108, 172];
-const CREST: [number, number, number] = [196, 236, 250];
-const SHALLOW: [number, number, number] = [132, 220, 232];
-/** Quanto a água rasa cobre o mar, bem na beira. */
-const SHALLOW_ALPHA = 0.55;
+type Rgb = readonly [number, number, number];
+
+/** Paleta de um líquido. As texturas saem com o nome `key`, `key_shallow` e `key_foam`. */
+export interface Liquid {
+  key: string;
+  /** Cor do meio do lago; a beira clareia por cima dela. */
+  deep: Rgb;
+  crest: Rgb;
+  shallow: Rgb;
+  /** Quanto a beira cobre o meio. */
+  shallowAlpha: number;
+  foam: Rgb;
+  foamAlpha: number;
+  /** Quanto a crista clareia (a lava brilha mais). */
+  crestStrength: number;
+}
+
+export const WATER: Liquid = {
+  key: "water",
+  deep: [36, 108, 172],
+  crest: [196, 236, 250],
+  shallow: [132, 220, 232],
+  shallowAlpha: 0.55,
+  foam: [236, 249, 255],
+  foamAlpha: 1,
+  crestStrength: 0.55,
+};
+
+export const LAVA: Liquid = {
+  key: "lava",
+  deep: [178, 48, 16],
+  crest: [255, 226, 120],
+  shallow: [255, 150, 36],
+  shallowAlpha: 0.6,
+  // Na margem a lava esfria e vira crosta escura.
+  foam: [52, 30, 26],
+  foamAlpha: 0.9,
+  crestStrength: 0.8,
+};
 
 /** Lados do losango e as quinas, na ordem usada pelos nomes dos quadros. */
 export const FOAM_EDGES = ["ne", "se", "sw", "nw"] as const;
@@ -96,13 +130,13 @@ function wave(gx: number, gy: number, phase: number): { height: number; crest: n
   return { height: height + swell, crest: smoothstep(0.8, 0.97, height) * dash };
 }
 
-function createWaterAtlas(scene: Phaser.Scene) {
+function createWaveAtlas(scene: Phaser.Scene, liquid: Liquid) {
   const variants = WATER_PERIOD * WATER_PERIOD;
   const cells = variants * WATER_FRAMES;
   const columns = 24;
   const rows = Math.ceil(cells / columns);
-  const texture = scene.textures.createCanvas("water", columns * CELL_W, rows * CELL_H);
-  if (!texture) throw new Error("Não foi possível criar a textura da água");
+  const texture = scene.textures.createCanvas(liquid.key, columns * CELL_W, rows * CELL_H);
+  if (!texture) throw new Error(`Não foi possível criar a textura ${liquid.key}`);
   const image = texture.context.createImageData(columns * CELL_W, rows * CELL_H);
   const stride = columns * CELL_W;
 
@@ -132,7 +166,7 @@ function createWaterAtlas(scene: Phaser.Scene) {
 
             // Crista clara, vale levemente mais escuro: ondas com cara de desenho.
             const light = 1 + 0.1 * w.height;
-            const crest = w.crest * 0.55;
+            const crest = w.crest * liquid.crestStrength;
 
             // Poucos brilhos soltos, cada um aceso só num pedaço da animação.
             // A célula de 16 × 8 px é do tamanho de um quarto de tile: um brilho a cada ~10 tiles.
@@ -154,8 +188,8 @@ function createWaterAtlas(scene: Phaser.Scene) {
             const at = ((oy + py) * stride + ox + px) * 4;
             const mix = Math.min(1, crest + glint);
             for (let c = 0; c < 3; c++) {
-              const shaded = SEA[c] * light;
-              image.data[at + c] = Math.max(0, Math.min(255, Math.round(shaded + (CREST[c] - shaded) * mix)));
+              const shaded = liquid.deep[c] * light;
+              image.data[at + c] = Math.max(0, Math.min(255, Math.round(shaded + (liquid.crest[c] - shaded) * mix)));
             }
             image.data[at + 3] = 255;
           }
@@ -204,10 +238,10 @@ function foamAlpha(part: string, nx: number, ny: number, frame: number): number 
   return alpha;
 }
 
-function createFoamAtlas(scene: Phaser.Scene) {
+function createFoamAtlas(scene: Phaser.Scene, liquid: Liquid) {
   const parts = [...FOAM_EDGES, ...FOAM_CORNERS];
-  const texture = scene.textures.createCanvas("foam", FOAM_FRAMES * CELL_W, parts.length * CELL_H);
-  if (!texture) throw new Error("Não foi possível criar a textura da espuma");
+  const texture = scene.textures.createCanvas(`${liquid.key}_foam`, FOAM_FRAMES * CELL_W, parts.length * CELL_H);
+  if (!texture) throw new Error(`Não foi possível criar a espuma de ${liquid.key}`);
   const image = texture.context.createImageData(FOAM_FRAMES * CELL_W, parts.length * CELL_H);
   const stride = FOAM_FRAMES * CELL_W;
 
@@ -223,10 +257,10 @@ function createFoamAtlas(scene: Phaser.Scene) {
           const alpha = foamAlpha(part, nx, ny, frame);
           if (alpha <= 0) continue;
           const at = ((oy + py) * stride + ox + px) * 4;
-          image.data[at] = 236;
-          image.data[at + 1] = 249;
-          image.data[at + 2] = 255;
-          image.data[at + 3] = Math.round(Math.min(1, alpha) * 255);
+          image.data[at] = liquid.foam[0];
+          image.data[at + 1] = liquid.foam[1];
+          image.data[at + 2] = liquid.foam[2];
+          image.data[at + 3] = Math.round(Math.min(1, alpha * liquid.foamAlpha) * 255);
         }
       }
       texture.add(foamFrameName(part, frame), 0, ox, oy, CELL_W, CELL_H);
@@ -242,26 +276,26 @@ function createFoamAtlas(scene: Phaser.Scene) {
  * O tile da beira vai do forte ao médio e o seguinte do médio ao zero, então a cor
  * continua de um losango para o outro sem degrau.
  */
-function shallowAlpha(part: string, nx: number, ny: number): number {
+function shallowAlpha(part: string, nx: number, ny: number, strength: number): number {
   if ((FOAM_CORNERS as readonly string[]).includes(part)) {
     const [vx, vy] = { n: [0, -1], e: [1, 0], s: [0, 1], w: [-1, 0] }[part as "n"]!;
     const reach = Math.min(1, Math.abs(nx - vx) + Math.abs(ny - vy));
-    return SHALLOW_ALPHA * Math.pow(1 - reach, 1.6);
+    return strength * Math.pow(1 - reach, 1.6);
   }
   const [edge, band] = part.split("_");
   const distance = { ne: 1 - (nx - ny), se: 1 - (nx + ny), sw: 1 - (-nx + ny), nw: 1 - (-nx - ny) }[edge]!;
   // Ao longo de dois tiles o caminho vai de 0 a 1: metade em cada losango.
   const along = Math.min(1, (Number(band) * 2 + distance) / (SHALLOW_BANDS * 2));
-  return SHALLOW_ALPHA * Math.pow(1 - along, 1.6);
+  return strength * Math.pow(1 - along, 1.6);
 }
 
-function createShallowAtlas(scene: Phaser.Scene) {
+function createShallowAtlas(scene: Phaser.Scene, liquid: Liquid) {
   const parts = [
     ...FOAM_EDGES.flatMap((edge) => Array.from({ length: SHALLOW_BANDS }, (_, band) => shallowEdgeName(edge, band))),
     ...FOAM_CORNERS,
   ];
-  const texture = scene.textures.createCanvas("shallow", parts.length * CELL_W, CELL_H);
-  if (!texture) throw new Error("Não foi possível criar a textura da água rasa");
+  const texture = scene.textures.createCanvas(`${liquid.key}_shallow`, parts.length * CELL_W, CELL_H);
+  if (!texture) throw new Error(`Não foi possível criar a beira de ${liquid.key}`);
   const image = texture.context.createImageData(parts.length * CELL_W, CELL_H);
   const stride = parts.length * CELL_W;
 
@@ -272,12 +306,12 @@ function createShallowAtlas(scene: Phaser.Scene) {
         if (!insideTile(px, py)) continue;
         const nx = (px + 0.5 - CELL_W / 2) / (TILE_W / 2);
         const ny = (py + 0.5 - CELL_H / 2) / (TILE_H / 2);
-        const alpha = shallowAlpha(part, nx, ny);
+        const alpha = shallowAlpha(part, nx, ny, liquid.shallowAlpha);
         if (alpha <= 0) continue;
         const at = (py * stride + ox + px) * 4;
-        image.data[at] = SHALLOW[0];
-        image.data[at + 1] = SHALLOW[1];
-        image.data[at + 2] = SHALLOW[2];
+        image.data[at] = liquid.shallow[0];
+        image.data[at + 1] = liquid.shallow[1];
+        image.data[at + 2] = liquid.shallow[2];
         image.data[at + 3] = Math.round(alpha * 255);
       }
     }
@@ -289,7 +323,9 @@ function createShallowAtlas(scene: Phaser.Scene) {
 }
 
 export function createWaterTextures(scene: Phaser.Scene) {
-  createWaterAtlas(scene);
-  createShallowAtlas(scene);
-  createFoamAtlas(scene);
+  for (const liquid of [WATER, LAVA]) {
+    createWaveAtlas(scene, liquid);
+    createShallowAtlas(scene, liquid);
+    createFoamAtlas(scene, liquid);
+  }
 }

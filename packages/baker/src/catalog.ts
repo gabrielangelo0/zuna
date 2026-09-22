@@ -34,6 +34,8 @@ export interface EntrySpec {
   recolor?: Record<string, number>;
   /** Troca a textura de materiais pelo nome (arquivo relativo a assets/source). */
   retexture?: Record<string, string>;
+  /** Tira a textura e pinta o material de uma cor lisa (pinheiro com neve). */
+  flat?: Record<string, number>;
   /** Correção da frente do modelo, em graus. */
   yaw?: number;
   /** Inclina o modelo para frente, em graus (voadores que ficam em pé viram montaria deitada). */
@@ -245,6 +247,138 @@ export const MONSTER_SPRITES: EntrySpec[] = [
     ],
     anims: humanoid("1H_Melee_Attack_Chop"),
   },
+
+  // Floresta Sombria
+  {
+    id: "monster_fox",
+    file: `${ANIMALS}/Fox.glb`,
+    height: 42,
+    recolor: { Main: 0x3a3f58, Main_Light: 0x9aa3c7 },
+    anims: animal("Attack"),
+  },
+  {
+    id: "monster_mushroomBrute",
+    file: `${MONSTERS}/Mushnub_Evolved.glb`,
+    height: 50,
+    recolor: { MushroomKing_Secondary: 0x7b3fb0 },
+    anims: BLOB,
+  },
+  { id: "monster_golem", file: `${MONSTERS}/Goleling.glb`, height: 60, lift: 10, anims: flying("Punch") },
+  {
+    id: "monster_mushroomKing",
+    file: `${MONSTERS}/Mushroom_King.glb`,
+    height: 124,
+    cellScale: 1.2,
+    headExtra: 20,
+    anims: bigMonster("Punch"),
+  },
+
+  // Pântano
+  { id: "monster_spikyBlob", file: `${MONSTERS}/Green_Spiky_Blob.glb`, height: 40, anims: BLOB },
+  { id: "monster_frog", file: `${MONSTERS}/Frog.glb`, height: 62, anims: bigMonster("Punch") },
+  { id: "monster_glub", file: `${MONSTERS}/Glub_Evolved.glb`, height: 56, lift: 22, anims: flying("Headbutt") },
+  {
+    id: "monster_frogKing",
+    file: `${MONSTERS}/Frog.glb`,
+    height: 118,
+    cellScale: 1.2,
+    headExtra: 20,
+    recolor: { Frog_Main: 0x3f8f3a, Frog_Secondary: 0xd4b43a },
+    anims: bigMonster("Weapon"),
+  },
+
+  // Deserto
+  { id: "monster_cactus", file: `${MONSTERS}/Cactoro.glb`, height: 44, anims: BLOB },
+  { id: "monster_wasp", file: `${MONSTERS}/Armabee.glb`, height: 40, lift: 26, anims: flying("Headbutt") },
+  {
+    id: "monster_raptor",
+    file: `${MONSTERS}/Dino.glb`,
+    height: 78,
+    recolor: { Dino_Main: 0x9a6a2a, Dino_Secondary: 0x5a3d1c },
+    anims: bigMonster("Punch"),
+  },
+  { id: "monster_cactusWarrior", file: `${MONSTERS}/Cactoro_B.glb`, height: 84, anims: bigMonster("Punch") },
+  {
+    id: "monster_raptorAlpha",
+    file: `${MONSTERS}/Dino.glb`,
+    height: 124,
+    cellScale: 1.2,
+    headExtra: 20,
+    recolor: { Dino_Main: 0x8a1f2a, Dino_Secondary: 0x2a2a2a },
+    anims: bigMonster("Weapon"),
+  },
+
+  // Montanhas Geladas
+  { id: "monster_yetiCub", file: `${MONSTERS}/Yeti.glb`, height: 52, anims: BLOB },
+  {
+    id: "monster_iceSpirit",
+    file: `${MONSTERS}/Hywirl.glb`,
+    height: 54,
+    lift: 20,
+    recolor: { Hywirl_Main: 0x7fc8f0 },
+    anims: flying("Punch"),
+  },
+  {
+    id: "monster_bison",
+    file: `${ANIMALS}/Bull.glb`,
+    height: 74,
+    recolor: { Main: 0x5a4636, Main_Light: 0xe8e4dc },
+    anims: animal("Attack_Headbutt"),
+  },
+  {
+    id: "monster_yetiElder",
+    file: `${MONSTERS}/Yeti_B.glb`,
+    height: 132,
+    cellScale: 1.2,
+    headExtra: 20,
+    recolor: { Yeti_Main: 0xeef4f8, Yeti_Secondary: 0x7fb6d4 },
+    anims: bigMonster("Punch"),
+  },
+
+  // Cripta
+  {
+    id: "monster_skeleton",
+    file: `${SKELETONS}/Characters/Skeleton_Minion.glb`,
+    height: 68,
+    fitMeshes: BODY,
+    headExtra: 18,
+    attach: [{ bone: "handslot.r", file: `${SKELETONS}/Assets/Skeleton_Blade.gltf` }],
+    anims: humanoid("1H_Melee_Attack_Chop"),
+  },
+  { id: "monster_ghostSkull", file: `${MONSTERS}/Ghost_Skull.glb`, height: 50, lift: 24, anims: flying("Headbutt") },
+  {
+    id: "monster_skeletonMage",
+    file: `${SKELETONS}/Characters/Skeleton_Mage.glb`,
+    height: 70,
+    fitMeshes: BODY,
+    headExtra: 30,
+    cellScale: 1.25,
+    attach: [{ bone: "handslot.r", file: `${SKELETONS}/Assets/Skeleton_Staff.gltf` }],
+    anims: humanoid("Spellcast_Shoot", "Spellcast_Raise"),
+  },
+  {
+    id: "monster_necroLord",
+    file: `${SKELETONS}/Characters/Skeleton_Mage.glb`,
+    height: 112,
+    fitMeshes: BODY,
+    headExtra: 34,
+    cellScale: 1.3,
+    attach: [{ bone: "handslot.r", file: `${SKELETONS}/Assets/Skeleton_Staff.gltf` }],
+    anims: humanoid("Spellcast_Raise", "Spellcast_Shoot"),
+  },
+
+  // Vulcão
+  { id: "monster_imp", file: `${MONSTERS}/Demon.glb`, height: 54, lift: 24, anims: flying("Punch") },
+  { id: "monster_blueDemon", file: `${MONSTERS}/Blue_Demon.glb`, height: 112, cellScale: 1.15, anims: bigMonster("Weapon") },
+  {
+    id: "monster_dragon",
+    file: `${MONSTERS}/Dragon_Evolved.glb`,
+    height: 120,
+    lift: 30,
+    cellScale: 1.3,
+    headExtra: 20,
+    anims: flying("Headbutt"),
+  },
 ];
 
 // ---------------------------------------------------------------- mascotes
@@ -344,6 +478,86 @@ export const PROP_SPRITES: EntrySpec[] = [
     variants: [`${NATURE}/Flower_4_Group.gltf`, `${NATURE}/Clover_1.gltf`, `${NATURE}/Clover_2.gltf`],
     rotations: [0, 180],
     height: 18,
+    anims: {},
+  },
+  {
+    id: "prop_deadtree",
+    file: `${NATURE}/DeadTree_1.gltf`,
+    variants: numbered("DeadTree", 2, 5),
+    rotations: [0, 140],
+    height: 108,
+    footprint: 0.3,
+    anims: {},
+  },
+  {
+    id: "prop_twisted",
+    file: `${NATURE}/TwistedTree_1.gltf`,
+    variants: numbered("TwistedTree", 2, 5),
+    rotations: [0, 160],
+    height: 122,
+    footprint: 0.3,
+    // A folha vem vermelho vivo; escurecida vira a mata da Floresta Sombria.
+    recolor: { Leaves_TwistedTree: 0x7c4f8c },
+    anims: {},
+  },
+  {
+    id: "prop_mushroom",
+    file: `${NATURE}/Mushroom_Common.gltf`,
+    variants: [`${NATURE}/Mushroom_Laetiporus.gltf`],
+    rotations: [0, 120, 240],
+    height: 22,
+    anims: {},
+  },
+  {
+    id: "prop_snowpine",
+    file: `${NATURE}/Pine_1.gltf`,
+    variants: numbered("Pine", 2, 5),
+    height: 132,
+    footprint: 0.3,
+    flat: { Leaves_Pine: 0xdfeef6 },
+    recolor: { Bark_NormalTree: 0x9a8a80 },
+    anims: {},
+  },
+  {
+    id: "prop_crystal",
+    file: "builtin:crystal",
+    rotations: [15, 110, 220],
+    height: 58,
+    recolor: { crystal_gem: 0x8a7dff },
+    anims: {},
+  },
+  {
+    id: "prop_lavarock",
+    file: `${NATURE}/Rock_Medium_1.gltf`,
+    variants: numbered("Rock_Medium", 2, 3),
+    rotations: [0, 100, 210],
+    height: 38,
+    recolor: { Rocks: 0x4a3530 },
+    anims: {},
+  },
+  {
+    id: "prop_lily",
+    file: `${HEXAGON}/decoration/nature/waterlily_A.gltf`,
+    variants: [`${HEXAGON}/decoration/nature/waterlily_B.gltf`],
+    rotations: [0, 90, 200],
+    // A folha é quase plana: a escala sai da altura, então a altura é bem pequena.
+    height: 3,
+    anims: {},
+  },
+  {
+    id: "prop_fern",
+    file: `${NATURE}/Fern_1.gltf`,
+    variants: [`${NATURE}/Plant_7.gltf`, `${NATURE}/Plant_1.gltf`],
+    rotations: [0, 150],
+    height: 28,
+    anims: {},
+  },
+  {
+    id: "prop_barrel",
+    file: `${HEXAGON}/decoration/props/barrel.gltf`,
+    variants: [`${HEXAGON}/decoration/props/crate_A_big.gltf`, `${HEXAGON}/decoration/props/crate_B_big.gltf`],
+    rotations: [20],
+    height: 34,
     anims: {},
   },
   {
