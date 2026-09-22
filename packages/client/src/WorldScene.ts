@@ -10,6 +10,7 @@ import {
   type MonsterSpellEvent,
   type QuestsEvent,
   type CheckinEvent,
+  type MilestonesEvent,
   type InventoryEvent,
   ClientMsg,
   Ground,
@@ -341,6 +342,7 @@ export class WorldScene extends Phaser.Scene {
       this.questLog.setQuests(event);
       this.hud.setQuestsReady(this.questLog.readyCount);
     });
+    room.onMessage(ServerMsg.Milestones, (event: MilestonesEvent) => this.questLog.setMilestones(event));
     room.onMessage(ServerMsg.Checkin, (event: CheckinEvent) => {
       this.checkin.setCheckin(event);
       this.hud.setCheckinReady(this.checkin.ready);

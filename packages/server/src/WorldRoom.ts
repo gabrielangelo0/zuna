@@ -7,6 +7,7 @@ import {
   type QuestBossMessage,
   type QuestClaimMessage,
   type CheckinEvent,
+  type MilestonesEvent,
   type QuestProgress,
   type QuestsEvent,
   cone,
@@ -117,6 +118,7 @@ import { accountFromToken } from "./auth.ts";
 import { EventManager } from "./events.ts";
 import { allQuests, listQuestProgress, liveQuests, questById, saveQuestProgress } from "./quests.ts";
 import { checkinDaysAll, checkinSettings, checkinStateFor, claimCheckin } from "./checkin.ts";
+import { claimMilestones, levelRewardsAll, pendingMilestones, takenMilestones, xpRate } from "./progress.ts";
 import {
   addCharacterItem,
   buyGearWithDiamonds,
@@ -817,7 +819,9 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     const mount = row.mount && owns(row.mount, "mount") ? row.mount : "";
     const [items, questProgress] = await Promise.all([listCharacterItems(row.id), listQuestProgress(row.id)]);
     const gear = equippedStats(items);
-    const stats = withGear(playerStats(row.level), gear);
+    // O nível sai da XP, e não do que está gravado: se a curva mudou, ele já entra no nível novo.
+    const level = Math.max(row.level, levelForXp(row.xp));
+    const stats = withGear(playerStats(level), gear);
     const sim = this.worldFor(row.worldId);
     const spot = this.spawnPointFor(sim, row);
 
@@ -832,7 +836,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       maxHp: stats.maxHp,
       mana: Math.min(Math.max(0, row.mana), stats.maxMana),
       maxMana: stats.maxMana,
-      level: row.level,
+      level,
       xp: row.xp,
       gold: row.gold,
       target: "",
@@ -854,7 +858,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       unlocks,
       diamonds: account?.diamonds ?? 0,
       kills: row.kills,
-      shortcuts: sanitizeShortcuts(row.shortcuts ? row.shortcuts.split(",") : [], row.level),
+      shortcuts: sanitizeShortcuts(row.shortcuts ? row.shortcuts.split(",") : [], level),
       items,
       gear,
       bagFullWarnAt: 0,
@@ -878,6 +882,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     this.settleBag(player);
     this.sendQuests(player);
     void this.sendCheckin(player);
+    void this.grantMilestones(player);
     this.sendProfile(player);
     this.sendInventory(player);
     const greeting = row.lastLoginAt ? "Bem-vindo de volta" : "Bem-vindo";
@@ -1818,8 +1823,10 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
 
   private giveXp(player: PlayerSim, amount: number) {
     const s = player.state;
-    s.xp += amount;
-    this.broadcast(ServerMsg.Xp, { id: player.id, amount } satisfies XpEvent);
+    // A taxa do painel vale para tudo o que dá XP: monstro, missão, presente e baú.
+    const gained = Math.max(1, Math.round(amount * xpRate()));
+    s.xp += gained;
+    this.broadcast(ServerMsg.Xp, { id: player.id, amount: gained } satisfies XpEvent);
 
     const newLevel = levelForXp(s.xp);
     if (newLevel <= s.level) return;
@@ -1846,6 +1853,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     if (Math.floor(newLevel / 10) > Math.floor(oldLevel / 10)) {
       this.broadcastChat("event", `${s.name} alcançou o nível ${newLevel}!`);
     }
+    void this.grantMilestones(player);
     void this.persist(player);
   }
 
@@ -2476,6 +2484,68 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     this.consume(player, ammo, 1);
     if (!player.items.includes(ammo)) this.sendChat(player.client, "system", "Suas flechas acabaram.");
     else this.sendInventory(player);
+  }
+
+  // ------------------------------------------------------------ baús de marco
+
+  private async sendMilestones(player: PlayerSim) {
+    const taken = await takenMilestones(player.characterId);
+    if (!this.players.has(player.id)) return;
+    player.client.send(ServerMsg.Milestones, {
+      rewards: levelRewardsAll(),
+      taken,
+      level: player.state.level,
+    } satisfies MilestonesEvent);
+  }
+
+  /**
+   * O painel mexeu nos marcos: todo mundo recebe a lista nova. Um baú criado para um nível
+   * que o jogador já passou é entregue na hora, sem esperar ele entrar de novo.
+   */
+  sendMilestoneList() {
+    for (const player of this.players.values()) void this.grantMilestones(player);
+  }
+
+  /**
+   * Entrega os baús que o nível já alcançou e que ainda não foram pagos. Roda ao entrar
+   * (pega os marcos criados depois, ou os níveis ganhos numa mudança de curva) e a cada
+   * nível novo. A gravação é que decide: se outra janela pagou antes, aqui não paga de novo.
+   */
+  private async grantMilestones(player: PlayerSim) {
+    const due = await pendingMilestones(player.characterId, player.state.level);
+    if (!this.players.has(player.id)) return;
+    const paid = new Set(await claimMilestones(player.characterId, due.map((reward) => reward.level)));
+    if (!this.players.has(player.id)) return;
+    for (const reward of due) {
+      if (!paid.has(reward.level)) continue;
+      const prizes: string[] = [];
+      if (reward.rewardGold > 0) {
+        player.state.gold += reward.rewardGold;
+        prizes.push(`${reward.rewardGold.toLocaleString("pt-BR")} de ouro`);
+      }
+      if (reward.rewardDiamonds > 0) {
+        const amount = reward.rewardDiamonds;
+        player.diamonds += amount;
+        prizes.push(`${amount.toLocaleString("pt-BR")} diamantes`);
+        void this.enqueue(player, async () => {
+          player.diamonds = await addDiamonds(player.accountId, amount);
+          this.sendProfile(player);
+        }).catch(() => undefined);
+      }
+      if (reward.rewardItem) {
+        const item = gearItem(reward.rewardItem);
+        const got = item ? this.grantItem(player, item.id, reward.rewardItemCount) : 0;
+        if (item && got > 0) prizes.push(got > 1 ? `${got}× ${item.name}` : item.name);
+        else if (item) this.itemNotice(player, false, `A mochila estava cheia: ${item.name} não coube.`);
+      }
+      const title = reward.name || `Nível ${reward.level}`;
+      this.sendChat(player.client, "event", `Marco alcançado — ${title}: você recebeu ${prizes.join(", ") || "nada"}.`);
+    }
+    if (paid.size > 0) {
+      void this.persist(player);
+      this.sendProfile(player);
+    }
+    void this.sendMilestones(player);
   }
 
   // ------------------------------------------------------------ check-in diário

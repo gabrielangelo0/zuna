@@ -330,4 +330,6 @@ export const ServerMsg = {
   Quests: "quests",
   /** Check-in diário do jogador (só ele recebe). */
   Checkin: "checkin",
+  /** Baús de marco: a lista e os que este personagem já pegou (só ele recebe). */
+  Milestones: "milestones",
 } as const;

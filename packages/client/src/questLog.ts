@@ -2,8 +2,11 @@ import {
   MONSTERS,
   QUEST_ALTAR_RANGE,
   gearItem,
+  milestoneList,
   questProgressOf,
   questWaiting,
+  type LevelReward,
+  type MilestonesEvent,
   type PlayerData,
   type QuestDef,
   type QuestsEvent,
@@ -47,14 +50,15 @@ export class QuestLog {
   private readonly tabs = [...document.querySelectorAll<HTMLButtonElement>("#quests [data-quest-tab]")];
   private readonly handlers: QuestHandlers;
   private data: QuestsEvent = { quests: [], progress: [], worldNames: {}, worldId: 0 };
+  private marks: MilestonesEvent = { rewards: [], taken: [], level: 1 };
   private player: PlayerData | null = null;
-  private tab: "kill" | "boss" = "kill";
+  private tab: "kill" | "boss" | "marks" = "kill";
 
   constructor(handlers: QuestHandlers) {
     this.handlers = handlers;
     for (const tab of this.tabs) {
       tab.addEventListener("click", () => {
-        this.tab = tab.dataset.questTab as "kill" | "boss";
+        this.tab = tab.dataset.questTab as "kill" | "boss" | "marks";
         for (const other of this.tabs) other.classList.toggle("active", other === tab);
         this.render();
       });
@@ -85,6 +89,11 @@ export class QuestLog {
     if (this.isOpen) this.render();
   }
 
+  setMilestones(event: MilestonesEvent) {
+    this.marks = event;
+    if (this.isOpen) this.render();
+  }
+
   setPlayer(player: PlayerData) {
     this.player = player;
     // Só redesenha quando muda de casa (o botão do altar depende da distância).
@@ -97,12 +106,53 @@ export class QuestLog {
   }
 
   private render() {
+    if (this.tab === "marks") {
+      this.renderMarks();
+      return;
+    }
     const player = this.player;
     const quests = this.data.quests.filter((quest) => quest.kind === this.tab).sort((a, b) => a.minLevel - b.minLevel);
     const list = make("div", "quest-list");
     for (const quest of quests) list.append(this.questCard(quest, player));
     if (quests.length === 0) list.append(make("p", "quest-empty", "Nenhuma missão por aqui ainda."));
     this.body.replaceChildren(list);
+  }
+
+  /** Marcos: o que já veio, o que vem pela frente e quanto falta para o próximo. */
+  private renderMarks() {
+    const rewards = milestoneList(this.marks.rewards);
+    const taken = new Set(this.marks.taken);
+    const list = make("div", "quest-list");
+    for (const reward of rewards) list.append(this.markCard(reward, taken.has(reward.level)));
+    if (rewards.length === 0) list.append(make("p", "quest-empty", "Nenhum marco por aqui ainda."));
+    this.body.replaceChildren(list);
+  }
+
+  private markCard(reward: LevelReward, taken: boolean): HTMLElement {
+    const level = this.marks.level;
+    const card = make("article", "quest-card");
+    card.classList.toggle("done", taken);
+    card.classList.toggle("waiting", !taken && reward.level > level);
+
+    const head = make("div", "quest-head");
+    head.append(make("strong", "", reward.name || `Nível ${reward.level}`));
+    const missing = reward.level - level;
+    head.append(
+      make("small", "", taken ? `nível ${reward.level} · recebido` : missing > 0 ? `nível ${reward.level} · faltam ${missing}` : `nível ${reward.level}`),
+    );
+    card.append(head);
+
+    const rewards = make("div", "quest-rewards");
+    if (reward.rewardGold > 0) rewards.append(make("span", "reward gold", `🪙 ${formatNumber(reward.rewardGold)}`));
+    if (reward.rewardDiamonds > 0) rewards.append(make("span", "reward diamonds", `💎 ${formatNumber(reward.rewardDiamonds)}`));
+    const item = reward.rewardItem ? gearItem(reward.rewardItem) : undefined;
+    if (item) {
+      const chip = make("span", "reward item");
+      chip.append(iconElement(item.icon, 22), make("span", "", reward.rewardItemCount > 1 ? `${reward.rewardItemCount}× ${item.name}` : item.name));
+      rewards.append(chip);
+    }
+    card.append(rewards);
+    return card;
   }
 
   private questCard(quest: QuestDef, player: PlayerData | null): HTMLElement {

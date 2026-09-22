@@ -35,6 +35,8 @@ export interface LiveRoom {
   sendQuestList(): void;
   /** O painel mexeu no presente diário. */
   sendCheckinList(): void;
+  /** O painel mexeu nos baús de marco. */
+  sendMilestoneList(): void;
 }
 
 export interface LiveCharacterPatch {
@@ -197,4 +199,8 @@ export function pushQuests() {
 
 export function pushCheckin() {
   for (const room of rooms) room.sendCheckinList();
+}
+
+export function pushMilestones() {
+  for (const room of rooms) room.sendMilestoneList();
 }

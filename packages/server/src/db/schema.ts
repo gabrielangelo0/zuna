@@ -469,3 +469,32 @@ export const accountCheckin = pgTable("account_checkin", {
   total: integer("total").notNull().default(0),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------------------------------------------------------------- progressão
+
+/** Baús de marco: prêmio ao alcançar certos níveis, montados no painel. */
+export const levelRewards = pgTable("level_rewards", {
+  id: serial("id").primaryKey(),
+  level: integer("level").notNull().default(10),
+  name: text("name").notNull().default(""),
+  rewardGold: integer("reward_gold").notNull().default(0),
+  rewardDiamonds: integer("reward_diamonds").notNull().default(0),
+  rewardItem: text("reward_item").notNull().default(""),
+  rewardItemCount: integer("reward_item_count").notNull().default(1),
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: createdAt(),
+});
+
+/** Marcos que cada personagem já recebeu (para não pagar duas vezes). */
+export const characterMilestones = pgTable(
+  "character_milestones",
+  {
+    characterId: integer("character_id")
+      .notNull()
+      .references(() => characters.id, { onDelete: "cascade" }),
+    /** Nível do marco entregue. */
+    level: integer("level").notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [primaryKey({ columns: [table.characterId, table.level] })],
+);

@@ -1,10 +1,16 @@
 /**
- * XP total necessária para alcançar um nível. Curva cúbica no estilo Tibia:
- * nível 2 = 100, nível 10 = 9.300, nível 100 ≈ 15,7 milhões. Sem limite de nível.
+ * XP total necessária para alcançar um nível. Sem limite de nível.
+ * nível 10 = 4.095, nível 50 = 430.628, nível 100 ≈ 3,4 milhões.
+ *
+ * A curva antiga era a do Tibia (cúbica cheia) e pedia 280 mortes para subir no nível 50 e
+ * 323 no nível 100 — quase duas horas por nível. Aqui o degrau fica em torno de 60 a 70
+ * mortes do melhor monstro da faixa, que é um nível a cada 10 ou 15 minutos. A curva nova é
+ * mais barata em todos os níveis, então ninguém perde nível na troca: quem já jogava sobe.
  */
 export function xpForLevel(level: number): number {
   if (level <= 1) return 0;
-  return Math.round((50 / 3) * (level ** 3 - 6 * level ** 2 + 17 * level - 12));
+  const steps = level - 1;
+  return Math.round((10 / 3) * steps ** 3 + 15 * steps ** 2 + 50 * steps);
 }
 
 export function levelForXp(xp: number): number {
