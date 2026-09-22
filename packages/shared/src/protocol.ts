@@ -139,26 +139,50 @@ export const ClientMsg = {
   ToggleMount: "toggleMount",
   /** Equipamentos: vestir, tirar, vender e comprar. */
   ItemEquip: "itemEquip",
-  ItemUnequip: "itemUnequip",
+  ItemMove: "itemMove",
+  ItemUse: "itemUse",
   ItemSell: "itemSell",
   ItemBuy: "itemBuy",
+  QuickPotion: "quickPotion",
 } as const;
 
+/** Clique duplo: veste (ou tira) o item, ou usa a poção. */
 export interface ItemEquipMessage {
   uid: number;
 }
 
-export interface ItemUnequipMessage {
-  slot: EquipSlot;
+/** Arrastar e soltar: para um espaço do corpo ou uma casa da mochila. `count` divide a pilha. */
+export interface ItemMoveMessage {
+  uid: number;
+  to: EquipSlot | "bag";
+  index?: number;
+  count?: number;
+}
+
+export interface ItemUseMessage {
+  uid: number;
+}
+
+/** Teclas Q (vida) e E (mana). */
+export interface QuickPotionMessage {
+  kind: "hp" | "mana";
 }
 
 export interface ItemSellMessage {
   uid: number;
+  count?: number;
 }
 
 export interface ItemBuyMessage {
   id: string;
   currency: "gold" | "diamonds";
+  count?: number;
+}
+
+/** Disparo de besta, para o cliente desenhar a flecha voando. */
+export interface ShotEvent {
+  attacker: string;
+  target: string;
 }
 
 // ---------------------------------------------------------------- servidor → clientes
@@ -282,4 +306,5 @@ export const ServerMsg = {
   Inventory: "inventory",
   /** Catálogo de equipamentos mudou no painel. */
   Gear: "gear",
+  Shot: "shot",
 } as const;

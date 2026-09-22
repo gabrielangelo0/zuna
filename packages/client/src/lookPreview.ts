@@ -9,6 +9,7 @@ import {
   type CatalogItem,
   type SpriteSheetMeta,
 } from "@zuna/shared";
+import { layerPicks } from "./layers.ts";
 import { composeFrame, drawFrame, frameAt, loadSheet, type SpriteSheet } from "./sprites.ts";
 
 // Prévias em canvas 2D (menu e guarda-roupa), com os mesmos sprites do jogo.
@@ -17,6 +18,8 @@ export interface Look {
   appearance: Appearance;
   mount?: string;
   pet?: string;
+  /** Equipamento vestido (ícones em VISIBLE_SLOTS): desenha o personagem em camadas. */
+  looks?: string;
 }
 
 const composed = new Map<string, Promise<HTMLCanvasElement | null>>();
@@ -33,6 +36,39 @@ function tintedFrame(sheet: SpriteSheet, colors: number[], key: string): Promise
   return pending;
 }
 
+/** Quadro de equipamento com o tom da raridade (multiplicado, preservando o recorte). */
+function huedFrame(sheet: SpriteSheet, hue: number, key: string): Promise<HTMLCanvasElement | null> {
+  const cacheKey = `${sheet.meta.id}|hue${hue}|${key}`;
+  let pending = composed.get(cacheKey);
+  if (!pending) {
+    pending = (async () => {
+      const frame = sheet.meta.frames[key];
+      if (!frame) return null;
+      const canvas = document.createElement("canvas");
+      canvas.width = frame.w;
+      canvas.height = frame.h;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(sheet.image, frame.x, frame.y, frame.w, frame.h, 0, 0, frame.w, frame.h);
+      if (hue !== 0xffffff) {
+        ctx.globalCompositeOperation = "multiply";
+        ctx.fillStyle = `#${hue.toString(16).padStart(6, "0")}`;
+        ctx.fillRect(0, 0, frame.w, frame.h);
+        ctx.globalCompositeOperation = "destination-in";
+        ctx.drawImage(sheet.image, frame.x, frame.y, frame.w, frame.h, 0, 0, frame.w, frame.h);
+      }
+      return canvas;
+    })();
+    composed.set(cacheKey, pending);
+    if (composed.size > 400) composed.delete(composed.keys().next().value!);
+  }
+  return pending;
+}
+
+interface LayerReady {
+  sheet: SpriteSheet;
+  frames: Map<string, HTMLCanvasElement | null>;
+}
+
 function animFrames(meta: SpriteSheetMeta, anim: AnimName, dir: BakedDir): string[] {
   return Array.from({ length: meta.anims[anim]?.frames ?? 0 }, (_, i) => frameKey(anim, dir, i));
 }
@@ -40,6 +76,8 @@ function animFrames(meta: SpriteSheetMeta, anim: AnimName, dir: BakedDir): strin
 interface Ready {
   outfit: SpriteSheet;
   frames: Map<string, HTMLCanvasElement | null>;
+  /** Personagem em camadas (de trás para a frente); vazio = folha inteira da roupa. */
+  layers: LayerReady[];
   mount: SpriteSheet | null;
   pet: SpriteSheet | null;
   /** Quanto o desenho se estende a partir do pé, em pixels do sprite (para caber no canvas). */
@@ -143,7 +181,23 @@ export class LookPreview {
     ]);
     const colors = appearanceColors(look.appearance);
     const keys = mount ? [frameKey("ride", dir, 0)] : animFrames(outfit.meta, "idle", dir);
-    const frames = new Map(await Promise.all(keys.map(async (key) => [key, await tintedFrame(outfit, colors, key)] as const)));
+    const picks = look.looks !== undefined ? layerPicks(look.appearance.outfit, look.looks) : null;
+    const layers: LayerReady[] = picks
+      ? await Promise.all(
+          picks.map(async (pick) => {
+            const sheet = await loadSheet(pick.id);
+            const frames = new Map(
+              await Promise.all(
+                keys.map(async (key) => [key, pick.tinted ? await tintedFrame(sheet, colors, key) : await huedFrame(sheet, pick.hue, key)] as const),
+              ),
+            );
+            return { sheet, frames };
+          }),
+        )
+      : [];
+    const frames = layers.length
+      ? new Map<string, HTMLCanvasElement | null>()
+      : new Map(await Promise.all(keys.map(async (key) => [key, await tintedFrame(outfit, colors, key)] as const)));
 
     let extent = extentOf(outfit.meta, keys);
     if (mount) {
@@ -156,7 +210,7 @@ export class LookPreview {
       const dy = hasSeat ? seat.sy! - riderSeat.sy! : 0;
       extent = mergeExtents(extentOf(mount.meta, mountKeys), extentOf(outfit.meta, keys, dx, dy));
     }
-    return { outfit, frames, mount, pet, extent };
+    return { outfit, frames, layers, mount, pet, extent };
   }
 
   private draw(time: number) {
@@ -190,11 +244,10 @@ export class LookPreview {
       const mountFrame = drawFrame(ctx, mount.meta, mountKey, mount.image, x, footY, { scale });
       const riderKey = frameKey("ride", dir, 0);
       const riderFrame = outfit.meta.frames[riderKey];
-      const rider = ready.frames.get(riderKey);
-      if (rider && mountFrame?.sx !== undefined && mountFrame.sy !== undefined && riderFrame?.sx !== undefined && riderFrame.sy !== undefined) {
+      if (mountFrame?.sx !== undefined && mountFrame.sy !== undefined && riderFrame?.sx !== undefined && riderFrame.sy !== undefined) {
         const riderX = x + (mountFrame.sx - riderFrame.sx) * scale;
         const riderY = footY + (mountFrame.sy - riderFrame.sy) * scale;
-        drawFrame(ctx, outfit.meta, riderKey, rider, riderX, riderY, { scale, cropped: true });
+        this.drawCharacter(ready, riderKey, riderX, riderY, scale);
       }
       const front = frontKey(mountKey);
       if (mount.meta.frames[front]) drawFrame(ctx, mount.meta, front, mount.image, x, footY, { scale });
@@ -202,8 +255,20 @@ export class LookPreview {
     }
 
     const key = frameAt(outfit.meta, "idle", dir, time);
-    const source = key ? ready.frames.get(key) : null;
-    if (key && source) drawFrame(ctx, outfit.meta, key, source, x, footY, { scale, cropped: true });
+    if (key) this.drawCharacter(ready, key, x, footY, scale);
+  }
+
+  /** O personagem num quadro: camada por camada, ou a folha inteira da roupa. */
+  private drawCharacter(ready: Ready, key: string, x: number, y: number, scale: number) {
+    if (ready.layers.length > 0) {
+      for (const layer of ready.layers) {
+        const source = layer.frames.get(key);
+        if (source) drawFrame(this.ctx, layer.sheet.meta, key, source, x, y, { scale, cropped: true });
+      }
+      return;
+    }
+    const source = ready.frames.get(key);
+    if (source) drawFrame(this.ctx, ready.outfit.meta, key, source, x, y, { scale, cropped: true });
   }
 }
 

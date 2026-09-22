@@ -32,6 +32,8 @@ export interface PlayerData {
   /** Montaria equipada, ou vazio. */
   mount: string;
   mounted: boolean;
+  /** Aparência do que está vestido (ícones em VISIBLE_SLOTS, separados por vírgula). */
+  looks: string;
 }
 
 export interface MonsterData {
@@ -53,8 +55,10 @@ export interface LootData {
   y: number;
   gold: number;
   diamonds: number;
-  /** Equipamento no chão (kind "item"), ou vazio. */
+  /** Item no chão (kind "item"), ou vazio. */
   item: string;
+  /** Quantos (poções e flechas vêm em montinhos). */
+  count: number;
   /** Id de quem derrubou o monstro: só ele pega até `freeAt`. */
   owner: string;
   /** Instante em que o drop libera para todo mundo. */

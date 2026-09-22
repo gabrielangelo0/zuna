@@ -7,7 +7,7 @@ import {
   type SpriteFrameMeta,
   type SpriteSheetMeta,
 } from "@zuna/shared";
-import { CATALOG, ITEM_ICONS, type EntrySpec } from "./catalog.ts";
+import { CATALOG, ITEM_ICONS, layerSheets, type EntrySpec, type LayerSheet } from "./catalog.ts";
 import { ATLAS_MAX_WIDTH, DIR_YAW, OUTLINE_COLOR, OUTLINE_STRENGTH, PPU, SUPERSAMPLE, TINT_REF } from "./config.ts";
 import {
   blit,
@@ -178,12 +178,139 @@ async function bakeEntry(renderer: BakeRenderer, spec: EntrySpec): Promise<void>
   }
 }
 
+/**
+ * Uma camada do personagem (parte do corpo ou equipamento): mesmas animações, direções,
+ * escala e célula da folha inteira da roupa, para o jogo empilhar as camadas quadro a quadro.
+ */
+async function bakeLayer(renderer: BakeRenderer, layer: LayerSheet): Promise<{ bytes: number }> {
+  const spec: EntrySpec = { ...layer.outfit, id: layer.id, tint: layer.tint ? layer.outfit.tint : undefined };
+  const model = await BakeModel.createLayer(spec, layer.plan);
+  renderer.scene.add(model.root);
+  try {
+    const idle = spec.anims.idle ?? Object.values(spec.anims)[0]!;
+    const fit = model.fit(model.clip(idle.clip));
+    const size = evenCell(Math.max(spec.height, fit.extent * PPU) * 2.5 * (spec.cellScale ?? 1) + (spec.lift ?? 0) + 24);
+    const view: View = { cellW: size, cellH: size, anchorX: size / 2, anchorY: Math.round(size * 0.74) };
+    renderer.setView(view, fit.radius);
+    const contact = layer.plan.shadow ? renderer.contactShadow(fit.footprint) : null;
+    const dirs = spec.dirs ?? BAKED_DIRS;
+    const frames: BakedFrame[] = [];
+    const anims: SpriteSheetMeta["anims"] = {};
+    for (const [anim, animSpec] of Object.entries(spec.anims) as [AnimName, NonNullable<EntrySpec["anims"][AnimName]>][]) {
+      const clip = model.clip(animSpec.clip);
+      const duration = clip.duration;
+      const fps = (animSpec.frames / Math.max(duration, 0.1)) * (animSpec.speed ?? 1);
+      anims[anim] = { frames: animSpec.frames, fps: Math.round(fps * 100) / 100, loop: animSpec.loop };
+      for (const dir of dirs) {
+        model.setYaw(DIR_YAW[dir]);
+        for (let i = 0; i < animSpec.frames; i++) {
+          const time =
+            animSpec.loop ? (duration * i) / animSpec.frames
+            : animSpec.frames > 1 ? (duration * i) / (animSpec.frames - 1)
+            : 0;
+          model.pose(clip, time, animSpec.loop);
+          model.usePass("lit");
+          const lit = downsample(renderer.render("lit"), SUPERSAMPLE);
+          let image = composite(outline(lit, OUTLINE_COLOR, OUTLINE_STRENGTH), lit);
+          if (layer.plan.shadow && animSpec.shadow !== false) {
+            model.usePass("shadow");
+            let shadow = downsample(renderer.render("shadow"), SUPERSAMPLE);
+            if (contact) shadow = composite(contact, shadow);
+            image = composite(shadow, image);
+          }
+          let ids: Rgba | null = null;
+          if (model.tintable) {
+            model.usePass("ids");
+            ids = downsampleIds(renderer.render("ids"), SUPERSAMPLE);
+          }
+          model.usePass("lit");
+          const seatWorld = model.seatPosition();
+          const seat = seatWorld ? renderer.project(seatWorld) : null;
+          if (seat) seat.y -= spec.seatLift ?? 0;
+          frames.push({ key: frameKey(anim, dir, i), image, ids, seat });
+        }
+        await nextTick();
+      }
+    }
+    const sheet = await saveSheet(spec, view, anims, frames, model.tintable, false);
+    return { bytes: sheet.width * sheet.height };
+  } finally {
+    model.dispose();
+  }
+}
+
+async function bakeLayers(renderer: BakeRenderer, only: string[]) {
+  const all = layerSheets();
+  const chosen = only.length > 0 ? all.filter((layer) => only.some((prefix) => layer.id.startsWith(prefix))) : all;
+  const started = performance.now();
+  for (const [index, layer] of chosen.entries()) {
+    const t0 = performance.now();
+    await bakeLayer(renderer, layer);
+    log(`✓ ${layer.id} (${index + 1}/${chosen.length}) ${((performance.now() - t0) / 1000).toFixed(1)} s`);
+  }
+  // Índice para o jogo saber quais camadas existem em cada roupa.
+  const index: Record<string, string[]> = {};
+  for (const layer of all) {
+    const [, outfit, ...rest] = layer.id.split("_");
+    (index[outfit!] ??= []).push(rest.join("_"));
+  }
+  await post("/__bake/save?file=layers.json", JSON.stringify(index));
+  log(`✓ camadas: ${chosen.length} folhas em ${((performance.now() - started) / 1000).toFixed(0)} s`);
+}
+
+/** Conferência: cada roupa montada com as partes dela e depois com vários equipamentos. */
+async function layerOverview(looks: string[]) {
+  const cell = 190;
+  const outfits = [...new Set(layerSheets().map((layer) => layer.id.split("_")[1]!))];
+  const setups: { title: string; pick: (outfit: string) => string[] }[] = [
+    { title: "partes (sem equipamento)", pick: (o) => ["legs", "boots", "torso", "head", "hat", "weapon", "shield"].map((p) => `part_${o}_${p}`) },
+    ...looks.map((set) => ({
+      title: set,
+      pick: (o: string) => {
+        const gear = new Map(set.split("+").map((look) => [lookPart(look), `gear_${o}_${look}`]));
+        return ["legs", "boots", "torso", "head", "hat", "weapon", "shield"].map((p) => gear.get(p) ?? `part_${o}_${p}`);
+      },
+    })),
+  ];
+  const dirs = ["SE", "S", "E", "NE"] as const;
+  const canvas = new OffscreenCanvas(outfits.length * cell, setups.length * dirs.length * cell);
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#5a8a41";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.font = "12px system-ui, sans-serif";
+  for (const [col, outfit] of outfits.entries()) {
+    for (const [row, setup] of setups.entries()) {
+      for (const [d, dir] of dirs.entries()) {
+        const y = (row * dirs.length + d) * cell;
+        for (const id of setup.pick(outfit)) {
+          const loaded = await loadSheet(id, id.startsWith("part_") ? SAMPLE_TINTS[0] : undefined).catch(() => null);
+          if (loaded) drawAt(ctx, loaded, frameKey("walk", dir, 2), col * cell + cell / 2, y + cell - 36);
+        }
+        ctx.fillStyle = "#fff";
+        ctx.fillText(`${outfit} · ${setup.title} · ${dir}`, col * cell + 4, y + 12);
+      }
+    }
+  }
+  await post("/__bake/preview?file=layers.png", await canvas.convertToBlob({ type: "image/png" }));
+  log("✓ conferência das camadas → previews/layers.png");
+}
+
+function lookPart(look: string): string {
+  if (/^(helm|hat|hood)/.test(look)) return "hat";
+  if (/^(armor|robe|tunic)/.test(look)) return "torso";
+  if (look.startsWith("legs_")) return "legs";
+  if (look.startsWith("boots_")) return "boots";
+  if (/shield|spellbook/.test(look)) return "shield";
+  return "weapon";
+}
+
 async function saveSheet(
   spec: EntrySpec,
   view: View,
   anims: SpriteSheetMeta["anims"],
   frames: BakedFrame[],
   tintable: boolean,
+  preview = true,
 ): Promise<SpriteSheetMeta> {
   const bounds = new Map(frames.map((frame) => [frame.key, opaqueBounds(frame.image) ?? { x: 0, y: 0, w: 1, h: 1 }]));
   const packed = pack(
@@ -229,7 +356,7 @@ async function saveSheet(
   await post(`/__bake/save?file=${sheet.image}`, await toImage(atlas, "image/webp", 0.95));
   if (idsAtlas && sheet.idsImage) await post(`/__bake/save?file=${sheet.idsImage}`, await toImage(idsAtlas, "image/png"));
   await post(`/__bake/save?file=${spec.id}.json`, JSON.stringify(sheet));
-  await savePreview(spec, sheet, atlas, idsAtlas);
+  if (preview) await savePreview(spec, sheet, atlas, idsAtlas);
   return sheet;
 }
 
@@ -548,6 +675,16 @@ async function run(params: URLSearchParams) {
       const folders = (params.get("only") || "quaternius/monsters,quaternius/animals").split(",");
       for (const folder of folders) await survey(renderer, folder);
       await done(`ok: mostruário de ${folders.join(", ")}`);
+      return;
+    }
+    if (params.get("mode") === "layers") {
+      await bakeLayers(renderer, (params.get("only") ?? "").split(",").filter(Boolean));
+      await done("ok: camadas geradas");
+      return;
+    }
+    if (params.get("mode") === "layer-overview") {
+      await layerOverview((params.get("only") ?? "").split(",").filter(Boolean));
+      await done("ok: conferência das camadas");
       return;
     }
     if (params.get("mode") === "icons") {

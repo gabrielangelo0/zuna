@@ -42,6 +42,7 @@ export interface DropRoll {
   diamonds: number;
   /** Id do equipamento (kind "item"). */
   item?: string;
+  count?: number;
 }
 
 /** Sorteia o que um monstro deixa cair. O bônus de ouro do mascote entra aqui. */

@@ -3,6 +3,8 @@
 //      npm run bake -w @zuna/baker -- --survey [pasta1 pasta2]   (mostruário de modelos em previews/)
 //      npm run bake -w @zuna/baker -- --overview                 (visão geral dos sprites prontos, com montarias)
 //      npm run bake -w @zuna/baker -- --icons [id1 id2 ...]      (ícones dos itens: sprites/items.webp)
+//      npm run bake -w @zuna/baker -- --layers [prefixo ...]     (personagem em camadas: part_* e gear_*)
+//      npm run bake -w @zuna/baker -- --layer-overview [look+look ...]  (conferência: previews/layers.png)
 // Para acompanhar visualmente: npm run dev -w @zuna/baker e abra http://localhost:5180/?auto=1
 
 import { spawn } from "node:child_process";
@@ -27,7 +29,8 @@ if (!existsSync(join(here, "../../assets/source"))) {
 }
 
 const args = process.argv.slice(2);
-const mode = args.includes("--survey") ? "survey" : args.includes("--overview") ? "overview" : args.includes("--icons") ? "icons" : "";
+const MODES = { "--survey": "survey", "--overview": "overview", "--icons": "icons", "--layers": "layers", "--layer-overview": "layer-overview" };
+const mode = Object.entries(MODES).find(([flag]) => args.includes(flag))?.[1] ?? "";
 const only = args.filter((arg) => !arg.startsWith("--")).join(",");
 const server = await createServer({ configFile: join(here, "vite.config.ts") });
 await server.listen();

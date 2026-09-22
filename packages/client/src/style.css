@@ -865,6 +865,7 @@ input:focus {
   position: relative;
   width: 132px;
   height: 132px;
+  cursor: pointer;
   background: var(--orb-art) center / 100% 100% no-repeat;
   filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.55));
 }
@@ -1773,38 +1774,156 @@ input:focus {
   }
 }
 
-/* ---------------------------------------------------------------- equipamentos */
+/* ---------------------------------------------------------------- personagem e mochila */
 
 .item-icon {
   display: block;
   background-repeat: no-repeat;
-  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.45));
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.55));
 }
 
-.item-frame {
-  --rarity: #c9d1dc;
+/* Casa de pedra (Tibia/Minecraft): relevo claro em cima à esquerda, escuro embaixo à direita. */
+.inv-slot {
+  position: relative;
   display: grid;
   place-items: center;
-  border-radius: 9px;
+  aspect-ratio: 1;
+  border: 1px solid #05070f;
+  border-radius: 3px;
   background:
-    radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--rarity) 30%, transparent), transparent 70%),
-    rgba(4, 7, 22, 0.55);
+    linear-gradient(135deg, rgba(255, 255, 255, 0.04), transparent 55%),
+    #1a2032;
   box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--rarity) 55%, transparent),
-    inset 0 0 14px color-mix(in srgb, var(--rarity) 18%, transparent);
+    inset 2px 2px 0 rgba(255, 255, 255, 0.07),
+    inset -2px -2px 0 rgba(0, 0, 0, 0.5);
+  touch-action: none;
+  user-select: none;
 }
 
-.item-frame.rarity-lendario {
+.inv-slot.has-item {
+  cursor: grab;
+}
+
+.inv-slot.has-item:hover {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.09), transparent 55%),
+    #232b42;
+}
+
+.inv-slot.selected {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.inv-slot.drop-over {
+  outline: 2px dashed var(--gold);
+  outline-offset: -3px;
+  background: #2a2f25;
+}
+
+.inv-slot.dragging .slot-item {
+  opacity: 0.25;
+}
+
+.inv-slot.locked .item-icon {
+  filter: grayscale(0.8) brightness(0.6);
+}
+
+.slot-ghost {
+  width: 58%;
+  height: 58%;
+  fill: none;
+  stroke: rgba(160, 172, 205, 0.22);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.slot-item {
+  --rarity: #c9d1dc;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 2px;
+  background: radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--rarity) 26%, transparent), transparent 68%);
+}
+
+.slot-item.rarity-comum {
+  background: none;
+}
+
+.slot-item.rarity-lendario {
   animation: legend-pulse 2.4s ease-in-out infinite;
 }
 
 @keyframes legend-pulse {
   50% {
-    box-shadow:
-      inset 0 0 0 1px var(--rarity),
-      inset 0 0 22px color-mix(in srgb, var(--rarity) 45%, transparent),
-      0 0 14px color-mix(in srgb, var(--rarity) 45%, transparent);
+    box-shadow: inset 0 0 14px color-mix(in srgb, var(--rarity) 60%, transparent);
   }
+}
+
+.stack-count {
+  position: absolute;
+  right: 3px;
+  bottom: 1px;
+  color: #fff;
+  font: 800 12px/1 var(--font-ui);
+  text-shadow:
+    1px 1px 0 #000,
+    -1px 1px 0 #000,
+    1px -1px 0 #000,
+    -1px -1px 0 #000;
+  pointer-events: none;
+}
+
+.drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 50;
+  width: 48px;
+  height: 48px;
+  pointer-events: none;
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.6));
+}
+
+#inventory-tooltip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 40;
+  display: grid;
+  gap: 2px;
+  max-width: 240px;
+  padding: 8px 10px;
+  border: 1px solid #05070f;
+  border-radius: 6px;
+  background: rgba(10, 13, 26, 0.96);
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.08),
+    0 8px 22px rgba(0, 0, 0, 0.5);
+  color: var(--text);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+#inventory-tooltip strong {
+  font-size: 14px;
+}
+
+#inventory-tooltip small {
+  color: var(--muted);
+}
+
+#inventory-tooltip span {
+  color: #c4fbd6;
+}
+
+#inventory-tooltip .tip-sell {
+  margin-top: 3px;
+  color: var(--gold);
 }
 
 #inventory {
@@ -1814,8 +1933,8 @@ input:focus {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 12px;
-  width: min(920px, calc(100% - 32px));
-  height: min(640px, calc(100% - 32px));
+  width: min(980px, calc(100% - 32px));
+  height: min(660px, calc(100% - 32px));
   padding: 16px;
   transform: translate(-50%, -50%);
 }
@@ -1826,7 +1945,7 @@ input:focus {
 
 .inventory-body {
   display: grid;
-  grid-template-columns: 250px minmax(0, 1fr);
+  grid-template-columns: 410px minmax(0, 1fr);
   gap: 16px;
   min-height: 0;
 }
@@ -1834,70 +1953,66 @@ input:focus {
 .inventory-side {
   display: grid;
   align-content: start;
-  gap: 14px;
+  gap: 12px;
 }
 
+.equip-area {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #05070f;
+  border-radius: 6px;
+  background: #121727;
+  box-shadow:
+    inset 2px 2px 0 rgba(255, 255, 255, 0.05),
+    inset -2px -2px 0 rgba(0, 0, 0, 0.45);
+}
+
+/* Os 10 espaços do corpo, na mesma posição do Tibia. */
 #inventory-doll {
   display: grid;
   grid-template-areas:
-    ". helmet ."
+    "amulet helmet backpack"
     "weapon armor shield"
+    "ring legs ammo"
     ". boots .";
-  grid-template-columns: repeat(3, 72px);
-  justify-content: center;
-  gap: 8px;
-  padding: 14px 8px;
-  border-radius: 12px;
-  background:
-    radial-gradient(ellipse 60% 70% at 50% 50%, rgba(94, 240, 143, 0.08), transparent 70%),
-    rgba(255, 255, 255, 0.03);
-}
-
-.doll-slot {
-  display: grid;
-  place-items: center;
-  width: 72px;
-  height: 72px;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 11px;
-  background: rgba(2, 4, 16, 0.5);
-  color: var(--muted);
-}
-
-.doll-slot .item-frame {
-  width: 66px;
-  height: 66px;
-}
-
-.doll-slot.empty small {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  opacity: 0.7;
-}
-
-.doll-slot.empty:hover {
-  border-color: var(--border);
-  color: var(--text);
-}
-
-.doll-slot.selected,
-.bag-cell.selected,
-.gear-row.selected {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  grid-template-columns: repeat(3, 58px);
+  gap: 4px;
 }
 
 .slot-helmet { grid-area: helmet; }
+.slot-amulet { grid-area: amulet; }
+.slot-backpack { grid-area: backpack; }
 .slot-weapon { grid-area: weapon; }
 .slot-armor { grid-area: armor; }
 .slot-shield { grid-area: shield; }
+.slot-ring { grid-area: ring; }
+.slot-legs { grid-area: legs; }
+.slot-ammo { grid-area: ammo; }
 .slot-boots { grid-area: boots; }
+
+.inventory-figure {
+  display: grid;
+  place-items: center;
+  margin: 0;
+  border-radius: 4px;
+  background:
+    radial-gradient(ellipse 70% 50% at 50% 88%, rgba(94, 240, 143, 0.12), transparent 70%),
+    #0b0f1c;
+  box-shadow: inset 0 0 0 1px #05070f;
+}
+
+.inventory-figure canvas {
+  width: 100%;
+  max-width: 200px;
+  height: auto;
+}
 
 #inventory-stats {
   display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 4px;
 }
 
@@ -1905,25 +2020,25 @@ input:focus {
   display: grid;
   grid-template-columns: 1fr auto auto;
   align-items: baseline;
-  gap: 8px;
-  padding: 7px 12px;
-  border-radius: 8px;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
   background: rgba(255, 255, 255, 0.04);
   font-variant-numeric: tabular-nums;
 }
 
 .stat-line span {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .stat-line strong {
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .stat-line em {
   color: var(--accent);
-  font-size: 12px;
+  font-size: 11px;
   font-style: normal;
   font-weight: 700;
 }
@@ -1943,39 +2058,18 @@ input:focus {
 
 .bag-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
-  gap: 6px;
-}
-
-.bag-cell {
-  display: grid;
-  place-items: center;
-  aspect-ratio: 1;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: rgba(2, 4, 16, 0.45);
-}
-
-.bag-cell .item-frame {
-  width: 100%;
-  height: 100%;
-}
-
-.bag-cell.empty {
-  opacity: 0.45;
-  cursor: default;
-}
-
-.bag-cell.locked .item-icon,
-.gear-row.locked .item-icon {
-  filter: grayscale(0.7) brightness(0.7);
+  grid-template-columns: repeat(auto-fill, minmax(50px, 1fr));
+  gap: 3px;
+  padding: 6px;
+  border: 1px solid #05070f;
+  border-radius: 6px;
+  background: #121727;
 }
 
 .bag-footer {
-  margin: 10px 0 0;
+  margin: 8px 0 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   text-align: center;
 }
 
@@ -2004,28 +2098,38 @@ input:focus {
 
 .gear-list {
   display: grid;
-  gap: 6px;
+  gap: 4px;
 }
 
 .gear-row {
   display: grid;
-  grid-template-columns: 52px minmax(0, 1fr) auto;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
-  padding: 6px 10px 6px 6px;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.04);
+  padding: 5px 10px 5px 5px;
+  border: 1px solid #05070f;
+  border-radius: 4px;
+  background: #1a2032;
+  box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.05);
   cursor: pointer;
 }
 
 .gear-row:hover {
-  border-color: var(--line);
+  background: #232b42;
 }
 
-.gear-row .item-frame {
-  width: 52px;
-  height: 52px;
+.gear-row.selected {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.gear-row .slot-item {
+  width: 48px;
+  height: 48px;
+}
+
+.gear-row.locked .item-icon {
+  filter: grayscale(0.8) brightness(0.6);
 }
 
 .gear-info {
@@ -2059,38 +2163,34 @@ input:focus {
 }
 
 #inventory-detail {
-  min-height: 96px;
+  min-height: 84px;
   padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: rgba(2, 4, 16, 0.45);
+  border: 1px solid #05070f;
+  border-radius: 6px;
+  background: #121727;
 }
 
 .detail-hint {
-  margin: 28px 0 0;
+  margin: 22px 0 0;
   color: var(--muted);
   font-size: 13px;
   text-align: center;
 }
 
 .detail-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.detail-head .item-frame {
-  flex: none;
-  width: 64px;
-  height: 64px;
+  display: grid;
+  gap: 4px;
 }
 
 .detail-title {
-  display: grid;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
 }
 
 .detail-title strong {
-  font-size: 17px;
+  font-size: 16px;
 }
 
 .detail-title small {
@@ -2105,8 +2205,7 @@ input:focus {
 .detail-stats {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 14px;
-  margin: 8px 0;
+  gap: 2px 14px;
   font-size: 13px;
   font-weight: 600;
 }
@@ -2127,6 +2226,7 @@ input:focus {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  margin-top: 8px;
 }
 
 .diamond-buy {
@@ -2134,7 +2234,7 @@ input:focus {
   color: #04182a;
 }
 
-@media (max-width: 700px) {
+@media (max-width: 760px) {
   #inventory {
     top: 8px;
     left: 8px;
@@ -2150,20 +2250,12 @@ input:focus {
     overflow-y: auto;
   }
 
-  .inventory-side {
-    grid-template-columns: auto 1fr;
-    align-items: start;
-  }
-
   #inventory-doll {
-    grid-template-columns: repeat(3, 56px);
-    padding: 8px 4px;
+    grid-template-columns: repeat(3, 48px);
   }
 
-  .doll-slot,
-  .doll-slot .item-frame {
-    width: 56px;
-    height: 56px;
+  .inventory-figure canvas {
+    max-width: 140px;
   }
 }
 

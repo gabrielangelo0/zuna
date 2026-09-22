@@ -1,7 +1,17 @@
 import { Room, ServerError, type Client } from "colyseus";
 import {
-  BAG_SIZE,
+  BAG_BASE,
+  BAG_MAX,
   EQUIP_SLOTS,
+  POTION_COOLDOWN_MS,
+  SLOT_LABEL,
+  bagCapacity,
+  dropCount,
+  looksOf,
+  type ItemMoveMessage,
+  type ItemUseMessage,
+  type QuickPotionMessage,
+  type ShotEvent,
   MONSTER_LEVEL,
   RARITY,
   gearItem,
@@ -15,7 +25,6 @@ import {
   type ItemBuyMessage,
   type ItemEquipMessage,
   type ItemSellMessage,
-  type ItemUnequipMessage,
   type OwnedItem,
   type PlayerStats,
   CHASE_LOSE_RANGE,
@@ -97,7 +106,7 @@ import {
   gearSettings,
   listCharacterItems,
   removeCharacterItem,
-  setItemEquipped,
+  saveCharacterItem,
 } from "./gear.ts";
 import {
   registerLiveRoom,
@@ -205,6 +214,8 @@ interface PlayerSim {
   gear: GearStats;
   /** Último aviso de mochila cheia (para não repetir a cada passo). */
   bagFullWarnAt: number;
+  /** Próxima poção liberada. */
+  nextPotionAt: number;
   path: Point[];
   moveDir: Point | null;
   nextStepAt: number;
@@ -303,7 +314,9 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     this.onMessage(ClientMsg.ToggleMount, (client) => this.handleToggleMount(client));
     this.onMessage(ClientMsg.Shortcuts, (client, message: ShortcutsMessage) => this.handleShortcuts(client, message));
     this.onMessage(ClientMsg.ItemEquip, (client, message: ItemEquipMessage) => this.handleItemEquip(client, message));
-    this.onMessage(ClientMsg.ItemUnequip, (client, message: ItemUnequipMessage) => this.handleItemUnequip(client, message));
+    this.onMessage(ClientMsg.ItemMove, (client, message: ItemMoveMessage) => this.handleItemMove(client, message));
+    this.onMessage(ClientMsg.ItemUse, (client, message: ItemUseMessage) => this.handleItemUse(client, message));
+    this.onMessage(ClientMsg.QuickPotion, (client, message: QuickPotionMessage) => this.handleQuickPotion(client, message));
     this.onMessage(ClientMsg.ItemSell, (client, message: ItemSellMessage) => this.handleItemSell(client, message));
     this.onMessage(ClientMsg.ItemBuy, (client, message: ItemBuyMessage) => this.handleItemBuy(client, message));
 
@@ -795,6 +808,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       pet,
       mount,
       mounted: mount !== "" && row.mounted,
+      looks: looksOf(items),
     });
 
     const player: PlayerSim = {
@@ -812,6 +826,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       items,
       gear,
       bagFullWarnAt: 0,
+      nextPotionAt: 0,
       path: [],
       moveDir: null,
       nextStepAt: 0,
@@ -827,6 +842,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     this.state.players.set(client.sessionId, state);
     occupyPlayer(sim, spot.x, spot.y, 1);
 
+    this.settleBag(player);
     this.sendProfile(player);
     this.sendInventory(player);
     const greeting = row.lastLoginAt ? "Bem-vindo de volta" : "Bem-vindo";
@@ -1339,13 +1355,14 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       }
       case "item": {
         if (!testOnly()) return;
-        const item = gearItem(argument);
+        const [itemId = "", amount = "1"] = text.slice(1).split(/\s+/).slice(1);
+        const item = gearItem(itemId.toLowerCase());
         if (!item) {
           this.sendChat(player.client, "system", `Use /item <id>. Ex.: ${gearList().slice(0, 6).map((entry) => entry.id).join(", ")}…`);
           return;
         }
-        this.grantItem(player, item.id);
-        this.sendChat(player.client, "loot", `Você recebeu ${item.name} (teste).`);
+        const got = this.grantItem(player, item.id, Math.max(1, Math.min(1000, Number(amount) || 1)));
+        this.sendChat(player.client, "loot", `Você recebeu ${got}× ${item.name} (teste).`);
         return;
       }
       default:
@@ -1416,7 +1433,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
           player.path.shift();
           this.movePlayer(player, next.x, next.y, now);
         }
-      } else if (target && chebyshev(s.x, s.y, target.state.x, target.state.y) > 1 && now >= player.nextChaseAt) {
+      } else if (target && chebyshev(s.x, s.y, target.state.x, target.state.y) > this.attackRange(player) && now >= player.nextChaseAt) {
         player.nextChaseAt = now + 200;
         const path = findPath(sim.map.width, sim.map.height, s, target.state, (x, y) => blockedForPlayer(sim, x, y), {
           adjacent: true,
@@ -1426,11 +1443,17 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       }
     }
 
-    if (target && now >= player.nextAttackAt && chebyshev(s.x, s.y, target.state.x, target.state.y) <= 1) {
+    const range = target ? this.attackRange(player) : 1;
+    if (target && now >= player.nextAttackAt && chebyshev(s.x, s.y, target.state.x, target.state.y) <= range) {
       player.nextAttackAt = now + PLAYER_ATTACK_MS;
       const { maxDamage } = this.statsOf(player);
       const roll = Math.round(maxDamage * (0.35 + Math.random() * 0.65));
       this.face(s, target.state);
+      // Besta: dispara de longe e gasta uma flecha.
+      if (range > 1) {
+        this.broadcast(ServerMsg.Shot, { attacker: player.id, target: target.id } satisfies ShotEvent);
+        this.spendAmmo(player);
+      }
       this.damageMonster(target, player, roll - target.def.armor);
     }
 
@@ -1674,7 +1697,10 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
         this.dropLoot(sim, drop, s.x, s.y, topDamager.id);
       }
       const gear = rollGear(Math.random, MONSTER_LEVEL[def.kind] ?? 1, def.boss === true, gearSettings().dropRate);
-      if (gear) this.dropLoot(sim, { kind: "item", gold: 0, diamonds: 0, item: gear.id }, s.x, s.y, topDamager.id);
+      if (gear) {
+        const count = dropCount(Math.random, gear);
+        this.dropLoot(sim, { kind: "item", gold: 0, diamonds: 0, item: gear.id, count }, s.x, s.y, topDamager.id);
+      }
     }
 
     if (monster.respawns) this.after(def.respawnMs, () => this.respawn(sim, def.kind, monster.home));
@@ -1800,6 +1826,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       gold: drop.gold,
       diamonds: drop.diamonds,
       item: drop.item ?? "",
+      count: drop.count ?? 1,
       owner,
       freeAt: options.forever ? 0 : now + LOOT_OWNER_MS,
       expiresAt: options.forever ? Number.MAX_SAFE_INTEGER : now + LOOT_TTL_MS,
@@ -1825,7 +1852,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
         continue;
       }
       if (loot.owner && loot.owner !== player.id && now < loot.freeAt) continue;
-      if (loot.kind === "item" && this.bagCount(player) >= BAG_SIZE) {
+      if (loot.kind === "item" && this.room(player, loot.item) < Math.max(1, loot.count)) {
         if (now - player.bagFullWarnAt > 5000) {
           player.bagFullWarnAt = now;
           this.sendChat(player.client, "system", "Sua mochila está cheia. Venda ou equipe algum item (tecla I).");
@@ -1884,10 +1911,11 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     if (loot.gold > 0 || loot.diamonds > 0) void this.persist(player);
   }
 
-  /** Equipamento do chão vai para a mochila. */
+  /** Item do chão vai para a mochila (junta com a pilha que já existir). */
   private giveItemLoot(player: PlayerSim, loot: LootState) {
     const item = gearItem(loot.item);
     if (!item) return;
+    const count = Math.max(1, loot.count);
     this.broadcast(ServerMsg.Loot, {
       id: player.id,
       kind: "item",
@@ -1898,31 +1926,124 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       y: loot.y,
     } satisfies LootEvent);
     const rarity = RARITY[item.rarity].label;
-    if (item.rarity === "epico" || item.rarity === "lendario") {
-      this.announce(`${player.state.name} encontrou ${item.name} (${rarity})!`);
-    } else {
-      this.sendChat(player.client, "loot", `Você encontrou ${item.name} (${rarity}).`);
-    }
-    this.grantItem(player, item.id);
+    const label = count > 1 ? `${count}× ${item.name}` : item.name;
+    if (item.rarity === "epico" || item.rarity === "lendario") this.announce(`${player.state.name} encontrou ${label} (${rarity})!`);
+    else this.sendChat(player.client, "loot", `Você encontrou ${label} (${rarity}).`);
+    this.grantItem(player, item.id, count);
   }
 
-  /** Põe um item na mochila (drop, compra ou presente do painel). */
-  private grantItem(player: PlayerSim, itemId: string, after?: () => void) {
-    // Entra na hora (a mochila já conta com ele); o id do banco chega em seguida.
-    const owned: OwnedItem = { uid: 0, itemId, equipped: "" };
-    player.items.push(owned);
-    this.enqueue(player, async () => {
-      owned.uid = await addCharacterItem(player.characterId, itemId);
-      this.sendInventory(player);
-      after?.();
-    }).catch(() => {
-      player.items = player.items.filter((entry) => entry !== owned);
-      this.sendInventory(player);
-    });
+  // ------------------------------------------------------------ mochila e equipamentos
+
+  private capacity(player: PlayerSim): number {
+    return bagCapacity(player.items);
+  }
+
+  private bagItems(player: PlayerSim): OwnedItem[] {
+    return player.items.filter((item) => item.equipped === "");
   }
 
   private bagCount(player: PlayerSim): number {
-    return player.items.filter((item) => item.equipped === "").length;
+    return this.bagItems(player).length;
+  }
+
+  private itemAt(player: PlayerSim, position: number): OwnedItem | undefined {
+    return player.items.find((item) => item.equipped === "" && item.position === position);
+  }
+
+  /** Primeiro espaço livre da grade, ou -1. */
+  private freePosition(player: PlayerSim, except?: OwnedItem): number {
+    const taken = new Set(this.bagItems(player).filter((item) => item !== except).map((item) => item.position));
+    const capacity = this.capacity(player);
+    for (let i = 0; i < capacity; i++) if (!taken.has(i)) return i;
+    return -1;
+  }
+
+  /** Quantos dessa coisa ainda cabem (nas pilhas que já existem e nos espaços livres). */
+  private room(player: PlayerSim, itemId: string): number {
+    const item = gearItem(itemId);
+    if (!item) return 0;
+    const inStacks = this.bagItems(player)
+      .filter((owned) => owned.itemId === itemId)
+      .reduce((sum, owned) => sum + Math.max(0, item.stack - owned.count), 0);
+    const free = this.capacity(player) - this.bagCount(player);
+    return inStacks + Math.max(0, free) * item.stack;
+  }
+
+  /**
+   * Põe itens na mochila (drop, compra, presente): primeiro completa as pilhas, depois ocupa espaços livres.
+   * Devolve quantos entraram. As pilhas novas ganham o id do banco logo em seguida.
+   */
+  private grantItem(player: PlayerSim, itemId: string, count = 1, after?: () => void): number {
+    const item = gearItem(itemId);
+    if (!item || count <= 0) return 0;
+    let left = count;
+    const touched: OwnedItem[] = [];
+    for (const owned of this.bagItems(player)) {
+      if (left <= 0 || owned.itemId !== itemId || owned.count >= item.stack || owned.uid === 0) continue;
+      const add = Math.min(left, item.stack - owned.count);
+      owned.count += add;
+      left -= add;
+      touched.push(owned);
+    }
+    const created: OwnedItem[] = [];
+    while (left > 0) {
+      const position = this.freePosition(player);
+      if (position < 0) break;
+      const amount = Math.min(left, item.stack);
+      const owned: OwnedItem = { uid: 0, itemId, count: amount, equipped: "", position };
+      player.items.push(owned);
+      created.push(owned);
+      left -= amount;
+    }
+    this.enqueue(player, async () => {
+      for (const owned of touched) await saveCharacterItem(player.characterId, owned);
+      for (const owned of created) owned.uid = await addCharacterItem(player.characterId, itemId, owned.count, owned.position);
+      this.sendInventory(player);
+      after?.();
+    }).catch(() => {
+      player.items = player.items.filter((entry) => !created.includes(entry));
+      this.sendInventory(player);
+    });
+    this.sendInventory(player);
+    return count - left;
+  }
+
+  private saveItem(player: PlayerSim, ...items: OwnedItem[]) {
+    this.enqueue(player, async () => {
+      for (const item of items) if (item.uid > 0) await saveCharacterItem(player.characterId, item);
+    }).catch(() => undefined);
+  }
+
+  /** Tira `count` de uma pilha; a pilha vazia some da mochila e do banco. */
+  private consume(player: PlayerSim, owned: OwnedItem, count: number) {
+    owned.count -= count;
+    if (owned.count > 0) {
+      this.saveItem(player, owned);
+      return;
+    }
+    player.items = player.items.filter((entry) => entry !== owned);
+    const wasEquipped = owned.equipped !== "";
+    this.enqueue(player, () => removeCharacterItem(player.characterId, owned.uid)).catch(() => undefined);
+    if (wasEquipped) this.refreshGear(player);
+  }
+
+  /** Itens de antes da grade (ou fora dela depois de trocar de mochila) ganham um lugar. */
+  private settleBag(player: PlayerSim) {
+    const capacity = this.capacity(player);
+    const seen = new Set<number>();
+    const moved: OwnedItem[] = [];
+    for (const item of this.bagItems(player)) {
+      if (item.position >= 0 && item.position < capacity && !seen.has(item.position)) {
+        seen.add(item.position);
+        continue;
+      }
+      let spot = 0;
+      while (seen.has(spot)) spot++;
+      item.position = spot;
+      seen.add(spot);
+      moved.push(item);
+    }
+    if (moved.length > 0) this.saveItem(player, ...moved);
   }
 
   /** Atributos com os equipamentos. */
@@ -1930,7 +2051,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     return withGear(playerStats(player.state.level), player.gear);
   }
 
-  /** Recalcula os atributos depois de vestir, tirar ou o painel mudar um item. */
+  /** Recalcula atributos e visual depois de vestir, tirar ou o painel mudar um item. */
   private refreshGear(player: PlayerSim) {
     player.gear = equippedStats(player.items);
     const s = player.state;
@@ -1939,6 +2060,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     s.maxMana = stats.maxMana;
     s.hp = Math.min(s.hp, s.maxHp);
     s.mana = Math.min(s.mana, s.maxMana);
+    s.looks = looksOf(player.items);
     this.sendInventory(player);
   }
 
@@ -1947,6 +2069,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     player.client.send(ServerMsg.Inventory, {
       items: player.items.filter((item) => item.uid > 0),
       stats: player.gear,
+      capacity: this.capacity(player),
     } satisfies InventoryEvent);
   }
 
@@ -1954,61 +2077,244 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     this.sendPurchase(player, ok, "", message);
   }
 
-  private handleItemEquip(client: Client, message: ItemEquipMessage) {
-    const player = this.players.get(client.sessionId);
-    if (!player) return;
-    const owned = player.items.find((item) => item.uid > 0 && item.uid === Number(message?.uid));
-    const item = owned ? gearItem(owned.itemId) : undefined;
-    if (!owned || !item) return;
-    if (player.state.level < item.level) {
-      this.itemNotice(player, false, `${item.name} precisa do nível ${item.level}.`);
-      return;
-    }
-    if (owned.equipped === item.slot) return;
-    const current = player.items.find((entry) => entry.equipped === item.slot);
-    if (current) current.equipped = "";
-    owned.equipped = item.slot;
-    this.refreshGear(player);
-    this.enqueue(player, async () => {
-      if (current) await setItemEquipped(player.characterId, current.uid, "");
-      await setItemEquipped(player.characterId, owned.uid, item.slot);
-    }).catch(() => undefined);
+  private ownedBy(player: PlayerSim, uid: unknown): OwnedItem | undefined {
+    const id = Number(uid);
+    return player.items.find((item) => item.uid > 0 && item.uid === id);
   }
 
-  private handleItemUnequip(client: Client, message: ItemUnequipMessage) {
+  /** Clique duplo: veste no espaço certo, ou usa (poção). */
+  private handleItemEquip(client: Client, message: ItemEquipMessage) {
     const player = this.players.get(client.sessionId);
-    if (!player) return;
-    const slot = String(message?.slot ?? "") as EquipSlot;
-    if (!EQUIP_SLOTS.includes(slot)) return;
-    const owned = player.items.find((entry) => entry.equipped === slot);
-    if (!owned) return;
-    if (this.bagCount(player) >= BAG_SIZE) {
+    const owned = player && this.ownedBy(player, message?.uid);
+    const item = owned ? gearItem(owned.itemId) : undefined;
+    if (!player || !owned || !item) return;
+    if (!item.slot) {
+      this.useItem(player, owned);
+      return;
+    }
+    if (owned.equipped) this.moveItem(player, owned, "bag", this.freePosition(player));
+    else this.moveItem(player, owned, item.slot);
+  }
+
+  private handleItemMove(client: Client, message: ItemMoveMessage) {
+    const player = this.players.get(client.sessionId);
+    const owned = player && this.ownedBy(player, message?.uid);
+    if (!player || !owned) return;
+    const to = String(message?.to ?? "");
+    if (to === "bag") this.moveItem(player, owned, "bag", Number(message?.index), Number(message?.count) || undefined);
+    else if (EQUIP_SLOTS.includes(to as EquipSlot)) this.moveItem(player, owned, to as EquipSlot);
+  }
+
+  /**
+   * Arrastar e soltar: para um espaço do corpo ou para uma casa da grade.
+   * Troca de lugar com o que estiver lá, junta pilhas iguais e divide pilhas (`count`).
+   */
+  private moveItem(player: PlayerSim, owned: OwnedItem, to: EquipSlot | "bag", index = -1, count?: number) {
+    const item = gearItem(owned.itemId);
+    if (!item) return;
+    const changed = new Set<OwnedItem>([owned]);
+    const finish = () => {
+      this.saveItem(player, ...changed);
+      this.refreshGear(player);
+    };
+
+    if (to !== "bag") {
+      if (item.slot !== to) {
+        this.itemNotice(player, false, `${item.name} não vai no espaço ${SLOT_LABEL[to].toLowerCase()}.`);
+        return;
+      }
+      if (player.state.level < item.level) {
+        this.itemNotice(player, false, `${item.name} precisa do nível ${item.level}.`);
+        return;
+      }
+      if (owned.equipped === to) return;
+      const current = player.items.find((entry) => entry.equipped === to);
+      if (to === "backpack") {
+        // A mochila nova precisa comportar tudo o que está na grade (e a velha, que volta para ela).
+        const capacity = Math.min(BAG_MAX, BAG_BASE + item.bagSlots);
+        const returning = current ? (owned.equipped === "" ? owned.position : this.freePosition(player)) : -1;
+        const overflow = this.bagItems(player).some((entry) => entry !== owned && entry.position >= capacity);
+        if (overflow || returning >= capacity) {
+          this.itemNotice(player, false, "A mochila nova é menor: esvazie os últimos espaços antes de trocar.");
+          return;
+        }
+      }
+      // Munição igual: junta na pilha vestida.
+      if (current && current.itemId === owned.itemId && item.stack > 1) {
+        const add = Math.min(owned.count, item.stack - current.count);
+        if (add <= 0) return;
+        current.count += add;
+        this.saveItem(player, current);
+        this.consume(player, owned, add);
+        this.refreshGear(player);
+        return;
+      }
+      if (current) {
+        // O que estava vestido vai para onde o novo estava (ou para um espaço livre).
+        const spot = owned.equipped === "" ? owned.position : this.freePosition(player);
+        if (spot < 0) {
+          this.itemNotice(player, false, "A mochila está cheia.");
+          return;
+        }
+        current.equipped = "";
+        current.position = spot;
+        changed.add(current);
+      }
+      owned.equipped = to;
+      owned.position = -1;
+      finish();
+      return;
+    }
+
+    // Para a grade.
+    const capacity = this.capacity(player);
+    if (!Number.isInteger(index) || index < 0 || index >= capacity) index = this.freePosition(player, owned);
+    if (index < 0) {
       this.itemNotice(player, false, "A mochila está cheia.");
       return;
     }
-    owned.equipped = "";
-    this.refreshGear(player);
-    this.enqueue(player, () => setItemEquipped(player.characterId, owned.uid, "")).catch(() => undefined);
+    const target = this.itemAt(player, index);
+    if (target === owned) return;
+
+    // Dividir pilha: parte vai para uma casa vazia.
+    if (count !== undefined && count > 0 && count < owned.count && owned.equipped === "") {
+      if (target && target.itemId !== owned.itemId) return;
+      if (target) {
+        const add = Math.min(count, item.stack - target.count);
+        if (add <= 0) return;
+        target.count += add;
+        owned.count -= add;
+        this.saveItem(player, target, owned);
+        this.sendInventory(player);
+        return;
+      }
+      owned.count -= count;
+      this.saveItem(player, owned);
+      const split: OwnedItem = { uid: 0, itemId: owned.itemId, count, equipped: "", position: index };
+      player.items.push(split);
+      this.enqueue(player, async () => {
+        split.uid = await addCharacterItem(player.characterId, split.itemId, split.count, split.position);
+        this.sendInventory(player);
+      }).catch(() => undefined);
+      this.sendInventory(player);
+      return;
+    }
+
+    // Juntar pilhas iguais.
+    if (target && target.itemId === owned.itemId && item.stack > 1) {
+      const add = Math.min(owned.count, item.stack - target.count);
+      if (add > 0) {
+        target.count += add;
+        this.saveItem(player, target);
+        this.consume(player, owned, add);
+        this.refreshGear(player);
+        return;
+      }
+    }
+
+    if (owned.equipped !== "") {
+      const slot = owned.equipped;
+      if (slot === "backpack" && !this.fitsAfterBackpack(player, 0, owned, index)) {
+        this.itemNotice(player, false, "Sem a mochila, os últimos espaços somem: esvazie-os antes de tirar.");
+        return;
+      }
+      if (target) {
+        const other = gearItem(target.itemId);
+        if (!other || other.slot !== slot || player.state.level < other.level) {
+          this.itemNotice(player, false, "Esse espaço está ocupado.");
+          return;
+        }
+        target.equipped = slot;
+        target.position = -1;
+        changed.add(target);
+      }
+      owned.equipped = "";
+      owned.position = index;
+      finish();
+      return;
+    }
+
+    if (target) {
+      target.position = owned.position;
+      changed.add(target);
+    }
+    owned.position = index;
+    this.saveItem(player, ...changed);
+    this.sendInventory(player);
+  }
+
+  /** Com uma mochila de `bagSlots` espaços extras, tudo o que está na grade ainda cabe? */
+  private fitsAfterBackpack(player: PlayerSim, bagSlots: number, leaving: OwnedItem, arrivingAt = -1): boolean {
+    const capacity = Math.min(BAG_MAX, BAG_BASE + bagSlots);
+    const bag = this.bagItems(player).filter((item) => item !== leaving);
+    if (arrivingAt >= capacity) return false;
+    return bag.every((item) => item.position < capacity);
+  }
+
+  private handleItemUse(client: Client, message: ItemUseMessage) {
+    const player = this.players.get(client.sessionId);
+    const owned = player && this.ownedBy(player, message?.uid);
+    if (player && owned) this.useItem(player, owned);
+  }
+
+  /** Teclas Q e E: a melhor poção que o nível permite. */
+  private handleQuickPotion(client: Client, message: QuickPotionMessage) {
+    const player = this.players.get(client.sessionId);
+    if (!player) return;
+    const key = message?.kind === "mana" ? "restore" : "heal";
+    const candidates = this.bagItems(player)
+      .map((owned) => ({ owned, item: gearItem(owned.itemId) }))
+      .filter(({ item }) => item && item[key] > 0 && item.level <= player.state.level)
+      .sort((a, b) => b.item![key] - a.item![key]);
+    const best = candidates[0];
+    if (!best) {
+      this.sendChat(player.client, "system", key === "heal" ? "Sem poção de vida na mochila." : "Sem poção de mana na mochila.");
+      return;
+    }
+    this.useItem(player, best.owned);
+  }
+
+  private useItem(player: PlayerSim, owned: OwnedItem) {
+    const item = gearItem(owned.itemId);
+    const s = player.state;
+    if (!item || (item.heal <= 0 && item.restore <= 0) || s.hp <= 0) return;
+    const now = Date.now();
+    if (now < player.nextPotionAt) return;
+    if (s.level < item.level) {
+      this.itemNotice(player, false, `${item.name} precisa do nível ${item.level}.`);
+      return;
+    }
+    // Não desperdiça: só bebe se tiver o que recuperar.
+    const missingHp = item.heal > 0 && s.hp < s.maxHp;
+    const missingMana = item.restore > 0 && s.mana < s.maxMana;
+    if (!missingHp && !missingMana) {
+      this.sendChat(player.client, "system", item.heal > 0 ? "Sua vida já está cheia." : "Sua mana já está cheia.");
+      return;
+    }
+    player.nextPotionAt = now + POTION_COOLDOWN_MS;
+    if (item.heal > 0) {
+      const healed = Math.min(item.heal, s.maxHp - s.hp);
+      s.hp += healed;
+      this.broadcastHit(player.id, player.id, healed, "heal");
+    }
+    if (item.restore > 0) s.mana = Math.min(s.maxMana, s.mana + item.restore);
+    this.consume(player, owned, 1);
+    this.sendInventory(player);
   }
 
   private handleItemSell(client: Client, message: ItemSellMessage) {
     const player = this.players.get(client.sessionId);
-    if (!player) return;
-    const owned = player.items.find((entry) => entry.uid > 0 && entry.uid === Number(message?.uid));
-    if (!owned) return;
+    const owned = player && this.ownedBy(player, message?.uid);
+    if (!player || !owned) return;
     const item = gearItem(owned.itemId);
-    const price = item?.sellGold ?? 0;
-    const wasEquipped = owned.equipped !== "";
-    player.items = player.items.filter((entry) => entry !== owned);
-    if (wasEquipped) this.refreshGear(player);
-    else this.sendInventory(player);
-    this.enqueue(player, async () => {
-      if (!(await removeCharacterItem(player.characterId, owned.uid))) return;
-      player.state.gold += price;
-      this.itemNotice(player, true, `Vendido${item ? `: ${item.name}` : ""} por ${price} moedas de ouro.`);
-      // Fora desta tarefa: gravar daqui de dentro esperaria a própria fila e travaria o personagem.
-      void this.persist(player);
-    }).catch(() => undefined);
+    const count = Math.min(owned.count, Math.max(1, Math.floor(Number(message?.count) || owned.count)));
+    const price = (item?.sellGold ?? 0) * count;
+    player.state.gold += price;
+    this.consume(player, owned, count);
+    this.sendInventory(player);
+    const label = count > 1 ? `${count}× ${item?.name ?? "item"}` : (item?.name ?? "item");
+    this.itemNotice(player, true, `Vendido: ${label} por ${price} moedas de ouro.`);
+    void this.persist(player);
   }
 
   private handleItemBuy(client: Client, message: ItemBuyMessage) {
@@ -2016,39 +2322,60 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     if (!player) return;
     const item = gearItem(String(message?.id ?? ""));
     const currency = message?.currency === "diamonds" ? "diamonds" : "gold";
-    const price = currency === "gold" ? (item?.priceGold ?? 0) : (item?.priceDiamonds ?? 0);
-    if (!item || !item.enabled || price <= 0) {
+    const unit = currency === "gold" ? (item?.priceGold ?? 0) : (item?.priceDiamonds ?? 0);
+    if (!item || !item.enabled || unit <= 0) {
       this.itemNotice(player, false, "Item indisponível.");
       return;
     }
-    if (this.bagCount(player) >= BAG_SIZE) {
+    const count = Math.min(item.stack, Math.max(1, Math.floor(Number(message?.count) || 1)));
+    if (this.room(player, item.id) < count) {
       this.itemNotice(player, false, "A mochila está cheia.");
       return;
     }
+    const price = unit * count;
+    const label = count > 1 ? `${count}× ${item.name}` : item.name;
     if (currency === "gold") {
       if (player.state.gold < price) {
         this.itemNotice(player, false, `Faltam ${Math.ceil(price - player.state.gold)} moedas de ouro.`);
         return;
       }
       player.state.gold -= price;
-      this.grantItem(player, item.id, () => {
-        this.itemNotice(player, true, `Você comprou ${item.name}!`);
+      this.grantItem(player, item.id, count, () => {
+        this.itemNotice(player, true, `Você comprou ${label}!`);
         void this.persist(player);
       });
       return;
     }
+    const position = this.freePosition(player);
     this.enqueue(player, async () => {
-      const result = await buyGearWithDiamonds({ accountId: player.accountId, characterId: player.characterId, item, price });
+      const result = await buyGearWithDiamonds({ accountId: player.accountId, characterId: player.characterId, item, price, position });
       if (!result.ok) {
         this.itemNotice(player, false, result.message);
         return;
       }
       player.diamonds = result.diamonds;
-      player.items.push({ uid: result.uid, itemId: item.id, equipped: "" });
+      player.items.push({ uid: result.uid, itemId: item.id, count: 1, equipped: "", position });
       this.sendProfile(player);
       this.sendInventory(player);
-      this.itemNotice(player, true, `Você comprou ${item.name}!`);
+      this.itemNotice(player, true, `Você comprou ${label}!`);
     }).catch(() => this.itemNotice(player, false, "Não foi possível concluir a compra. Tente de novo."));
+  }
+
+  /** Arma de longe com munição vestida: alcance da arma. Sem munição, só corpo a corpo. */
+  private attackRange(player: PlayerSim): number {
+    const weapon = player.items.find((item) => item.equipped === "weapon");
+    const range = weapon ? (gearItem(weapon.itemId)?.range ?? 1) : 1;
+    if (range <= 1) return 1;
+    return player.items.some((item) => item.equipped === "ammo" && item.count > 0) ? range : 1;
+  }
+
+  /** Cada disparo gasta uma flecha. */
+  private spendAmmo(player: PlayerSim) {
+    const ammo = player.items.find((item) => item.equipped === "ammo");
+    if (!ammo) return;
+    this.consume(player, ammo, 1);
+    if (!player.items.includes(ammo)) this.sendChat(player.client, "system", "Suas flechas acabaram.");
+    else this.sendInventory(player);
   }
 
   /** Tira do chão o que ninguém pegou a tempo. */

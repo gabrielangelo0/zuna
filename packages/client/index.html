@@ -171,7 +171,7 @@
       </section>
 
       <div id="actionbar" hidden>
-        <div class="orb orb-hp" title="Vida">
+        <div class="orb orb-hp" title="Vida · clique ou Q para tomar poção">
           <div class="orb-globe"><div class="orb-drain" id="hud-hp"><i></i><i></i></div></div>
           <span id="hud-hp-text"></span>
         </div>
@@ -185,7 +185,7 @@
           </div>
         </div>
 
-        <div class="orb orb-mana" title="Mana">
+        <div class="orb orb-mana" title="Mana · clique ou E para tomar poção">
           <div class="orb-globe"><div class="orb-drain" id="hud-mana"><i></i><i></i></div></div>
           <span id="hud-mana-text"></span>
         </div>
@@ -247,7 +247,7 @@
 
       <section id="inventory" class="card kit-panel" hidden>
         <header class="panel-header">
-          <h2>Equipamentos</h2>
+          <h2>Personagem</h2>
           <div class="balances">
             <span title="Ouro">🪙 <strong id="inventory-gold">0</strong></span>
             <span title="Diamantes" class="diamonds">💎 <strong id="inventory-diamonds">0</strong></span>
@@ -257,7 +257,12 @@
         </header>
         <div class="inventory-body">
           <aside class="inventory-side">
-            <div id="inventory-doll"></div>
+            <div class="equip-area">
+              <div id="inventory-doll"></div>
+              <figure class="inventory-figure">
+                <canvas id="inventory-canvas" width="200" height="236"></canvas>
+              </figure>
+            </div>
             <div id="inventory-stats"></div>
           </aside>
           <div class="inventory-main">
@@ -271,6 +276,7 @@
         </div>
         <p id="inventory-status" class="status" hidden></p>
       </section>
+      <div id="inventory-tooltip" hidden></div>
 
       <section id="shop" class="card kit-panel" hidden>
         <header class="panel-header">

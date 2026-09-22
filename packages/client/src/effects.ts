@@ -416,6 +416,29 @@ export class SpellFx {
     });
   }
 
+  /** Disparo de besta: um virote rápido com um risco de luz atrás. */
+  arrow(from: Point, to: Point) {
+    const start = { x: from.x, y: from.y - 30 };
+    const end = { x: to.x, y: to.y - 24 };
+    const angle = Math.atan2(end.y - start.y, end.x - start.x);
+    const distance = Math.hypot(end.x - start.x, end.y - start.y);
+    const shaft = this.scene.add.rectangle(start.x, start.y, 20, 3, 0xe8d8b8).setRotation(angle).setDepth(this.depths.air);
+    const tip = this.scene.add.image(start.x, start.y, "fx_glow").setTint(0xfff1c1).setBlendMode(Phaser.BlendModes.ADD).setScale(0.35);
+    tip.setDepth(this.depths.air);
+    this.scene.tweens.add({
+      targets: [shaft, tip],
+      x: end.x,
+      y: end.y,
+      duration: Math.min(260, 60 + distance * 0.55),
+      ease: "Linear",
+      onComplete: () => {
+        shaft.destroy();
+        tip.destroy();
+        this.burst(end.x, end.y, { tints: [0xfff1c1, 0xd8c8a8], count: 8, speed: [60, 140], lifespan: [120, 260], scale: [0.3, 0] });
+      },
+    });
+  }
+
   /** Raio Flamejante: bola de fogo com rastro que voa até o alvo e explode. */
   fireball(from: Point, to: Point, onImpact?: () => void) {
     const start = { x: from.x, y: from.y - 34 };

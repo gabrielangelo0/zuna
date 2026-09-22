@@ -22,15 +22,19 @@ import { askConfirm, askForm, askText, badge, button, cell, frame, h, iconButton
 // Aba de equipamentos: armas, escudos, elmos, armaduras e botas. Criar, editar, tirar do jogo,
 // apagar, dar a um jogador e ajustar a taxa de drop. Tudo vale na hora para quem está jogando.
 
-const SLOT_OPTIONS = EQUIP_SLOTS.map((slot) => ({ id: slot, label: SLOT_LABEL[slot] }));
+const SLOT_OPTIONS = [...EQUIP_SLOTS.map((slot) => ({ id: slot, label: SLOT_LABEL[slot] })), { id: "", label: "Consumível (poção)" }];
+
+function slotName(slot: EquipSlot | ""): string {
+  return slot ? SLOT_LABEL[slot] : "Consumível";
+}
 const RARITY_OPTIONS = ITEM_RARITIES.map((rarity) => ({ id: rarity, label: RARITY[rarity].label }));
 
-let slotFilter = "";
+let slotFilter = "*";
 
 export async function renderGear(root: HTMLElement) {
   const box = frame("Equipamentos", undefined, "sword");
   const list = h("div");
-  const filter = select([{ id: "", label: "Todos os espaços" }, ...SLOT_OPTIONS], slotFilter);
+  const filter = select([{ id: "*", label: "Todos os espaços" }, ...SLOT_OPTIONS], slotFilter);
   filter.addEventListener("change", () => {
     slotFilter = filter.value;
     void reload();
@@ -55,7 +59,7 @@ export async function renderGear(root: HTMLElement) {
   async function reload() {
     data = await ask<AdminGearResponse>("/api/admin/gear");
     setGearCatalog(data.items.map((row) => row.item));
-    const shown = data.items.filter((row) => !slotFilter || row.item.slot === slotFilter);
+    const shown = data.items.filter((row) => slotFilter === "*" || row.item.slot === slotFilter);
     retitle(
       box.root,
       "Equipamentos",
@@ -157,7 +161,7 @@ function gearRow(row: AdminGearRow, data: AdminGearResponse, reload: () => Promi
     {},
     cell(h("span", { class: "gear-thumb" }, iconElement(item.icon, 40))),
     cell(who),
-    cell(SLOT_LABEL[item.slot]),
+    cell(item.stack > 1 ? `${slotName(item.slot)} · pilha ${num(item.stack)}` : slotName(item.slot)),
     cell(num(item.level), "num"),
     cell(describeStats(item).join(" · ") || "—"),
     cell(shop.join(" · ") || "—"),
@@ -193,6 +197,11 @@ async function editItem(row: AdminGearRow | null, data: AdminGearResponse, reloa
     { id: "defense", label: "Defesa", kind: "number", value: item?.defense ?? 0, min: 0 },
     { id: "hp", label: "Vida", kind: "number", value: item?.hp ?? 0, min: 0 },
     { id: "mana", label: "Mana", kind: "number", value: item?.mana ?? 0, min: 0 },
+    { id: "heal", label: "Poção: vida recuperada", kind: "number", value: item?.heal ?? 0, min: 0 },
+    { id: "restore", label: "Poção: mana recuperada", kind: "number", value: item?.restore ?? 0, min: 0 },
+    { id: "stack", label: "Empilha até (1 = não empilha)", kind: "number", value: item?.stack ?? 1, min: 1, max: 1000 },
+    { id: "bagSlots", label: "Mochila: espaços a mais", kind: "number", value: item?.bagSlots ?? 0, min: 0, max: 40 },
+    { id: "range", label: "Arma: alcance (mais que 1 gasta munição)", kind: "number", value: item?.range ?? 1, min: 1, max: 8 },
     { id: "priceGold", label: "Preço em ouro (0 = não vende)", kind: "number", value: item?.priceGold ?? 0, min: 0 },
     { id: "priceDiamonds", label: "Preço em diamantes (0 = não vende)", kind: "number", value: item?.priceDiamonds ?? 0, min: 0 },
     { id: "sellGold", label: "Ouro ao vender", kind: "number", value: item?.sellGold ?? 0, min: 0 },
@@ -215,13 +224,18 @@ async function editItem(row: AdminGearRow | null, data: AdminGearResponse, reloa
     defense: Number(answer.defense) || 0,
     hp: Number(answer.hp) || 0,
     mana: Number(answer.mana) || 0,
+    heal: Number(answer.heal) || 0,
+    restore: Number(answer.restore) || 0,
+    stack: Math.max(1, Number(answer.stack) || 1),
+    bagSlots: Number(answer.bagSlots) || 0,
+    range: Math.max(1, Number(answer.range) || 1),
     priceGold: Number(answer.priceGold) || 0,
     priceDiamonds: Number(answer.priceDiamonds) || 0,
     sellGold: Number(answer.sellGold) || 0,
     drops: answer.drops === "true",
     enabled: answer.enabled === "true",
   };
-  if (answer.auto === "true") {
+  if (answer.auto === "true" && slot) {
     // Mesma conta dos itens de fábrica: comuns e incomuns vendem por ouro, épicos por diamantes.
     Object.assign(body, baseGearStats(slot, level, rarity));
     const value = gearValue(level, rarity);

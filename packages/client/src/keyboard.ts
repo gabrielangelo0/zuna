@@ -11,6 +11,7 @@ export interface KeyboardHandlers {
   toggleMap(): void;
   toggleShop(): void;
   toggleInventory(): void;
+  potion(kind: "hp" | "mana"): void;
 }
 
 const UP = new Set(["w", "arrowup"]);
@@ -90,6 +91,12 @@ export class KeyboardInput {
         return;
       case "i":
         this.handlers.toggleInventory();
+        return;
+      case "q":
+        this.handlers.potion("hp");
+        return;
+      case "e":
+        this.handlers.potion("mana");
         return;
     }
     if (/^[1-9]$/.test(key)) this.handlers.spell(key);

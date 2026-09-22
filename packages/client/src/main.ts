@@ -5,6 +5,7 @@ import Phaser from "phaser";
 import { Client, type Room } from "@colyseus/sdk";
 import { ROOM_NAME, applyCatalogOverrides, setGearCatalog, type JoinOptions, type WorldsResponse } from "@zuna/shared";
 import { apiRequest, wsEndpoint } from "./api.ts";
+import { loadLayerIndex } from "./layers.ts";
 import { Menu } from "./menu.ts";
 import { WorldScene } from "./WorldScene.ts";
 
@@ -20,6 +21,9 @@ const game = new Phaser.Game({
 });
 
 if (import.meta.env.DEV) Object.assign(window, { game, scene });
+
+// Quais roupas têm camadas (para o equipamento aparecer no personagem).
+void loadLayerIndex();
 
 // Mapas dos mundos abertos e preços em vigor. Sem isso o jogo desenha o mundo original,
 // que é o mesmo que o servidor gera pela semente.

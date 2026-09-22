@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url";
 import { createEndpoint } from "colyseus";
 import { eq } from "drizzle-orm";
 import {
+  BAG_BASE,
+  BAG_MAX,
   EQUIP_SLOTS,
   GEAR_MAX_LEVEL,
   GEAR_MAX_PRICE,
@@ -82,8 +84,9 @@ const adminGearSave = createEndpoint("/api/admin/gear/item", { method: "POST" },
 
   const name = text(body.name ?? current?.name, 40);
   if (name.length < 2) throw ctx.error("BAD_REQUEST", { message: "Dê um nome ao item." });
-  const slot = String(body.slot ?? current?.slot ?? "") as EquipSlot;
-  if (!EQUIP_SLOTS.includes(slot)) throw ctx.error("BAD_REQUEST", { message: "Escolha onde o item é usado." });
+  // Vazio = não se veste (poção).
+  const slot = String(body.slot ?? current?.slot ?? "") as EquipSlot | "";
+  if (slot !== "" && !EQUIP_SLOTS.includes(slot)) throw ctx.error("BAD_REQUEST", { message: "Escolha onde o item é usado." });
   const rarity = String(body.rarity ?? current?.rarity ?? "comum") as ItemRarity;
   if (!ITEM_RARITIES.includes(rarity)) throw ctx.error("BAD_REQUEST", { message: "Raridade desconhecida." });
   const icon = String(body.icon ?? current?.icon ?? "");
@@ -114,7 +117,15 @@ const adminGearSave = createEndpoint("/api/admin/gear/item", { method: "POST" },
     sellGold: stat("sellGold", GEAR_MAX_PRICE),
     drops: typeof body.drops === "boolean" ? body.drops : (current?.drops ?? true),
     enabled: typeof body.enabled === "boolean" ? body.enabled : (current?.enabled ?? true),
+    stack: Math.max(1, clamp(body.stack ?? current?.stack ?? 1, 1, 1000) ?? 1),
+    heal: stat("heal", GEAR_MAX_STAT),
+    restore: stat("restore", GEAR_MAX_STAT),
+    bagSlots: clamp(body.bagSlots ?? current?.bagSlots ?? 0, 0, BAG_MAX - BAG_BASE) ?? 0,
+    range: Math.max(1, clamp(body.range ?? current?.range ?? 1, 1, 8) ?? 1),
   };
+  if (!slot && item.heal <= 0 && item.restore <= 0) {
+    throw ctx.error("BAD_REQUEST", { message: "Item sem espaço precisa recuperar vida ou mana (poção)." });
+  }
   await saveGear(item, !current);
   broadcastGear();
   await logAdminAction({ accountId: admin.id, action: current ? "equipamento alterado" : "equipamento criado", detail: item });

@@ -27,6 +27,8 @@ export const PlayerState = schema(
     pet: t.string(),
     mount: t.string(),
     mounted: t.boolean(),
+    /** Aparência do que está vestido (ícones em VISIBLE_SLOTS, separados por vírgula). */
+    looks: t.string(),
   },
   "Player",
 );
@@ -56,6 +58,7 @@ export const LootState = schema(
     gold: t.uint32(),
     diamonds: t.uint16(),
     item: t.string(),
+    count: t.uint16(),
     owner: t.string(),
     freeAt: t.float64(),
     expiresAt: t.float64(),

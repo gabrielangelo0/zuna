@@ -32,7 +32,7 @@ function toGear(row: GearRow): GearDef {
   return {
     id: row.id,
     name: row.name,
-    slot: (EQUIP_SLOTS.includes(row.slot as EquipSlot) ? row.slot : "weapon") as EquipSlot,
+    slot: (EQUIP_SLOTS.includes(row.slot as EquipSlot) ? row.slot : "") as EquipSlot | "",
     icon: row.icon,
     rarity: (ITEM_RARITIES.includes(row.rarity as ItemRarity) ? row.rarity : "comum") as ItemRarity,
     level: row.level,
@@ -45,6 +45,11 @@ function toGear(row: GearRow): GearDef {
     sellGold: row.sellGold,
     drops: row.drops,
     enabled: row.enabled,
+    stack: Math.max(1, row.stack),
+    heal: row.heal,
+    restore: row.restore,
+    bagSlots: row.bagSlots,
+    range: Math.max(1, row.range),
   };
 }
 
@@ -76,15 +81,28 @@ function clampRate(value: number): number {
   return Number.isFinite(value) ? Math.min(20, Math.max(0, value)) : 1;
 }
 
-/** Primeiro arranque: grava os itens de fábrica. Depois, o que o painel apagou não volta. */
+/**
+ * Primeiro arranque: grava os itens de fábrica. Depois, o que o painel apagou não volta.
+ * v2 (10 espaços): entram calças, amuletos, anéis, mochilas, flechas e poções; as botas ganham
+ * o ícone novo (só o pé) e as bestas o alcance.
+ */
 export async function ensureGearSeed() {
-  if ((await metaValue(SEED_KEY)) === null) {
-    await db()
-      .insert(gearItems)
-      .values(FACTORY_GEAR.map((item) => ({ ...item })))
-      .onConflictDoNothing();
-    await setMeta(SEED_KEY, "fabrica-v1");
+  const version = await metaValue(SEED_KEY);
+  if (version === "fabrica-v2") {
+    await reloadGear();
+    return;
   }
+  await db()
+    .insert(gearItems)
+    .values(FACTORY_GEAR.map((item) => ({ ...item })))
+    .onConflictDoNothing();
+  if (version === "fabrica-v1") {
+    for (const item of FACTORY_GEAR) {
+      if (item.slot === "boots") await db().update(gearItems).set({ icon: item.icon }).where(eq(gearItems.id, item.id));
+      if (item.range > 1) await db().update(gearItems).set({ range: item.range }).where(eq(gearItems.id, item.id));
+    }
+  }
+  await setMeta(SEED_KEY, "fabrica-v2");
   await reloadGear();
 }
 
@@ -137,20 +155,26 @@ export async function listCharacterItems(characterId: number): Promise<OwnedItem
   return rows.map((row) => ({
     uid: row.id,
     itemId: row.itemId,
+    count: Math.max(1, row.count),
     equipped: (EQUIP_SLOTS.includes(row.equipped as EquipSlot) ? row.equipped : "") as EquipSlot | "",
+    position: row.position,
   }));
 }
 
-export async function addCharacterItem(characterId: number, itemId: string): Promise<number> {
-  const [row] = await db().insert(characterItems).values({ characterId, itemId }).returning({ id: characterItems.id });
+export async function addCharacterItem(characterId: number, itemId: string, count = 1, position = -1): Promise<number> {
+  const [row] = await db()
+    .insert(characterItems)
+    .values({ characterId, itemId, count, position })
+    .returning({ id: characterItems.id });
   return row!.id;
 }
 
-export async function setItemEquipped(characterId: number, uid: number, equipped: EquipSlot | "") {
+/** Grava onde o item está (vestido ou na grade) e o tamanho da pilha. */
+export async function saveCharacterItem(characterId: number, item: OwnedItem) {
   await db()
     .update(characterItems)
-    .set({ equipped })
-    .where(and(eq(characterItems.id, uid), eq(characterItems.characterId, characterId)));
+    .set({ equipped: item.equipped, position: item.position, count: item.count })
+    .where(and(eq(characterItems.id, item.uid), eq(characterItems.characterId, characterId)));
 }
 
 export async function removeCharacterItem(characterId: number, uid: number): Promise<boolean> {
@@ -161,14 +185,6 @@ export async function removeCharacterItem(characterId: number, uid: number): Pro
   return rows.length > 0;
 }
 
-export async function countBagItems(characterId: number): Promise<number> {
-  const [row] = await db()
-    .select({ total: sql<number>`cast(count(*) as integer)` })
-    .from(characterItems)
-    .where(and(eq(characterItems.characterId, characterId), eq(characterItems.equipped, "")));
-  return row?.total ?? 0;
-}
-
 export type GearPurchase = { ok: true; diamonds: number; uid: number } | { ok: false; message: string };
 
 /** Compra com diamantes: debita, entrega e registra, tudo ou nada. */
@@ -177,6 +193,7 @@ export async function buyGearWithDiamonds(params: {
   characterId: number;
   item: GearDef;
   price: number;
+  position: number;
 }): Promise<GearPurchase> {
   return db().transaction(async (tx): Promise<GearPurchase> => {
     const [account] = await tx
@@ -187,7 +204,7 @@ export async function buyGearWithDiamonds(params: {
     if (!account) return { ok: false, message: "Diamantes insuficientes." };
     const [row] = await tx
       .insert(characterItems)
-      .values({ characterId: params.characterId, itemId: params.item.id })
+      .values({ characterId: params.characterId, itemId: params.item.id, position: params.position })
       .returning({ id: characterItems.id });
     await tx.insert(purchases).values({
       accountId: params.accountId,

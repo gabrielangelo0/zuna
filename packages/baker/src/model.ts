@@ -122,6 +122,67 @@ function luminance(data: Uint8ClampedArray, i: number): number {
   return (0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]) / 255;
 }
 
+/**
+ * Uma camada do personagem: só algumas peças aparecem; o resto do corpo fica invisível,
+ * mas continua escondendo o que está atrás dele (profundidade), para as camadas se encaixarem.
+ */
+export interface LayerPlan {
+  /** Nós do próprio personagem que aparecem ("@attach" = os modelos presos por `attach`). */
+  show: string[];
+  /** Divide as pernas pelo osso: "boots" fica só com os pés, "legs" com o resto. */
+  split?: LegSplit;
+  /** Peças de outro personagem (mesmo esqueleto), religadas a este e mostradas. */
+  borrow?: { file: string; nodes: string[]; split?: LegSplit };
+  /** Modelo solto preso a um osso e mostrado (arma na mão direita, escudo na esquerda). */
+  hold?: { bone: string; file: string };
+  /** Inclui a sombra do corpo inteiro (vai numa camada só, a da cabeça). */
+  shadow: boolean;
+  /** Partes do personagem que o equipamento substitui: somem de vez (nem tampam). */
+  hide?: string[];
+  /** Nas pernas escondidas, só esta metade some; a outra continua tampando. */
+  hideSplit?: LegSplit;
+}
+
+export type LegSplit = "legs" | "boots";
+
+/** O GLTFLoader tira o ponto dos nomes: "foot.l" vira "footl". */
+const FOOT_BONE = /^(foot|toes)\.?[lr]$/;
+
+/** O osso que mais puxa cada vértice. */
+function dominantBones(mesh: THREE.SkinnedMesh): string[] {
+  const index = mesh.geometry.getAttribute("skinIndex");
+  const weight = mesh.geometry.getAttribute("skinWeight");
+  const names: string[] = [];
+  for (let i = 0; i < index.count; i++) {
+    let best = 0;
+    for (let k = 1; k < 4; k++) if (weight.getComponent(i, k) > weight.getComponent(i, best)) best = k;
+    names.push(mesh.skeleton.bones[index.getComponent(i, best)]?.name ?? "");
+  }
+  return names;
+}
+
+/** Cópia da malha só com os triângulos do pé (ou só com os de fora do pé). */
+function splitLeg(mesh: THREE.SkinnedMesh, keep: LegSplit): THREE.SkinnedMesh {
+  const bones = dominantBones(mesh);
+  const source = mesh.geometry.index;
+  const count = source ? source.count : mesh.geometry.getAttribute("position").count;
+  const kept: number[] = [];
+  for (let i = 0; i < count; i += 3) {
+    const tri = [0, 1, 2].map((k) => (source ? source.getX(i + k) : i + k));
+    const feet = tri.filter((vertex) => FOOT_BONE.test(bones[vertex] ?? "")).length;
+    if ((feet >= 2) === (keep === "boots")) kept.push(...tri);
+  }
+  const geometry = mesh.geometry.clone();
+  geometry.setIndex(kept);
+  const part = new THREE.SkinnedMesh(geometry, mesh.material);
+  part.name = `${mesh.name}_${keep}`;
+  part.position.copy(mesh.position);
+  part.quaternion.copy(mesh.quaternion);
+  part.scale.copy(mesh.scale);
+  part.bind(mesh.skeleton, mesh.bindMatrix);
+  return part;
+}
+
 export interface Fit {
   /** Escala aplicada ao modelo (para repetir em variações do mesmo objeto). */
   scale: number;
@@ -161,6 +222,118 @@ export class BakeModel {
     if (spec.seatBone && !this.seat) throw new Error(`${spec.id}: osso "${spec.seatBone}" não encontrado.`);
   }
 
+  /**
+   * Personagem em camadas: tudo o que não é da camada vira só profundidade.
+   * A escala é medida no corpo do próprio personagem, igual à da folha inteira.
+   */
+  static async createLayer(spec: EntrySpec, plan: LayerPlan): Promise<BakeModel> {
+    const gltf = await loadGltf(spec.file);
+    const object = SkeletonUtils.clone(gltf.scene);
+    const hidden = new Set((spec.accessories ?? []).filter((name) => !(spec.show ?? []).includes(name)));
+    object.traverse((node) => {
+      if (hidden.has(node.name)) node.visible = false;
+    });
+    const showSet = new Set(plan.show);
+    const hideSet = new Set(plan.hide ?? []);
+
+    for (const attachment of spec.attach ?? []) {
+      const bone = findNode(object, attachment.bone);
+      if (!bone) throw new Error(`${spec.id}: osso "${attachment.bone}" não encontrado para ${attachment.file}.`);
+      const held = (await loadGltf(attachment.file)).scene.clone(true);
+      held.userData.attached = true;
+      bone.add(held);
+    }
+
+    // Papel de cada malha do personagem: aparece ou só tampa.
+    const meshes: THREE.Mesh[] = [];
+    object.traverse((node) => {
+      if ((node as THREE.Mesh).isMesh && node.visible) meshes.push(node as THREE.Mesh);
+    });
+    for (const mesh of meshes) {
+      let attached = false;
+      for (let current: THREE.Object3D | null = mesh; current; current = current.parent) if (current.userData.attached) attached = true;
+      const shown = attached ? showSet.has("@attach") : namedLike(mesh, (name) => showSet.has(name));
+      const isLeg = namedLike(mesh, (name) => /_Leg(Left|Right)$/.test(name));
+      const replaced = attached ? hideSet.has("@attach") : namedLike(mesh, (name) => hideSet.has(name));
+      if (replaced) {
+        if (plan.hideSplit && isLeg && (mesh as THREE.SkinnedMesh).isSkinnedMesh) {
+          const rest = splitLeg(mesh as THREE.SkinnedMesh, plan.hideSplit === "boots" ? "legs" : "boots");
+          rest.userData.occluder = true;
+          mesh.parent!.add(rest);
+        }
+        mesh.removeFromParent();
+        continue;
+      }
+      if (shown && plan.split && isLeg && (mesh as THREE.SkinnedMesh).isSkinnedMesh) {
+        // Metade que aparece + metade que só tampa.
+        const skinned = mesh as THREE.SkinnedMesh;
+        const visible = splitLeg(skinned, plan.split);
+        const other = splitLeg(skinned, plan.split === "boots" ? "legs" : "boots");
+        other.userData.occluder = true;
+        mesh.parent!.add(visible, other);
+        mesh.removeFromParent();
+        continue;
+      }
+      if (!shown) mesh.userData.occluder = true;
+    }
+
+    // Peças emprestadas de outro personagem: mesmo esqueleto, religadas aos ossos deste.
+    if (plan.borrow) {
+      const donor = SkeletonUtils.clone((await loadGltf(plan.borrow.file)).scene);
+      donor.updateMatrixWorld(true);
+      const wanted = new Set(plan.borrow.nodes);
+      const parts: THREE.SkinnedMesh[] = [];
+      const rigid: THREE.Mesh[] = [];
+      donor.traverse((node) => {
+        const mesh = node as THREE.SkinnedMesh;
+        if (!mesh.isMesh || !namedLike(mesh, (name) => wanted.has(name))) return;
+        if (mesh.isSkinnedMesh) parts.push(mesh);
+        else rigid.push(mesh);
+      });
+      if (parts.length + rigid.length === 0) {
+        throw new Error(`${spec.id}: nenhuma peça ${plan.borrow.nodes.join(", ")} em ${plan.borrow.file}.`);
+      }
+      // Peça rígida (elmo, chapéu): presa ao osso de mesmo nome, na mesma posição em relação a ele.
+      for (const mesh of rigid) {
+        let bone: THREE.Object3D | null = mesh.parent;
+        while (bone && !(bone as THREE.Bone).isBone) bone = bone.parent;
+        if (!bone) throw new Error(`${spec.id}: ${mesh.name} não está presa a nenhum osso.`);
+        const target = findNode(object, bone.name);
+        if (!target) throw new Error(`${spec.id}: osso "${bone.name}" não existe neste personagem.`);
+        const local = new THREE.Matrix4().copy(bone.matrixWorld).invert().multiply(mesh.matrixWorld);
+        const copy = mesh.clone();
+        local.decompose(copy.position, copy.quaternion, copy.scale);
+        copy.userData.noFit = true;
+        target.add(copy);
+      }
+      const anchor = meshes.find((mesh) => (mesh as THREE.SkinnedMesh).isSkinnedMesh)?.parent ?? object;
+      for (const part of parts) {
+        const bones = part.skeleton.bones.map((bone) => {
+          const target = findNode(object, bone.name);
+          if (!target) throw new Error(`${spec.id}: osso "${bone.name}" não existe neste personagem.`);
+          return target as THREE.Bone;
+        });
+        let mesh: THREE.SkinnedMesh = part;
+        mesh.bind(new THREE.Skeleton(bones, part.skeleton.boneInverses), part.bindMatrix);
+        if (plan.borrow.split) mesh = splitLeg(mesh, plan.borrow.split);
+        mesh.userData.noFit = true;
+        anchor.add(mesh);
+      }
+    }
+
+    if (plan.hold) {
+      const bone = findNode(object, plan.hold.bone);
+      if (!bone) throw new Error(`${spec.id}: osso "${plan.hold.bone}" não encontrado.`);
+      const held = (await loadGltf(plan.hold.file)).scene.clone(true);
+      held.traverse((node) => (node.userData.noFit = true));
+      bone.add(held);
+    }
+
+    const model = new BakeModel(spec, object, gltf.animations);
+    model.prepareMaterials(new Map());
+    return model;
+  }
+
   static async create(spec: EntrySpec): Promise<BakeModel> {
     const gltf = await loadGltf(spec.file);
     const object = SkeletonUtils.clone(gltf.scene);
@@ -174,6 +347,18 @@ export class BakeModel {
       object.traverse((node) => {
         if ((node as THREE.Mesh).isMesh && !namedLike(node, (name) => only.includes(name))) node.visible = false;
       });
+    }
+    // Ícone de calça ou de bota: só a metade da perna que interessa.
+    if (spec.split) {
+      const legs: THREE.SkinnedMesh[] = [];
+      object.traverse((node) => {
+        const mesh = node as THREE.SkinnedMesh;
+        if (mesh.isSkinnedMesh && mesh.visible && namedLike(mesh, (name) => /_Leg(Left|Right)$/.test(name))) legs.push(mesh);
+      });
+      for (const mesh of legs) {
+        mesh.parent!.add(splitLeg(mesh, spec.split));
+        mesh.removeFromParent();
+      }
     }
 
     for (const attachment of spec.attach ?? []) {
@@ -196,11 +381,18 @@ export class BakeModel {
 
   private prepareMaterials(textures: Map<string, THREE.Texture>) {
     const black = new THREE.MeshBasicMaterial({ color: 0x000000, toneMapped: false });
+    // Só escreve profundidade: esconde o que está atrás sem aparecer.
+    const depthOnly = new THREE.MeshBasicMaterial({ colorWrite: false });
+    const shadowOnly = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
     this.object.traverse((node) => {
       const mesh = node as THREE.Mesh;
       if (!mesh.isMesh) return;
       mesh.castShadow = true;
       mesh.frustumCulled = false;
+      if (mesh.userData.occluder) {
+        this.materials.push({ mesh, lit: depthOnly, ids: depthOnly, shadow: shadowOnly });
+        return;
+      }
       const source = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
       const lit = source.clone() as THREE.MeshStandardMaterial;
       if (lit.isMeshStandardMaterial) {
@@ -337,7 +529,7 @@ function visibleBounds(object: THREE.Object3D, accept?: (name: string) => boolea
   const vertex = new THREE.Vector3();
   object.traverseVisible((node) => {
     const mesh = node as THREE.Mesh;
-    if (!mesh.isMesh) return;
+    if (!mesh.isMesh || mesh.userData.noFit) return;
     if (accept && !namedLike(mesh, accept)) return;
     const position = mesh.geometry.getAttribute("position");
     for (let i = 0; i < position.count; i++) {

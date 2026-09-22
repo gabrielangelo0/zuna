@@ -1,4 +1,6 @@
 import type { AnimName, BakedDir, TintGroup } from "@zuna/shared";
+import type { LayerPlan, LegSplit } from "./model.ts";
+import { ICON_HUES as SHARED_HUES } from "@zuna/shared";
 
 // O que o baker gera. Os ids viram arquivos em packages/client/public/sprites/<id>.{png,json}.
 
@@ -71,6 +73,8 @@ export interface EntrySpec {
   roll?: number;
   /** Multiplica a cor de todos os materiais (a mesma peça em versões de outra raridade). */
   hue?: number;
+  /** Ícone de calça ("legs") ou de bota ("boots"): só essa metade da perna. */
+  split?: LegSplit;
 }
 
 const KAYKIT = "kaykit/adventurers";
@@ -667,23 +671,213 @@ export const ITEM_ICONS: EntrySpec[] = [
   part("robe_mage", mage, ["Mage_Body"]),
   part("tunic_rogue", rogue, ["Rogue_Body"]),
   part("armor_bone", warrior, ["Skeleton_Warrior_Body"]),
-  // Botas
-  part("legs_knight", knight, ["Knight_LegLeft", "Knight_LegRight"]),
-  part("legs_barbarian", barbarian, ["Barbarian_LegLeft", "Barbarian_LegRight"]),
-  part("legs_mage", mage, ["Mage_LegLeft", "Mage_LegRight"]),
-  part("legs_rogue", rogue, ["Rogue_LegLeft", "Rogue_LegRight"]),
+  // Calças (a perna sem o pé) e botas (só o pé)
+  part("legs_knight", knight, ["Knight_LegLeft", "Knight_LegRight"], { split: "legs" }),
+  part("legs_barbarian", barbarian, ["Barbarian_LegLeft", "Barbarian_LegRight"], { split: "legs" }),
+  part("legs_mage", mage, ["Mage_LegLeft", "Mage_LegRight"], { split: "legs" }),
+  part("legs_rogue", rogue, ["Rogue_LegLeft", "Rogue_LegRight"], { split: "legs" }),
+  part("boots_knight", knight, ["Knight_LegLeft", "Knight_LegRight"], { split: "boots" }),
+  part("boots_barbarian", barbarian, ["Barbarian_LegLeft", "Barbarian_LegRight"], { split: "boots" }),
+  part("boots_mage", mage, ["Mage_LegLeft", "Mage_LegRight"], { split: "boots" }),
+  part("boots_rogue", rogue, ["Rogue_LegLeft", "Rogue_LegRight"], { split: "boots" }),
+  // Amuleto, anel e poções (modelados no baker), bolsa e flechas
+  { id: "amulet", file: "builtin:amulet", height: 64, anims: {}, yaw: 10 },
+  { id: "ring", file: "builtin:ring", height: 64, anims: {}, yaw: 20, pitch: 55 },
+  { id: "sack", file: "builtin:backpack", height: 64, anims: {}, yaw: 30 },
+  { id: "arrows", file: `${ADV}/arrow_bundle.gltf`, height: 64, anims: {}, yaw: 20, roll: -30 },
+  ...["potion_red", "potion_red_big", "potion_red_huge", "potion_blue", "potion_blue_big", "potion_blue_huge"].map(
+    (id): EntrySpec => ({ id, file: `builtin:${id}`, height: 64, anims: {}, yaw: 15 }),
+  ),
 ];
 
 /** Versões de outra cor das peças principais, para os itens mais fortes: tom multiplicado sobre a textura. */
-const ICON_HUES: Record<string, number> = { gold: 0xffc94a, frost: 0x8fd4ff, obsidian: 0x7a6f9c, ruby: 0xff6f6f };
+const ICON_HUES = SHARED_HUES;
 const HUED = [
   "sword", "greatsword", "axe", "greataxe", "dagger", "staff", "wand", "crossbow",
   "shield_round", "shield_badge", "shield_square", "bone_shield_large",
   "helm_knight", "helm_bone", "hat_mage", "armor_knight", "armor_bone", "robe_mage", "legs_knight", "legs_mage",
+  "boots_knight", "boots_mage", "amulet", "ring", "sack", "arrows",
 ];
 for (const base of HUED) {
   const spec = ITEM_ICONS.find((entry) => entry.id === base)!;
   for (const [name, hue] of Object.entries(ICON_HUES)) ITEM_ICONS.push({ ...spec, id: `${base}_${name}`, hue });
+}
+
+// ---------------------------------------------------------------- personagem em camadas
+// Cada roupa vira partes (cabeça, chapéu, tronco, calça, botas, arma e escudo) e cada equipamento
+// vira uma camada no lugar de uma parte. Todas as camadas de uma roupa têm a mesma escala e a mesma
+// célula da folha inteira, e o resto do corpo esconde o que fica atrás: no jogo, basta empilhar.
+
+export type BodyPart = "head" | "hat" | "torso" | "legs" | "boots" | "weapon" | "shield";
+
+export const BODY_PARTS: readonly BodyPart[] = ["head", "hat", "torso", "legs", "boots", "weapon", "shield"];
+
+/** Nós de cada parte, por roupa. Pernas: "legs" e "boots" vêm da mesma malha, divididas pelo osso do pé. */
+const OUTFIT_PARTS: Record<string, Partial<Record<Exclude<BodyPart, "boots">, string[]>>> = {
+  aventureiro: {
+    head: ["Rogue_Head"],
+    torso: ["Rogue_Body", "Rogue_ArmLeft", "Rogue_ArmRight", "Rogue_Cape"],
+    legs: ["Rogue_LegLeft", "Rogue_LegRight"],
+    weapon: ["Knife"],
+  },
+  guerreiro: {
+    head: ["Barbarian_Head"],
+    hat: ["Barbarian_Hat"],
+    torso: ["Barbarian_Body", "Barbarian_ArmLeft", "Barbarian_ArmRight", "Barbarian_Cape"],
+    legs: ["Barbarian_LegLeft", "Barbarian_LegRight"],
+    weapon: ["1H_Axe"],
+    shield: ["Barbarian_Round_Shield"],
+  },
+  cacador: {
+    head: ["Rogue_Head_Hooded"],
+    torso: ["Rogue_Body", "Rogue_ArmLeft", "Rogue_ArmRight", "Rogue_Cape"],
+    legs: ["Rogue_LegLeft", "Rogue_LegRight"],
+    weapon: ["Knife"],
+    shield: ["Knife_Offhand"],
+  },
+  mago: {
+    head: ["Mage_Head"],
+    hat: ["Mage_Hat"],
+    torso: ["Mage_Body", "Mage_ArmLeft", "Mage_ArmRight", "Mage_Cape"],
+    legs: ["Mage_LegLeft", "Mage_LegRight"],
+    weapon: ["2H_Staff"],
+  },
+  cavaleiroReal: {
+    head: ["Knight_Head"],
+    hat: ["Knight_Helmet"],
+    torso: ["Knight_Body", "Knight_ArmLeft", "Knight_ArmRight", "Knight_Cape"],
+    legs: ["Knight_LegLeft", "Knight_LegRight"],
+    weapon: ["1H_Sword"],
+    shield: ["Badge_Shield"],
+  },
+  sombrio: {
+    head: ["Skeleton_Rogue_Head", "Skeleton_Rogue_Jaw", "Skeleton_Rogue_Eyes"],
+    hat: ["Skeleton_Rogue_Hood"],
+    torso: ["Skeleton_Rogue_Body", "Skeleton_Rogue_ArmLeft", "Skeleton_Rogue_ArmRight", "Skeleton_Rogue_Cape"],
+    legs: ["Skeleton_Rogue_LegLeft", "Skeleton_Rogue_LegRight"],
+    weapon: ["@attach"],
+  },
+  necromante: {
+    head: ["Skeleton_Mage_Skull", "Skeleton_Mage_Jaw", "Skeleton_Mage_Eyes"],
+    hat: ["Skeleton_Mage_Hat"],
+    torso: ["Skeleton_Mage_Body", "Skeleton_Mage_ArmLeft", "Skeleton_Mage_ArmRight"],
+    legs: ["Skeleton_Mage_LegLeft", "Skeleton_Mage_LegRight"],
+    weapon: ["@attach"],
+  },
+};
+
+/** Aparência de um equipamento: de que peça vem e que parte do corpo substitui. */
+export interface GearLook {
+  id: string;
+  part: Exclude<BodyPart, "head">;
+  borrow?: { file: string; nodes: string[]; split?: "legs" | "boots" };
+  hold?: { bone: string; file: string };
+}
+
+const heroFile = (name: string) => `${KAYKIT}/Characters/${name}.glb`;
+const skeletonFile = (name: string) => `${SKELETONS}/Characters/Skeleton_${name}.glb`;
+const hat = (id: string, file: string, node: string): GearLook => ({ id, part: "hat", borrow: { file, nodes: [node] } });
+const torso = (id: string, file: string, nodes: string[]): GearLook => ({ id, part: "torso", borrow: { file, nodes } });
+const legs = (id: string, file: string, prefix: string): GearLook => ({
+  id,
+  part: "legs",
+  borrow: { file, nodes: [`${prefix}_LegLeft`, `${prefix}_LegRight`], split: "legs" },
+});
+const boots = (id: string, file: string, prefix: string): GearLook => ({
+  id,
+  part: "boots",
+  borrow: { file, nodes: [`${prefix}_LegLeft`, `${prefix}_LegRight`], split: "boots" },
+});
+const right = (id: string, file: string): GearLook => ({ id, part: "weapon", hold: { bone: "handslot.r", file } });
+const left = (id: string, file: string): GearLook => ({ id, part: "shield", hold: { bone: "handslot.l", file } });
+
+export const GEAR_LOOKS: GearLook[] = [
+  hat("helm_knight", heroFile("Knight"), "Knight_Helmet"),
+  hat("helm_barbarian", heroFile("Barbarian"), "Barbarian_Hat"),
+  hat("hat_mage", heroFile("Mage"), "Mage_Hat"),
+  hat("helm_bone", skeletonFile("Warrior"), "Skeleton_Warrior_Helmet"),
+  hat("hat_necro", skeletonFile("Mage"), "Skeleton_Mage_Hat"),
+  hat("hood_rogue", skeletonFile("Rogue"), "Skeleton_Rogue_Hood"),
+  torso("armor_knight", heroFile("Knight"), ["Knight_Body", "Knight_ArmLeft", "Knight_ArmRight"]),
+  torso("armor_barbarian", heroFile("Barbarian"), ["Barbarian_Body", "Barbarian_ArmLeft", "Barbarian_ArmRight"]),
+  torso("robe_mage", heroFile("Mage"), ["Mage_Body", "Mage_ArmLeft", "Mage_ArmRight"]),
+  torso("tunic_rogue", heroFile("Rogue"), ["Rogue_Body", "Rogue_ArmLeft", "Rogue_ArmRight"]),
+  torso("armor_bone", skeletonFile("Warrior"), ["Skeleton_Warrior_Body", "Skeleton_Warrior_ArmLeft", "Skeleton_Warrior_ArmRight"]),
+  legs("legs_knight", heroFile("Knight"), "Knight"),
+  legs("legs_barbarian", heroFile("Barbarian"), "Barbarian"),
+  legs("legs_mage", heroFile("Mage"), "Mage"),
+  legs("legs_rogue", heroFile("Rogue"), "Rogue"),
+  boots("boots_knight", heroFile("Knight"), "Knight"),
+  boots("boots_barbarian", heroFile("Barbarian"), "Barbarian"),
+  boots("boots_mage", heroFile("Mage"), "Mage"),
+  boots("boots_rogue", heroFile("Rogue"), "Rogue"),
+  right("sword", `${ADV}/sword_1handed.gltf`),
+  right("greatsword", `${ADV}/sword_2handed.gltf`),
+  right("greatsword_royal", `${ADV}/sword_2handed_color.gltf`),
+  right("axe", `${ADV}/axe_1handed.gltf`),
+  right("greataxe", `${ADV}/axe_2handed.gltf`),
+  right("dagger", `${ADV}/dagger.gltf`),
+  right("wand", `${ADV}/wand.gltf`),
+  right("staff", `${ADV}/staff.gltf`),
+  right("crossbow", `${ADV}/crossbow_1handed.gltf`),
+  right("heavy_crossbow", `${ADV}/crossbow_2handed.gltf`),
+  right("bone_axe", `${SKEL}/Skeleton_Axe.gltf`),
+  right("bone_blade", `${SKEL}/Skeleton_Blade.gltf`),
+  right("bone_staff", `${SKEL}/Skeleton_Staff.gltf`),
+  left("shield_round", `${ADV}/shield_round.gltf`),
+  left("shield_round_color", `${ADV}/shield_round_color.gltf`),
+  left("shield_barbarian", `${ADV}/shield_round_barbarian.gltf`),
+  left("shield_badge", `${ADV}/shield_badge.gltf`),
+  left("shield_badge_color", `${ADV}/shield_badge_color.gltf`),
+  left("shield_spikes", `${ADV}/shield_spikes.gltf`),
+  left("shield_spikes_color", `${ADV}/shield_spikes_color.gltf`),
+  left("shield_square", `${ADV}/shield_square.gltf`),
+  left("shield_square_color", `${ADV}/shield_square_color.gltf`),
+  left("bone_shield_large", `${SKEL}/Skeleton_Shield_Large_A.gltf`),
+  left("bone_shield_large_b", `${SKEL}/Skeleton_Shield_Large_B.gltf`),
+  left("bone_shield_small", `${SKEL}/Skeleton_Shield_Small_A.gltf`),
+  left("spellbook", `${ADV}/spellbook_closed.gltf`),
+];
+
+export interface LayerSheet {
+  id: string;
+  outfit: EntrySpec;
+  plan: LayerPlan;
+  /** Partes do próprio personagem são tingidas com as cores do jogador; equipamentos não. */
+  tint: boolean;
+}
+
+/** Todas as folhas em camadas: as partes de cada roupa e cada equipamento em cada roupa. */
+export function layerSheets(): LayerSheet[] {
+  const sheets: LayerSheet[] = [];
+  for (const outfit of OUTFITS) {
+    const key = outfit.id.slice("outfit_".length);
+    const parts = OUTFIT_PARTS[key];
+    if (!parts) continue;
+    for (const part of BODY_PARTS) {
+      const nodes = part === "boots" ? parts.legs : parts[part];
+      if (!nodes?.length) continue;
+      const split = part === "legs" ? "legs" : part === "boots" ? "boots" : undefined;
+      sheets.push({ id: `part_${key}_${part}`, outfit, tint: true, plan: { show: nodes, split, shadow: part === "head" } });
+    }
+    for (const look of GEAR_LOOKS) {
+      const replaced = look.part === "boots" ? parts.legs : parts[look.part];
+      sheets.push({
+        id: `gear_${key}_${look.id}`,
+        outfit,
+        tint: false,
+        plan: {
+          show: [],
+          borrow: look.borrow,
+          hold: look.hold,
+          shadow: false,
+          hide: replaced,
+          hideSplit: look.part === "legs" ? "legs" : look.part === "boots" ? "boots" : undefined,
+        },
+      });
+    }
+  }
+  return sheets;
 }
 
 export const CATALOG: EntrySpec[] = [

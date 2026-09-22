@@ -17,6 +17,7 @@ import {
 import { Bubble } from "./bubble.ts";
 import { GAME_FONT } from "./canvas.ts";
 import { tileToScreen } from "./iso.ts";
+import { layerPicks, PART_ORDER, type BodyPart } from "./layers.ts";
 import { animDuration, appearanceKey, frameAt, type SpriteTexture, type SpriteTextures } from "./sprites.ts";
 
 export const DEPTH_OVERLAY = 900_000;
@@ -56,12 +57,27 @@ class Layer {
   private destroyed = false;
   private lastFrame: SpriteFrameMeta | null = null;
   private lastFlip = false;
+  /** Tom do equipamento (multiplica as cores); branco = nenhum. */
+  private hue = 0xffffff;
   private readonly scene: Phaser.Scene;
   private readonly textures: SpriteTextures;
 
   constructor(scene: Phaser.Scene, textures: SpriteTextures) {
     this.scene = scene;
     this.textures = textures;
+  }
+
+  /** Tom da camada (equipamento dourado, de gelo…). */
+  setHue(hue: number) {
+    if (hue === this.hue) return;
+    this.hue = hue;
+    this.applyHue();
+  }
+
+  private applyHue() {
+    if (!this.sprite) return;
+    if (this.hue === 0xffffff) this.sprite.clearTint();
+    else this.sprite.setTint(this.hue);
   }
 
   /** Troca a folha (carrega em segundo plano; até lá, mostra a anterior). `id` vazio remove. */
@@ -104,6 +120,7 @@ class Layer {
     if (this.sprite) this.sprite.setTexture(texture.key, first);
     else this.sprite = this.scene.add.sprite(0, 0, texture.key, first).setVisible(false);
     this.sprite.setOrigin(texture.meta.anchorX / texture.meta.cellW, texture.meta.anchorY / texture.meta.cellH);
+    this.applyHue();
   }
 
   /** Mostra um quadro com o pé em (x, y). Devolve o quadro (com o ponto de encaixe, se houver). */
@@ -139,7 +156,10 @@ class Layer {
   flash(on: boolean) {
     if (!this.sprite) return;
     if (on) this.sprite.setTint(0xffffff).setTintMode(Phaser.TintModes.FILL);
-    else this.sprite.clearTint().setTintMode(Phaser.TintModes.MULTIPLY);
+    else {
+      this.sprite.clearTint().setTintMode(Phaser.TintModes.MULTIPLY);
+      this.applyHue();
+    }
   }
 
   destroy() {
@@ -166,6 +186,10 @@ export class Actor {
 
   private readonly scene: Phaser.Scene;
   private readonly body: Layer;
+  /** Personagem em camadas (roupa em partes + equipamento vestido). Vazio = folha inteira da roupa. */
+  private readonly parts = new Map<BodyPart, Layer>();
+  private layered = false;
+  private readonly textures: SpriteTextures;
   private readonly mount: Layer;
   private readonly front: Layer;
   private readonly pet: Layer;
@@ -200,6 +224,7 @@ export class Actor {
     this.data = data;
     this.isPlayer = isPlayer;
     this.spawnedAt = scene.time.now;
+    this.textures = textures;
     this.body = new Layer(scene, textures);
     this.mount = new Layer(scene, textures);
     this.front = new Layer(scene, textures);
@@ -264,7 +289,7 @@ export class Actor {
 
     if (this.isPlayer) {
       const player = data as PlayerData;
-      this.body.set(`outfit_${player.outfit}`, appearanceOf(player));
+      this.syncLayers(player);
       this.mount.set(this.riding ? `mount_${player.mount}` : "");
       this.pet.set(player.pet ? `pet_${player.pet}` : "");
     }
@@ -276,6 +301,58 @@ export class Actor {
     }
   }
 
+  /** Escolhe as camadas pelo que está vestido; sem camadas geradas, usa a folha inteira da roupa. */
+  private syncLayers(player: PlayerData) {
+    const picks = layerPicks(player.outfit, player.looks ?? "");
+    if (!picks) {
+      this.layered = false;
+      for (const layer of this.parts.values()) layer.set("");
+      this.body.set(`outfit_${player.outfit}`, appearanceOf(player));
+      return;
+    }
+    const appearance = appearanceOf(player);
+    const wanted = new Set<BodyPart>();
+    for (const pick of picks) {
+      wanted.add(pick.part);
+      let layer = this.parts.get(pick.part);
+      if (!layer) {
+        layer = new Layer(this.scene, this.textures);
+        this.parts.set(pick.part, layer);
+      }
+      layer.set(pick.id, pick.tinted ? appearance : undefined);
+      layer.setHue(pick.hue);
+    }
+    for (const [part, layer] of this.parts) if (!wanted.has(part)) layer.set("");
+    // A folha inteira fica até a cabeça (a camada de referência) carregar.
+    this.layered = true;
+    if (this.parts.get("head")?.texture) this.body.set("");
+    else this.body.set(`outfit_${player.outfit}`, appearance);
+  }
+
+  /** Camada que dita as animações e a altura da cabeça. */
+  private reference(): Layer {
+    const head = this.parts.get("head");
+    return this.layered && head?.texture ? head : this.body;
+  }
+
+  /** Desenha o personagem (em camadas ou inteiro) num quadro. */
+  private showBody(key: string, x: number, y: number, depth: number, flip: boolean, alpha: number) {
+    const head = this.parts.get("head");
+    if (this.layered && head?.texture) {
+      this.body.hide();
+      if (this.body.texture) this.body.set("");
+      PART_ORDER.forEach((part, i) => this.parts.get(part)?.show(key, x, y, depth + i * 0.001, flip, alpha));
+      return;
+    }
+    for (const layer of this.parts.values()) layer.hide();
+    this.body.show(key, x, y, depth, flip, alpha);
+  }
+
+  private hideBody() {
+    this.body.hide();
+    for (const layer of this.parts.values()) layer.hide();
+  }
+
   position(now: number): { x: number; y: number } {
     if (this.moveDuration <= 0) return { x: this.toX, y: this.toY };
     const t = Phaser.Math.Clamp((now - this.moveStart) / this.moveDuration, 0, 1);
@@ -284,7 +361,7 @@ export class Actor {
 
   /** Toca uma animação uma vez (golpe, magia, dano) e volta para andar/parado. */
   play(anim: AnimName, now: number) {
-    const meta = this.body.texture?.meta;
+    const meta = this.reference().texture?.meta;
     if (this.dead || !meta?.anims[anim] || this.riding) return;
     // Levar dano não interrompe um golpe.
     if (anim === "hit" && this.action && this.action.anim !== "hit") return;
@@ -294,9 +371,10 @@ export class Actor {
   hurt(now: number) {
     this.hitAt = now;
     this.play("hit", now);
-    for (const layer of [this.body, this.mount]) layer.flash(true);
+    const flashing = [this.body, this.mount, ...this.parts.values()];
+    for (const layer of flashing) layer.flash(true);
     this.scene.time.delayedCall(70, () => {
-      for (const layer of [this.body, this.mount]) layer.flash(false);
+      for (const layer of flashing) layer.flash(false);
     });
   }
 
@@ -322,7 +400,14 @@ export class Actor {
   }
 
   bounds(): Phaser.Geom.Rectangle | null {
-    return this.body.bounds();
+    if (!this.layered) return this.body.bounds();
+    let union: Phaser.Geom.Rectangle | null = null;
+    for (const layer of this.parts.values()) {
+      const box = layer.bounds();
+      if (!box) continue;
+      union = union ? Phaser.Geom.Rectangle.Union(union, box) : box;
+    }
+    return union ?? this.body.bounds();
   }
 
   update(time: number, delta: number) {
@@ -333,7 +418,7 @@ export class Actor {
     const shake = time - this.hitAt < 120 ? (Math.random() - 0.5) * 4 : 0;
     if (this.action && time >= this.action.until) this.action = null;
 
-    const bodyMeta = this.body.texture?.meta;
+    const bodyMeta = this.reference().texture?.meta;
     const mountMeta = this.mount.texture?.meta;
     let top = y - (bodyMeta?.headHeight ?? 80);
 
@@ -346,10 +431,10 @@ export class Actor {
         const sign = facing.flip ? -1 : 1;
         const riderX = x + shake + sign * (mountFrame.sx - riderFrame.sx);
         const riderY = y + mountFrame.sy - riderFrame.sy;
-        this.body.show(riderKey, riderX, riderY, y + 1.5, facing.flip, alpha);
+        this.showBody(riderKey, riderX, riderY, y + 1.5, facing.flip, alpha);
         top = Math.min(riderY - bodyMeta.headHeight + 14, y - mountMeta.headHeight);
       } else {
-        this.body.hide();
+        this.hideBody();
       }
       this.front.share(this.mount.texture);
       const front = frontKey(mountKey);
@@ -363,7 +448,7 @@ export class Actor {
         const elapsed = this.dead ? time - this.deathStart : this.action ? time - this.action.start : time + this.phase;
         const key = frameAt(bodyMeta, anim, facing.dir, elapsed) ?? frameAt(bodyMeta, "idle", facing.dir, time);
         // Corpos ficam por baixo de quem está vivo.
-        if (key) this.body.show(key, x + shake, y, this.dead ? y - 30 : y + 1, facing.flip, alpha);
+        if (key) this.showBody(key, x + shake, y, this.dead ? y - 30 : y + 1, facing.flip, alpha);
       }
     }
 
@@ -375,7 +460,7 @@ export class Actor {
   }
 
   destroy() {
-    for (const layer of [this.body, this.mount, this.front, this.pet]) layer.destroy();
+    for (const layer of [this.body, this.mount, this.front, this.pet, ...this.parts.values()]) layer.destroy();
     this.label.destroy();
     this.hpBar.destroy();
     this.bubble?.destroy();

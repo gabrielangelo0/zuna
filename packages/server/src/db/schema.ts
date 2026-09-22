@@ -356,6 +356,15 @@ export const gearItems = pgTable("gear_items", {
   sellGold: integer("sell_gold").notNull().default(0),
   drops: boolean("drops").notNull().default(true),
   enabled: boolean("enabled").notNull().default(true),
+  /** Quantos cabem num espaço (1 = não empilha). */
+  stack: integer("stack").notNull().default(1),
+  /** Poções: vida e mana recuperadas. */
+  heal: integer("heal").notNull().default(0),
+  restore: integer("restore").notNull().default(0),
+  /** Mochilas: espaços a mais. */
+  bagSlots: integer("bag_slots").notNull().default(0),
+  /** Armas: alcance em tiles. */
+  range: integer("range").notNull().default(1),
   createdAt: createdAt(),
 });
 
@@ -369,6 +378,10 @@ export const characterItems = pgTable(
       .references(() => characters.id, { onDelete: "cascade" }),
     itemId: text("item_id").notNull(),
     equipped: text("equipped").notNull().default(""),
+    /** Tamanho da pilha. */
+    count: integer("count").notNull().default(1),
+    /** Posição na grade da mochila (-1 = equipado ou ainda sem lugar). */
+    position: integer("position").notNull().default(-1),
     createdAt: createdAt(),
   },
   (table) => [index("character_items_character_idx").on(table.characterId), index("character_items_item_idx").on(table.itemId)],

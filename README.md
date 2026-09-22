@@ -53,15 +53,27 @@ Abra http://localhost:5173, crie uma conta e um personagem. Para ver o multiplay
 - O drop cai no chão, no tile da morte, e é coletado ao passar por cima. Nos primeiros 20 s só quem derrubou o monstro pega; depois libera para todos. O que ninguém pegar some em 90 s.
 - O ranking tem três listas (nível, ouro e caçadas), servidas por `GET /api/ranking?board=level|gold|kills` com cache de 30 s. Aparecem na tecla `R` dentro do jogo e ao lado do menu de login.
 
-## Equipamentos
+## Personagem, mochila e equipamentos
 
-- Cinco espaços: **arma, escudo, capacete, armadura e botas**. Cada item soma **ataque, defesa, vida e mana** ao personagem (o ataque entra no golpe e nos poderes; a defesa desconta o dano dos monstros).
-- Cinco raridades: comum, incomum, raro, épico e lendário (cor da moldura e do brilho no chão). Os 63 itens de fábrica estão em `packages/shared/src/items.ts`; vão para o banco (`gear_items`) no primeiro arranque e depois quem manda é o painel.
-- **Drops:** cada monstro tem um nível (`MONSTER_LEVEL`) e derruba itens de até 20 níveis abaixo dele, no máximo um por monstro. Chefes sempre derrubam um raro ou melhor. Épicos e lendários são anunciados para o servidor. A mochila tem 30 espaços.
-- **Loja (tecla `I` → Loja):** comuns e incomuns por ouro, épicos por diamantes (resultado garantido, sem sorteio pago). Raros e lendários só caem. Qualquer item pode ser vendido de volta por ouro.
-- **Painel → Equipamentos:** criar, editar (nome, espaço, raridade, ícone, nível, atributos, preços, se cai e se está no jogo), tirar do jogo, apagar, dar a um personagem (online ou não) e a taxa de drop. Tudo vale na hora para quem está jogando.
-- **Ícones:** `npm run bake -- --icons` renderiza os 122 ícones (`sprites/items.webp`) a partir dos modelos 3D: armas e escudos da KayKit e as peças de dentro dos heróis e esqueletos (elmos, torsos e pernas), com versões dourada, gelo, obsidiana e rubi.
-- Comando de teste: `/item <id>` põe um item na mochila.
+- **Painel do personagem (tecla `I`):** os 10 espaços do corpo como no Tibia (amuleto, capacete, mochila, arma, armadura, escudo, anel, calça, munição e botas) em volta da prévia animada do personagem já vestido, e a mochila em grade embaixo. **Arraste** entre a grade e o corpo para vestir, tirar e trocar de lugar; **Shift** ao soltar divide a pilha; **clique duplo** ou **botão direito** veste ou usa. Casas vazias mostram a silhueta da peça.
+- **Equipamento aparece no boneco:** capacete, armadura, calça, botas, arma e escudo são desenhados no personagem, no jogo e na prévia (ver "Personagem em camadas" abaixo). Amuleto, anel, mochila e munição só dão atributos.
+- **Pilhas:** poções e flechas empilham (número no canto). **Poções:** `Q` toma a melhor poção de vida que o nível permite e `E` a de mana (ou clique nos orbes). **Bestas** atacam de 4–5 tiles gastando uma flecha por disparo; sem flecha, só corpo a corpo.
+- **Mochila:** 20 espaços; bolsas equipadas no espaço da mochila dão +10, +20 ou +40.
+- Cinco raridades (comum a lendário, cor da moldura e do brilho no chão). Os itens de fábrica estão em `packages/shared/src/items.ts` e vão para o banco (`gear_items`) no primeiro arranque; depois quem manda é o painel. Cada item do personagem guarda a posição na grade e o tamanho da pilha (`character_items`).
+- **Drops:** cada monstro tem um nível (`MONSTER_LEVEL`) e derruba itens de até 20 níveis abaixo dele, no máximo um por monstro (poções vêm de 1 a 3, flechas de 5 a 20). Chefes sempre derrubam um raro ou melhor. Épicos e lendários são anunciados.
+- **Loja (aba Loja):** comuns e incomuns por ouro, épicos por diamantes (resultado garantido), poções e flechas em lotes de 1, 10 ou 50. Tudo pode ser vendido de volta por ouro.
+- **Painel → Equipamentos:** criar, editar (nome, espaço ou consumível, raridade, ícone, nível, atributos, poção, pilha, espaços de mochila, alcance, preços, se cai e se está no jogo), tirar do jogo, apagar, dar a um personagem e a taxa de drop. Vale na hora para quem está jogando.
+- **Ícones:** `npm run bake -- --icons` gera o atlas `sprites/items.webp` a partir dos modelos 3D (armas e escudos da KayKit, peças de dentro dos heróis e esqueletos, calça e bota separadas pelo osso do pé, saco e flechas), com amuleto, anel e poções modelados no próprio baker.
+- Comando de teste: `/item <id> [quantidade]`.
+
+### Personagem em camadas
+
+Todos os heróis e esqueletos da KayKit usam o mesmo esqueleto (41 ossos), então uma peça de um pode ser religada ao esqueleto de outro. `npm run bake -- --layers` gera, para cada roupa:
+
+- `part_<roupa>_<parte>`: a roupa dividida em cabeça, chapéu, tronco, calça, botas, arma e escudo (tingíveis com as cores do jogador);
+- `gear_<roupa>_<aparência>`: cada equipamento no lugar da parte que substitui (elmo emprestado do cavaleiro, armadura do bárbaro, espada presa na mão, bota separada pelo osso do pé…).
+
+Todas as camadas de uma roupa têm a mesma escala e a mesma célula da folha inteira, e o resto do corpo é renderizado só como profundidade, escondendo o que fica atrás. No jogo, basta empilhar as camadas no mesmo quadro (`client/src/layers.ts`); as versões dourada, gelo, obsidiana e rubi são o mesmo desenho com um tom multiplicado. `sprites/layers.json` diz quais camadas existem; roupa sem camadas usa a folha inteira. Conferência: `npm run bake -- --layer-overview "helm_knight+armor_knight+sword"` → `previews/layers.png`.
 
 ## Mundos e portais
 

@@ -6,6 +6,7 @@ import {
   rarityCss,
   setGearCatalog,
   type GearCatalogEvent,
+  type ShotEvent,
   type InventoryEvent,
   ClientMsg,
   Ground,
@@ -175,10 +176,11 @@ export class WorldScene extends Phaser.Scene {
   });
   private readonly shop = new DiamondShop();
   private readonly inventory = new Inventory({
+    move: (uid, to, index, count) => this.room?.send(ClientMsg.ItemMove, { uid, to, index, count }),
     equip: (uid) => this.room?.send(ClientMsg.ItemEquip, { uid }),
-    unequip: (slot) => this.room?.send(ClientMsg.ItemUnequip, { slot }),
-    sell: (uid) => this.room?.send(ClientMsg.ItemSell, { uid }),
-    buy: (id, currency) => this.room?.send(ClientMsg.ItemBuy, { id, currency }),
+    use: (uid) => this.room?.send(ClientMsg.ItemUse, { uid }),
+    sell: (uid, count) => this.room?.send(ClientMsg.ItemSell, { uid, count }),
+    buy: (id, currency, count) => this.room?.send(ClientMsg.ItemBuy, { id, currency, count }),
     buyDiamonds: () => this.openShop(),
   });
   private spriteTextures!: SpriteTextures;
@@ -318,6 +320,14 @@ export class WorldScene extends Phaser.Scene {
     });
     room.onMessage(ServerMsg.Purchase, (event: PurchaseEvent) => this.onPurchase(event));
     room.onMessage(ServerMsg.Inventory, (event: InventoryEvent) => this.inventory.setInventory(event));
+    room.onMessage(ServerMsg.Shot, (event: ShotEvent) => {
+      const now = this.time.now;
+      const from = this.actors.get(event.attacker);
+      const to = this.actors.get(event.target);
+      if (!from || !to) return;
+      from.play("attack", now);
+      this.fx.arrow(from.position(now), to.position(now));
+    });
     room.onMessage(ServerMsg.Gear, (event: GearCatalogEvent) => {
       setGearCatalog(event.items);
       this.inventory.refresh();
@@ -345,6 +355,9 @@ export class WorldScene extends Phaser.Scene {
     this.hud.onRanking(() => this.ranking.toggle());
     this.hud.onShop(() => this.openShop(true));
     this.hud.onInventory(() => this.toggleInventory());
+    // Clique no orbe (ou Q/E) toma a melhor poção que o nível permite.
+    element(".orb-hp").addEventListener("click", () => room.send(ClientMsg.QuickPotion, { kind: "hp" }));
+    element(".orb-mana").addEventListener("click", () => room.send(ClientMsg.QuickPotion, { kind: "mana" }));
     this.hud.onPowers(() => this.grimoire.toggle());
     this.hud.onMount(() => room.send(ClientMsg.ToggleMount));
     this.keyboard = new KeyboardInput({
@@ -375,6 +388,7 @@ export class WorldScene extends Phaser.Scene {
       toggleMap: () => this.toggleMap(),
       toggleShop: () => this.openShop(true),
       toggleInventory: () => this.toggleInventory(),
+      potion: (kind) => room.send(ClientMsg.QuickPotion, { kind }),
     });
   }
 
