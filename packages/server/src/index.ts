@@ -9,6 +9,7 @@ import { connectDatabase, disconnectDatabase } from "./db/index.ts";
 import { ensureAdmins } from "./adminRepository.ts";
 import { ensureContent } from "./content.ts";
 import { ensureGearSeed } from "./gear.ts";
+import { reloadQuests } from "./quests.ts";
 import { ensurePaymentSeed } from "./paymentCatalog.ts";
 import { startPaymentReconciler } from "./payments.ts";
 import { ensureWorldSeed, listItemOverrides } from "./worldRepository.ts";
@@ -38,6 +39,7 @@ await ensureWorldSeed();
 await ensureContent();
 await ensurePaymentSeed();
 await ensureGearSeed();
+await reloadQuests();
 applyCatalogOverrides(await listItemOverrides());
 
 // ADMIN_USERS=gabriel,outro marca essas contas como administradoras ao subir o servidor.

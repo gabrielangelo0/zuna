@@ -139,6 +139,7 @@
               <button id="hud-powers" type="button"><kbd>P</kbd> Poderes</button>
               <button id="hud-ranking" type="button"><kbd>R</kbd> Ranking</button>
               <button id="hud-inventory" type="button"><kbd>I</kbd> Itens</button>
+              <button id="hud-quests" type="button"><kbd>J</kbd> Missões<b id="hud-quests-badge" hidden></b></button>
               <button id="hud-shop" class="shop-button" type="button"><kbd>L</kbd> 💎 Comprar diamantes</button>
             </div>
           </div>
@@ -243,6 +244,18 @@
           <button type="button" class="tab" data-board="kills">Caçadas</button>
         </nav>
         <div id="ranking-body"></div>
+      </section>
+
+      <section id="quests" class="card kit-panel" hidden>
+        <header class="panel-header">
+          <h2>Missões</h2>
+          <button id="quests-close" class="icon" type="button" aria-label="Fechar">✕</button>
+        </header>
+        <nav class="tabs">
+          <button type="button" class="tab active" data-quest-tab="kill">Caçadas</button>
+          <button type="button" class="tab" data-quest-tab="boss">Desafios de chefe</button>
+        </nav>
+        <div id="quests-body"></div>
       </section>
 
       <section id="inventory" class="card kit-panel" hidden>

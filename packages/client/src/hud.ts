@@ -34,6 +34,8 @@ export class Hud {
   private readonly wardrobeButton = element<HTMLButtonElement>("#hud-wardrobe");
   private readonly shopButton = element<HTMLButtonElement>("#hud-shop");
   private readonly inventoryButton = element<HTMLButtonElement>("#hud-inventory");
+  private readonly questsButton = element<HTMLButtonElement>("#hud-quests");
+  private readonly questsBadge = element("#hud-quests-badge");
   private readonly rankingButton = element<HTMLButtonElement>("#hud-ranking");
   private readonly powersButton = element<HTMLButtonElement>("#hud-powers");
   private readonly mountButton = element<HTMLButtonElement>("#hud-mount");
@@ -199,6 +201,19 @@ export class Hud {
       handler();
       this.inventoryButton.blur();
     });
+  }
+
+  onQuests(handler: () => void) {
+    this.questsButton.addEventListener("click", () => {
+      handler();
+      this.questsButton.blur();
+    });
+  }
+
+  /** Aviso no botão: quantas missões estão prontas para entregar. */
+  setQuestsReady(count: number) {
+    this.questsBadge.textContent = String(count);
+    this.questsBadge.hidden = count <= 0;
   }
 
   onShop(handler: () => void) {

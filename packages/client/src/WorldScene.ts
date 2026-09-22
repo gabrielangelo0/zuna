@@ -8,6 +8,7 @@ import {
   type GearCatalogEvent,
   type ShotEvent,
   type MonsterSpellEvent,
+  type QuestsEvent,
   type InventoryEvent,
   ClientMsg,
   Ground,
@@ -52,6 +53,7 @@ import { element } from "./dom.ts";
 import { SpellFx, createFxTextures } from "./effects.ts";
 import { Hud } from "./hud.ts";
 import { Inventory } from "./inventory.ts";
+import { QuestLog } from "./questLog.ts";
 import { screenToTile, tileToScreen } from "./iso.ts";
 import { Grimoire } from "./grimoire.ts";
 import { LootLayer } from "./loot.ts";
@@ -176,6 +178,10 @@ export class WorldScene extends Phaser.Scene {
     buyDiamonds: () => this.openShop(),
   });
   private readonly shop = new DiamondShop();
+  private readonly questLog = new QuestLog({
+    claim: (id) => this.room?.send(ClientMsg.QuestClaim, { id }),
+    summon: (id) => this.room?.send(ClientMsg.QuestBoss, { id }),
+  });
   private readonly inventory = new Inventory({
     move: (uid, to, index, count) => this.room?.send(ClientMsg.ItemMove, { uid, to, index, count }),
     equip: (uid) => this.room?.send(ClientMsg.ItemEquip, { uid }),
@@ -322,6 +328,10 @@ export class WorldScene extends Phaser.Scene {
     room.onMessage(ServerMsg.Purchase, (event: PurchaseEvent) => this.onPurchase(event));
     room.onMessage(ServerMsg.Inventory, (event: InventoryEvent) => this.inventory.setInventory(event));
     room.onMessage(ServerMsg.MonsterSpell, (event: MonsterSpellEvent) => this.onMonsterSpell(event));
+    room.onMessage(ServerMsg.Quests, (event: QuestsEvent) => {
+      this.questLog.setQuests(event);
+      this.hud.setQuestsReady(this.questLog.readyCount);
+    });
     room.onMessage(ServerMsg.Shot, (event: ShotEvent) => {
       const now = this.time.now;
       const from = this.actors.get(event.attacker);
@@ -346,6 +356,7 @@ export class WorldScene extends Phaser.Scene {
     room.onLeave((code, reason) => {
       this.wardrobe.close();
       this.inventory.close();
+      this.questLog.close();
       this.shop.close();
       this.hud.showDisconnected(reason || CLOSE_REASON[code]);
     });
@@ -357,6 +368,7 @@ export class WorldScene extends Phaser.Scene {
     this.hud.onRanking(() => this.ranking.toggle());
     this.hud.onShop(() => this.openShop(true));
     this.hud.onInventory(() => this.toggleInventory());
+    this.hud.onQuests(() => this.questLog.toggle());
     // Clique no orbe (ou Q/E) toma a melhor poção que o nível permite.
     element(".orb-hp").addEventListener("click", () => room.send(ClientMsg.QuickPotion, { kind: "hp" }));
     element(".orb-mana").addEventListener("click", () => room.send(ClientMsg.QuickPotion, { kind: "mana" }));
@@ -371,7 +383,8 @@ export class WorldScene extends Phaser.Scene {
       },
       targetNearest: () => this.targetNearest(),
       escape: () => {
-        if (this.shop.isOpen) this.shop.close();
+        if (this.questLog.isOpen) this.questLog.close();
+        else if (this.shop.isOpen) this.shop.close();
         else if (this.grimoire.isOpen) this.grimoire.close();
         else if (this.ranking.isOpen) this.ranking.close();
         else if (this.inventory.isOpen) this.inventory.close();
@@ -390,6 +403,7 @@ export class WorldScene extends Phaser.Scene {
       toggleMap: () => this.toggleMap(),
       toggleShop: () => this.openShop(true),
       toggleInventory: () => this.toggleInventory(),
+      toggleQuests: () => this.questLog.toggle(),
       potion: (kind) => room.send(ClientMsg.QuickPotion, { kind }),
     });
   }
@@ -721,6 +735,7 @@ export class WorldScene extends Phaser.Scene {
     this.grimoire.setLevel((actor.data as PlayerData).level);
     this.wardrobe.setPlayer(actor.data as PlayerData);
     this.inventory.setPlayer(actor.data as PlayerData);
+    this.questLog.setPlayer(actor.data as PlayerData);
     this.ranking.setMyName((actor.data as PlayerData).name);
   }
 

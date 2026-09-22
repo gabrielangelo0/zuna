@@ -7,6 +7,7 @@ import { renderHistory } from "./history.ts";
 import { icon } from "./icons.ts";
 import { renderOverview } from "./overview.ts";
 import { renderPlayers } from "./players.ts";
+import { renderQuests } from "./quests.ts";
 import { currentToken, fail, onSessionLost, setAdminName, setToken } from "./session.ts";
 import { renderSales } from "./sales.ts";
 import { renderShop } from "./shop.ts";
@@ -16,7 +17,7 @@ import { closeWorldEditor, renderWorlds } from "./worlds.ts";
 
 // Painel do mestre: cada tela é escolhida pela barra lateral ou pelas abas.
 
-type View = "overview" | "players" | "world" | "worlds" | "events" | "gear" | "shop" | "sales" | "history";
+type View = "overview" | "players" | "world" | "worlds" | "events" | "quests" | "gear" | "shop" | "sales" | "history";
 
 const VIEWS: { id: View; label: string; mark: string; render: (root: HTMLElement) => Promise<void> }[] = [
   { id: "overview", label: "Visão Geral", mark: "chart", render: renderOverview },
@@ -24,6 +25,7 @@ const VIEWS: { id: View; label: string; mark: string; render: (root: HTMLElement
   { id: "world", label: "Mundo Ao Vivo", mark: "globe", render: renderWorld },
   { id: "worlds", label: "Mapas", mark: "map", render: renderWorlds },
   { id: "events", label: "Eventos", mark: "bolt", render: renderEvents },
+  { id: "quests", label: "Missões", mark: "scroll", render: renderQuests },
   { id: "gear", label: "Equipamentos", mark: "sword", render: renderGear },
   { id: "shop", label: "Loja", mark: "store", render: renderShop },
   { id: "sales", label: "Vendas", mark: "coin", render: renderSales },

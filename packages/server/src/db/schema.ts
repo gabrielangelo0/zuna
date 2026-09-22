@@ -386,3 +386,52 @@ export const characterItems = pgTable(
   },
   (table) => [index("character_items_character_idx").on(table.characterId), index("character_items_item_idx").on(table.itemId)],
 );
+
+// ---------------------------------------------------------------- missões
+
+/** Caçadas e desafios de chefe, montados no painel. */
+export const quests = pgTable("quests", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description").notNull().default(""),
+  /** kill (caçada) ou boss (desafio em grupo). */
+  kind: text("kind").notNull().default("kill"),
+  monster: text("monster").notNull(),
+  amount: integer("amount").notNull().default(1),
+  /** 0 = qualquer mundo. */
+  worldId: integer("world_id").notNull().default(0),
+  minLevel: integer("min_level").notNull().default(1),
+  /** Chefe: jogadores necessários no altar e onde ele aparece. */
+  players: smallint("players").notNull().default(1),
+  x: smallint("x").notNull().default(0),
+  y: smallint("y").notNull().default(0),
+  bossScale: doublePrecision("boss_scale").notNull().default(1),
+  repeatMinutes: integer("repeat_minutes").notNull().default(0),
+  rewardXp: doublePrecision("reward_xp").notNull().default(0),
+  rewardGold: integer("reward_gold").notNull().default(0),
+  rewardItem: text("reward_item").notNull().default(""),
+  rewardItemCount: integer("reward_item_count").notNull().default(1),
+  enabled: boolean("enabled").notNull().default(true),
+  sort: smallint("sort").notNull().default(0),
+  createdAt: createdAt(),
+});
+
+/** O que cada personagem já fez de cada missão. */
+export const characterQuests = pgTable(
+  "character_quests",
+  {
+    characterId: integer("character_id")
+      .notNull()
+      .references(() => characters.id, { onDelete: "cascade" }),
+    questId: integer("quest_id").notNull(),
+    progress: integer("progress").notNull().default(0),
+    /** Já pode entregar. */
+    done: boolean("done").notNull().default(false),
+    /** Quantas vezes entregou. */
+    times: integer("times").notNull().default(0),
+    /** Repetível: quando volta a valer. */
+    readyAt: timestamp("ready_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.characterId, table.questId] })],
+);

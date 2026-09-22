@@ -31,6 +31,8 @@ export interface LiveRoom {
   giveItem(characterId: number, itemId: string): boolean;
   /** O painel mexeu nos equipamentos. */
   sendGear(): void;
+  /** O painel mexeu nas missões. */
+  sendQuestList(): void;
 }
 
 export interface LiveCharacterPatch {
@@ -185,4 +187,8 @@ export function giveLiveItem(characterId: number, itemId: string): boolean {
 
 export function pushGear() {
   for (const room of rooms) room.sendGear();
+}
+
+export function pushQuests() {
+  for (const room of rooms) room.sendQuestList();
 }

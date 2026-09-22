@@ -1,5 +1,13 @@
 import { Room, ServerError, type Client } from "colyseus";
 import {
+  QUEST_ALTAR_RANGE,
+  QUEST_BOSS_COOLDOWN_MS,
+  questProgressOf,
+  questWaiting,
+  type QuestBossMessage,
+  type QuestClaimMessage,
+  type QuestProgress,
+  type QuestsEvent,
   cone,
   square,
   type MonsterSpellEvent,
@@ -106,6 +114,7 @@ import {
 } from "@zuna/shared";
 import { accountFromToken } from "./auth.ts";
 import { EventManager } from "./events.ts";
+import { allQuests, listQuestProgress, liveQuests, questById, saveQuestProgress } from "./quests.ts";
 import {
   addCharacterItem,
   buyGearWithDiamonds,
@@ -222,6 +231,8 @@ interface PlayerSim {
   bagFullWarnAt: number;
   /** Próxima poção liberada. */
   nextPotionAt: number;
+  /** Andamento das missões deste personagem. */
+  questProgress: QuestProgress[];
   path: Point[];
   moveDir: Point | null;
   nextStepAt: number;
@@ -254,6 +265,9 @@ export interface MonsterSim {
   nextThinkAt: number;
   /** Próximo ataque especial em área liberado. */
   nextSpecialAt: number;
+  /** Chefe de desafio: multiplica vida, dano e XP, e conta a missão de quem o derrubar. */
+  scale: number;
+  questId: number;
   /** Dano causado por cada jogador: a XP é dividida nessa proporção. */
   damageBy: Map<string, number>;
   onDeath?: () => void;
@@ -298,6 +312,9 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
   private nextMonsterId = 1;
   private nextRegenAt = 0;
   private nextAutosaveAt = Date.now() + AUTOSAVE_MS;
+  /** Chefe de desafio vivo agora, por missão, e quando cada um pode voltar. */
+  private readonly bossQuests = new Map<number, string>();
+  private readonly bossQuestReadyAt = new Map<number, number>();
   private eventManager!: EventManager;
 
   async onCreate() {
@@ -325,6 +342,8 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     this.onMessage(ClientMsg.ItemMove, (client, message: ItemMoveMessage) => this.handleItemMove(client, message));
     this.onMessage(ClientMsg.ItemUse, (client, message: ItemUseMessage) => this.handleItemUse(client, message));
     this.onMessage(ClientMsg.QuickPotion, (client, message: QuickPotionMessage) => this.handleQuickPotion(client, message));
+    this.onMessage(ClientMsg.QuestClaim, (client, message: QuestClaimMessage) => this.handleQuestClaim(client, message));
+    this.onMessage(ClientMsg.QuestBoss, (client, message: QuestBossMessage) => this.handleQuestBoss(client, message));
     this.onMessage(ClientMsg.ItemSell, (client, message: ItemSellMessage) => this.handleItemSell(client, message));
     this.onMessage(ClientMsg.ItemBuy, (client, message: ItemBuyMessage) => this.handleItemBuy(client, message));
 
@@ -522,6 +541,8 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       y: s.y,
       name: sim.def.name,
     } satisfies TravelEvent);
+    // As missões dependem do mundo: a lista vai de novo a cada viagem.
+    this.sendQuests(player);
     void this.persist(player);
   }
 
@@ -791,7 +812,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       DEFAULT_APPEARANCE;
     const pet = row.pet && owns(row.pet, "pet") ? row.pet : "";
     const mount = row.mount && owns(row.mount, "mount") ? row.mount : "";
-    const items = await listCharacterItems(row.id);
+    const [items, questProgress] = await Promise.all([listCharacterItems(row.id), listQuestProgress(row.id)]);
     const gear = equippedStats(items);
     const stats = withGear(playerStats(row.level), gear);
     const sim = this.worldFor(row.worldId);
@@ -835,6 +856,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       gear,
       bagFullWarnAt: 0,
       nextPotionAt: 0,
+      questProgress: questProgress,
       path: [],
       moveDir: null,
       nextStepAt: 0,
@@ -851,6 +873,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     occupyPlayer(sim, spot.x, spot.y, 1);
 
     this.settleBag(player);
+    this.sendQuests(player);
     this.sendProfile(player);
     this.sendInventory(player);
     const greeting = row.lastLoginAt ? "Bem-vindo de volta" : "Bem-vindo";
@@ -888,7 +911,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     sim: WorldSim,
     kind: MonsterKind,
     at: Point,
-    options: { respawns: boolean; nestId?: number } = { respawns: false },
+    options: { respawns: boolean; nestId?: number; scale?: number; questId?: number } = { respawns: false },
   ): MonsterSim | null {
     const spot = findFreeTile(sim, at.x, at.y, true, 3);
     if (!spot) return null;
@@ -901,8 +924,8 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       y: spot.y,
       dir: randInt(Math.random, 0, DIRS.length - 1),
       stepMs: stepDuration(def.stepMs, 1, 0),
-      hp: def.hp,
-      maxHp: def.hp,
+      hp: Math.round(def.hp * (options.scale ?? 1)),
+      maxHp: Math.round(def.hp * (options.scale ?? 1)),
     });
     const monster: MonsterSim = {
       id,
@@ -919,6 +942,8 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       nextAttackAt: 0,
       nextThinkAt: 0,
       nextSpecialAt: Date.now() + 2500,
+      scale: options.scale ?? 1,
+      questId: options.questId ?? 0,
       damageBy: new Map(),
     };
     this.monsters.set(id, monster);
@@ -1691,7 +1716,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       const p = player.state;
       if (player.world !== sim || p.hp <= 0 || !inside.has(tileKey(sim, p.x, p.y)) || inSafe(sim, p.x, p.y)) continue;
       const { armor } = this.statsOf(player);
-      const damage = Math.max(0, Math.round(special.power * (0.8 + Math.random() * 0.4) - armor * 0.5));
+      const damage = Math.max(0, Math.round(special.power * (0.8 + Math.random() * 0.4) * monster.scale ** 0.5 - armor * 0.5));
       if (damage === 0) {
         this.broadcastHit(player.id, monster.id, 0, "block");
         continue;
@@ -1708,7 +1733,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     // Revida sozinho quando está parado e sem alvo; não atrapalha quem está fugindo.
     if (!player.state.target && !player.moveDir && player.path.length === 0) player.state.target = monster.id;
     const { armor } = this.statsOf(player);
-    const damage = Math.max(0, randInt(Math.random, 0, monster.def.maxHit) - armor);
+    const damage = Math.max(0, Math.round(randInt(Math.random, 0, monster.def.maxHit) * monster.scale ** 0.5) - armor);
     if (damage === 0) {
       this.broadcastHit(player.id, monster.id, 0, "block");
       return;
@@ -1755,7 +1780,8 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
         topDamager = player;
       }
       const multiplier = XP_RATE * this.eventManager.xpMultiplierFor(sim) * (1 + this.bonusesOf(player).xp);
-      this.giveXp(player, Math.max(1, Math.round((def.xp * multiplier * damage) / totalDamage)));
+      this.giveXp(player, Math.max(1, Math.round((def.xp * monster.scale * multiplier * damage) / totalDamage)));
+      this.creditQuests(player, monster);
     }
 
     if (topDamager) {
@@ -1772,6 +1798,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       }
     }
 
+    if (monster.questId) this.finishBossQuest(monster);
     if (monster.respawns) this.after(def.respawnMs, () => this.respawn(sim, def.kind, monster.home));
     if (monster.nestId) {
       const nest = sim.spawns.find((entry) => entry.id === monster.nestId);
@@ -2445,6 +2472,175 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     this.consume(player, ammo, 1);
     if (!player.items.includes(ammo)) this.sendChat(player.client, "system", "Suas flechas acabaram.");
     else this.sendInventory(player);
+  }
+
+  // ------------------------------------------------------------ missões
+
+  private sendQuests(player: PlayerSim) {
+    if (!this.players.has(player.id)) return;
+    const worldNames: Record<string, string> = {};
+    for (const world of this.worlds.values()) worldNames[String(world.def.id)] = world.def.name;
+    player.client.send(ServerMsg.Quests, {
+      quests: liveQuests(),
+      progress: player.questProgress,
+      worldNames,
+      worldId: player.world.def.id,
+    } satisfies QuestsEvent);
+  }
+
+  /** Avisa todo mundo que a lista de missões mudou no painel. */
+  sendQuestList() {
+    for (const player of this.players.values()) this.sendQuests(player);
+  }
+
+  private questState(player: PlayerSim, questId: number): QuestProgress {
+    let progress = player.questProgress.find((entry) => entry.questId === questId);
+    if (!progress) {
+      progress = { questId, progress: 0, done: false, readyAt: "", times: 0 };
+      player.questProgress.push(progress);
+    }
+    return progress;
+  }
+
+  private saveQuest(player: PlayerSim, progress: QuestProgress) {
+    this.enqueue(player, () => saveQuestProgress(player.characterId, progress)).catch(() => undefined);
+  }
+
+  /** Missão aberta para este personagem agora (nível, mundo e espera das repetíveis). */
+  private questOpen(player: PlayerSim, quest: { id: number; minLevel: number; worldId: number }): boolean {
+    if (player.state.level < quest.minLevel) return false;
+    if (quest.worldId !== 0 && player.world.def.id !== quest.worldId) return false;
+    const progress = questProgressOf(player.questProgress, quest.id);
+    return !questWaiting(progress);
+  }
+
+  /** Cada monstro derrubado conta para as caçadas de quem causou dano. */
+  private creditQuests(player: PlayerSim, monster: MonsterSim) {
+    for (const quest of liveQuests()) {
+      if (quest.kind !== "kill" || quest.monster !== monster.def.kind) continue;
+      if (quest.worldId !== 0 && quest.worldId !== monster.world.def.id) continue;
+      if (player.state.level < quest.minLevel) continue;
+      const progress = this.questState(player, quest.id);
+      if (progress.done || questWaiting(progress)) continue;
+      progress.progress += 1;
+      if (progress.progress >= quest.amount) {
+        progress.progress = quest.amount;
+        progress.done = true;
+        this.sendChat(player.client, "event", `Missão cumprida: ${quest.name}! Abra as missões (J) para receber.`);
+      } else if (progress.progress % 5 === 0 || progress.progress === 1) {
+        this.sendChat(player.client, "system", `${quest.name}: ${progress.progress}/${quest.amount}.`);
+      }
+      this.saveQuest(player, progress);
+      this.sendQuests(player);
+    }
+  }
+
+  /** Entrega: paga XP, ouro e item, e reagenda as repetíveis. */
+  private handleQuestClaim(client: Client, message: QuestClaimMessage) {
+    const player = this.players.get(client.sessionId);
+    const quest = questById(Number(message?.id));
+    if (!player || !quest || !quest.enabled) return;
+    const progress = this.questState(player, quest.id);
+    if (!progress.done) {
+      this.sendChat(client, "system", "Essa missão ainda não está pronta.");
+      return;
+    }
+    progress.done = false;
+    progress.progress = 0;
+    progress.times += 1;
+    progress.readyAt = quest.repeatMinutes > 0 ? new Date(Date.now() + quest.repeatMinutes * 60_000).toISOString() : "";
+    // Missão de uma vez só: fica travada para sempre.
+    if (quest.repeatMinutes === 0) progress.readyAt = new Date(Date.now() + 3650 * 86_400_000).toISOString();
+    this.saveQuest(player, progress);
+
+    const rewards: string[] = [];
+    if (quest.rewardXp > 0) {
+      this.giveXp(player, Math.round(quest.rewardXp));
+      rewards.push(`${Math.round(quest.rewardXp).toLocaleString("pt-BR")} de XP`);
+    }
+    if (quest.rewardGold > 0) {
+      player.state.gold += quest.rewardGold;
+      rewards.push(`${quest.rewardGold.toLocaleString("pt-BR")} de ouro`);
+      void this.persist(player);
+    }
+    if (quest.rewardItem) {
+      const item = gearItem(quest.rewardItem);
+      const got = item ? this.grantItem(player, item.id, quest.rewardItemCount) : 0;
+      if (item && got > 0) rewards.push(got > 1 ? `${got}× ${item.name}` : item.name);
+      else if (item) this.itemNotice(player, false, `A mochila estava cheia: ${item.name} não coube.`);
+    }
+    this.sendChat(client, "event", `${quest.name}: você recebeu ${rewards.join(", ") || "nada"}.`);
+    this.sendQuests(player);
+  }
+
+  /** Desafio de chefe: só começa com o grupo todo perto do altar. */
+  private handleQuestBoss(client: Client, message: QuestBossMessage) {
+    const player = this.players.get(client.sessionId);
+    const quest = questById(Number(message?.id));
+    if (!player || !quest || !quest.enabled || quest.kind !== "boss") return;
+    const sim = player.world;
+    if (quest.worldId !== 0 && sim.def.id !== quest.worldId) {
+      this.sendChat(client, "system", "Este desafio é em outro mundo.");
+      return;
+    }
+    if (player.state.level < quest.minLevel) {
+      this.sendChat(client, "system", `${quest.name} pede nível ${quest.minLevel}.`);
+      return;
+    }
+    if (chebyshev(player.state.x, player.state.y, quest.x, quest.y) > QUEST_ALTAR_RANGE) {
+      this.sendChat(client, "system", "Vá até o altar do desafio para invocar o chefe.");
+      return;
+    }
+    const alive = this.bossQuests.get(quest.id);
+    if (alive && this.monsters.has(alive)) {
+      this.sendChat(client, "system", "O chefe deste desafio já está no mundo.");
+      return;
+    }
+    const now = Date.now();
+    const readyAt = this.bossQuestReadyAt.get(quest.id) ?? 0;
+    if (now < readyAt) {
+      this.sendChat(client, "system", `Espere ${Math.ceil((readyAt - now) / 60_000)} min para invocar de novo.`);
+      return;
+    }
+    // Conta quem está no altar (o próprio incluso).
+    const party = [...this.players.values()].filter(
+      (other) => other.world === sim && other.state.hp > 0 && chebyshev(other.state.x, other.state.y, quest.x, quest.y) <= QUEST_ALTAR_RANGE,
+    );
+    if (party.length < quest.players) {
+      this.sendChat(
+        client,
+        "system",
+        `${quest.name} precisa de ${quest.players} jogadores no altar (tem ${party.length}). Chame o pessoal!`,
+      );
+      return;
+    }
+    const scale = Math.max(1, quest.bossScale * party.length);
+    const boss = this.spawnMonster(sim, quest.monster, { x: quest.x, y: quest.y }, { respawns: false, scale, questId: quest.id });
+    if (!boss) {
+      this.sendChat(client, "system", "Não há espaço no altar para o chefe aparecer.");
+      return;
+    }
+    this.bossQuests.set(quest.id, boss.id);
+    this.bossQuestReadyAt.set(quest.id, now + QUEST_BOSS_COOLDOWN_MS);
+    this.announce(`${MONSTERS[quest.monster].name} foi invocado em ${sim.def.name} por ${party.length} heróis!`);
+  }
+
+  /** O chefe do desafio caiu: todo mundo que bateu nele pode entregar a missão. */
+  private finishBossQuest(monster: MonsterSim) {
+    const quest = questById(monster.questId);
+    this.bossQuests.delete(monster.questId);
+    if (!quest) return;
+    for (const playerId of monster.damageBy.keys()) {
+      const player = this.players.get(playerId);
+      if (!player || player.state.level < quest.minLevel) continue;
+      const progress = this.questState(player, quest.id);
+      if (questWaiting(progress)) continue;
+      progress.progress = quest.amount;
+      progress.done = true;
+      this.saveQuest(player, progress);
+      this.sendChat(player.client, "event", `Desafio vencido: ${quest.name}! Abra as missões (J) para receber.`);
+      this.sendQuests(player);
+    }
   }
 
   /** Tira do chão o que ninguém pegou a tempo. */

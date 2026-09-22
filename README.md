@@ -40,12 +40,16 @@ Abra http://localhost:5173, crie uma conta e um personagem. Para ver o multiplay
 
 ## Poderes
 
-- São seis famílias, liberadas por nível: Cura (1), Golpe Giratório (4), Raio Flamejante (8), Tremor (14), Drenar Vida (20) e Tempestade (30).
+> As magias em área explodem casa a casa: o servidor manda as casas atingidas e o cliente desenha uma explosão em cada uma, em onda a partir de quem lançou. Golpes e poderes têm 12% de chance de crítico (×1,8), com o número grande na tela.
+
+
+
+- São nove famílias, liberadas por nível: Cura (1), Golpe Giratório (4), Raio Flamejante (8), Onda de Fogo (10), Tremor (14), Chuva de Gelo (18), Drenar Vida (20), Tempestade (30) e Inferno (40). A barra tem 8 atalhos.
 - Cada família ganha um **grau novo** de tantos em tantos níveis (Cura a cada 6, Raio a cada 8, Tempestade a cada 12, e assim por diante). O grau sobe a força em 18% e a mana em 15%, sem teto: no nível 100 já existe um Raio Flamejante XII.
 - O jogador tem **6 atalhos** (teclas `1` a `6`) e escolhe quais poderes ficam neles no grimório (`P`): clica no poder e depois no atalho. Dá para trocar a qualquer momento, e os atalhos ficam salvos no personagem.
 - Quando abre um grau melhor, o atalho sobe sozinho (Raio II vira Raio III), e poder novo entra numa vaga livre.
 - As famílias e os números de cada uma estão em `packages/shared/src/spells.ts`.
-- Cada poder tem efeito visual próprio, em camadas (`packages/client/src/effects.ts`): a Cura abre um círculo mágico verde com coluna de luz; o Golpe Giratório gira duas lâminas em volta do herói; o Raio Flamejante é uma bola de fogo com rastro que explode no alvo e deixa o chão queimado; o Tremor racha o chão com brilho de lava, levanta pedras e poeira; o Drenar Vida puxa almas roxas em curva do alvo até o herói; e a Tempestade escurece o céu e derruba raios em zigue-zague por toda a área.
+- Cada poder tem efeito visual próprio, em camadas (`packages/client/src/effects.ts`): a Cura abre um círculo mágico verde com coluna de luz; o Golpe Giratório gira duas lâminas em volta do herói; o Raio Flamejante é uma bola de fogo com rastro que explode no alvo e deixa o chão queimado; o Tremor racha o chão com brilho de lava, levanta pedras e poeira; o Drenar Vida puxa almas roxas em curva do alvo até o herói; e a Tempestade escurece o céu e derruba raios em zigue-zague por toda a área. A **Onda de Fogo** sai em leque na direção do alvo, a **Chuva de Gelo** explode em volta dele e o **Inferno** cobre 6 casas em duas ondas, com anéis de choque e tremor de tela.
 
 ## Drops e ranking
 
@@ -74,6 +78,14 @@ Todos os heróis e esqueletos da KayKit usam o mesmo esqueleto (41 ossos), entã
 - `gear_<roupa>_<aparência>`: cada equipamento no lugar da parte que substitui (elmo emprestado do cavaleiro, armadura do bárbaro, espada presa na mão, bota separada pelo osso do pé…).
 
 Todas as camadas de uma roupa têm a mesma escala e a mesma célula da folha inteira, e o resto do corpo é renderizado só como profundidade, escondendo o que fica atrás. No jogo, basta empilhar as camadas no mesmo quadro (`client/src/layers.ts`); as versões dourada, gelo, obsidiana e rubi são o mesmo desenho com um tom multiplicado. `sprites/layers.json` diz quais camadas existem; roupa sem camadas usa a folha inteira. Conferência: `npm run bake -- --layer-overview "helm_knight+armor_knight+sword"` → `previews/layers.png`.
+
+## Missões
+
+- **Tecla `J`:** caçadas e desafios de chefe, com o progresso, a recompensa e onde cada uma acontece. O botão da HUD mostra um aviso quando há missão pronta para entregar.
+- **Caçadas:** "mate 30 raposas". Conta todo monstro que o jogador ajudar a derrubar no mundo da missão; ao completar, é só entregar (XP, ouro e item). As repetíveis voltam depois de alguns minutos.
+- **Desafios de chefe:** só começam com o número de jogadores pedido perto do altar (6 casas). A vida do chefe é multiplicada pelo número de jogadores presentes, e todo mundo que bater nele conclui a missão. Cada desafio tem 10 minutos de espera entre invocações.
+- Vêm prontas uma caçada e um desafio por mundo (19 no total), de Zuna ao Abismo Demoníaco, com recompensas até a Lâmina do Rei e a Armadura do Abismo.
+- **Painel → Missões:** criar, editar (tipo, monstro, quantidade, mundo, nível, altar, jogadores, força extra do chefe, repetição e recompensas), ligar, desligar e apagar. Vale na hora para quem está jogando.
 
 ## Mundos e portais
 

@@ -169,7 +169,7 @@ Cada sistema tem teto e é uma fonte de receita separada.
 | **XP em Dobro** | 10 min (ou um fim de semana) com toda XP de monstro em dobro, anunciado para o servidor | ✅ No protótipo |
 | **Invasão** | Hordas atacam os arredores da cidade em ondas, com anúncios progressivos e um chefe no final | ✅ No protótipo (Invasão Orc) |
 | **Loot em dobro / respawn rápido** | Variações do mesmo sistema de eventos | ✅ No painel (bônus de ouro e de XP por evento) |
-| **Boss mundial** | Horários fixos; recompensa proporcional ao dano causado | Falta só a recompensa por dano: as levas já invocam chefes |
+| **Boss mundial** | Horários fixos; recompensa proporcional ao dano causado | ✅ Desafios de chefe por grupo (altar, N jogadores, vida multiplicada); falta o horário fixo |
 | **Sazonais** | Carnaval, Festa Junina, Halloween e Natal: monstros, missões e visuais temáticos, com pacotes na loja | Pós-lançamento |
 
 Os eventos são **dados, não código**: a aba Eventos do painel guarda nome, anúncios, duração, bônus de XP e de ouro, mundo, disparo automático e as levas de monstro (monstro, quantidade, atraso, raio e anúncio). `EVENT_INTERVAL_MIN=0` desliga os automáticos; `/evento <chave>` começa um na hora fora de produção.

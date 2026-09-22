@@ -6,10 +6,12 @@ import {
   mulberry32,
   shapeOf,
   type MapStyle,
+  type MonsterKind,
   type WorldDef,
 } from "@zuna/shared";
 import { db } from "./db/index.ts";
 import { serverMeta, worlds } from "./db/schema.ts";
+import { saveQuest } from "./quests.ts";
 import { createWorld, listWorlds, saveEvent, saveGroundItem, savePortal } from "./worldRepository.ts";
 
 // Conteúdo que vem pronto com o jogo: seis mundos temáticos ligados à praça de Zuna
@@ -21,6 +23,8 @@ const WORLDS_KEY = "conteudo";
 const WORLDS_VERSION = "mundos-v2";
 const EVENTS_KEY = "eventos";
 const EVENTS_VERSION = "eventos-v1";
+const QUESTS_KEY = "missoes";
+const QUESTS_VERSION = "missoes-v1";
 
 interface Realm {
   slug: string;
@@ -76,6 +80,87 @@ function walkableNear(map: ReturnType<typeof generateMap>, x: number, y: number)
 export async function ensureContent() {
   await ensureRealms();
   await ensureEvents();
+  await ensureQuests();
+}
+
+/** Uma caçada e um desafio de chefe em cada mundo. O painel muda tudo depois. */
+interface QuestSeed {
+  world: string;
+  name: string;
+  description: string;
+  kind: "kill" | "boss";
+  monster: MonsterKind;
+  amount?: number;
+  minLevel: number;
+  players?: number;
+  repeatMinutes: number;
+  rewardXp: number;
+  rewardGold: number;
+  rewardItem?: string;
+  rewardItemCount?: number;
+}
+
+const QUEST_SEEDS: readonly QuestSeed[] = [
+  // Caçadas
+  { world: "", name: "Pragas de Zuna", description: "Os slimes tomaram conta dos arredores da praça. Limpe 20 deles.", kind: "kill", monster: "rat", amount: 20, minLevel: 1, repeatMinutes: 30, rewardXp: 300, rewardGold: 200, rewardItem: "pocao-vida", rewardItemCount: 5 },
+  { world: "", name: "A Alcateia", description: "Os lobos andam atacando quem sai da cidade. Cace 25.", kind: "kill", monster: "wolf", amount: 25, minLevel: 5, repeatMinutes: 45, rewardXp: 1500, rewardGold: 700, rewardItem: "pocao-vida", rewardItemCount: 10 },
+  { world: "floresta-sombria", name: "Raposas Sombrias", description: "As raposas da Floresta Sombria estão demais. Cace 30.", kind: "kill", monster: "fox", amount: 30, minLevel: 8, repeatMinutes: 60, rewardXp: 6000, rewardGold: 2000, rewardItem: "pocao-vida", rewardItemCount: 15 },
+  { world: "pantano-nebuloso", name: "Sapos do Brejo", description: "Os sapos gigantes tomaram o brejo. Cace 30.", kind: "kill", monster: "frog", amount: 30, minLevel: 12, repeatMinutes: 60, rewardXp: 14000, rewardGold: 3500, rewardItem: "flechas", rewardItemCount: 50 },
+  { world: "deserto-escaldante", name: "Ninho de Raptores", description: "Os raptores atacam as caravanas. Cace 30.", kind: "kill", monster: "raptor", amount: 30, minLevel: 25, repeatMinutes: 60, rewardXp: 45000, rewardGold: 9000, rewardItem: "pocao-vida-forte", rewardItemCount: 15 },
+  { world: "montanhas-geladas", name: "Espíritos do Gelo", description: "Espíritos rondam as montanhas. Disperse 30 deles.", kind: "kill", monster: "iceSpirit", amount: 30, minLevel: 35, repeatMinutes: 60, rewardXp: 120000, rewardGold: 18000, rewardItem: "pocao-mana-forte", rewardItemCount: 15 },
+  { world: "cripta-esquecida", name: "Limpeza da Cripta", description: "Os esqueletos não descansam. Derrube 40.", kind: "kill", monster: "skeleton", amount: 40, minLevel: 45, repeatMinutes: 60, rewardXp: 300000, rewardGold: 35000, rewardItem: "pocao-vida-suprema", rewardItemCount: 10 },
+  { world: "vulcao-rubro", name: "Praga de Diabretes", description: "Os diabretes saem das fendas de lava. Cace 30.", kind: "kill", monster: "imp", amount: 30, minLevel: 60, repeatMinutes: 60, rewardXp: 700000, rewardGold: 70000, rewardItem: "pocao-vida-suprema", rewardItemCount: 15 },
+  { world: "covil-dos-dragoes", name: "Caçada aos Dragões", description: "Os dragões vermelhos guardam o covil. Derrube 25.", kind: "kill", monster: "dragonRed", amount: 25, minLevel: 70, repeatMinutes: 90, rewardXp: 1600000, rewardGold: 140000, rewardItem: "flechas-igneas", rewardItemCount: 50 },
+  { world: "abismo-demoniaco", name: "Expurgo do Abismo", description: "Os demônios infernais avançam. Derrube 25.", kind: "kill", monster: "hellfire", amount: 25, minLevel: 85, repeatMinutes: 90, rewardXp: 4000000, rewardGold: 260000, rewardItem: "pocao-vida-suprema", rewardItemCount: 25 },
+  // Desafios de chefe (precisam de gente no altar)
+  { world: "", name: "Desafio: Senhor Esqueleto", description: "Dois heróis no altar invocam o Senhor Esqueleto.", kind: "boss", monster: "orcLeader", minLevel: 10, players: 2, repeatMinutes: 60, rewardXp: 4000, rewardGold: 2500, rewardItem: "escudo-carmesim" },
+  { world: "floresta-sombria", name: "Desafio: Rei Cogumelo", description: "Dois heróis acordam o Rei Cogumelo.", kind: "boss", monster: "mushroomKing", minLevel: 15, players: 2, repeatMinutes: 60, rewardXp: 20000, rewardGold: 6000, rewardItem: "varinha-ignea" },
+  { world: "pantano-nebuloso", name: "Desafio: Sapo Rei", description: "Dois heróis chamam o Sapo Rei do fundo do brejo.", kind: "boss", monster: "frogKing", minLevel: 20, players: 2, repeatMinutes: 60, rewardXp: 45000, rewardGold: 12000, rewardItem: "escudo-carmesim" },
+  { world: "deserto-escaldante", name: "Desafio: Raptor Alfa", description: "Três heróis atraem o Raptor Alfa para o altar.", kind: "boss", monster: "raptorAlpha", minLevel: 30, players: 3, repeatMinutes: 60, rewardXp: 150000, rewardGold: 30000, rewardItem: "adaga-sombria" },
+  { world: "montanhas-geladas", name: "Desafio: Yeti Ancião", description: "Três heróis despertam o Yeti Ancião.", kind: "boss", monster: "yetiElder", minLevel: 40, players: 3, repeatMinutes: 60, rewardXp: 400000, rewardGold: 60000, rewardItem: "espada-glacial" },
+  { world: "cripta-esquecida", name: "Desafio: Lorde Necromante", description: "Três heróis quebram o selo do Lorde Necromante.", kind: "boss", monster: "necroLord", minLevel: 50, players: 3, repeatMinutes: 60, rewardXp: 900000, rewardGold: 120000, rewardItem: "cajado-necromante" },
+  { world: "vulcao-rubro", name: "Desafio: Dragão Ancião", description: "Quatro heróis acordam o Dragão Ancião.", kind: "boss", monster: "dragon", minLevel: 65, players: 4, repeatMinutes: 90, rewardXp: 2500000, rewardGold: 300000, rewardItem: "machado-abismo" },
+  { world: "covil-dos-dragoes", name: "Desafio: Senhor dos Dragões", description: "Quatro heróis chamam o dono do covil.", kind: "boss", monster: "dragonLord", minLevel: 75, players: 4, repeatMinutes: 90, rewardXp: 6000000, rewardGold: 500000, rewardItem: "lamina-rei" },
+  { world: "abismo-demoniaco", name: "Desafio: Arquidemônio", description: "Cinco heróis abrem o portal do Arquidemônio.", kind: "boss", monster: "archdemon", minLevel: 90, players: 5, repeatMinutes: 120, rewardXp: 15000000, rewardGold: 1200000, rewardItem: "armadura-abismo" },
+];
+
+async function ensureQuests() {
+  if ((await metaValue(QUESTS_KEY)) === QUESTS_VERSION) return;
+  const worlds = await listWorlds();
+  const hub = worlds.find((world) => world.isDefault);
+  if (!hub) return;
+
+  for (const seed of QUEST_SEEDS) {
+    const world = seed.world ? worlds.find((entry) => entry.slug === seed.world) : hub;
+    if (!world) continue;
+    // O altar do desafio fica alguns passos ao norte da praça, em chão andável.
+    const map = generateMap(shapeOf(world));
+    const altar = seed.kind === "boss" ? walkableNear(map, world.spawnX, world.spawnY - (world.townRadius + 4)) : { x: 0, y: 0 };
+    await saveQuest({
+      id: 0,
+      name: seed.name,
+      description: seed.description,
+      kind: seed.kind,
+      monster: seed.monster,
+      amount: seed.amount ?? 1,
+      worldId: world.id,
+      minLevel: seed.minLevel,
+      players: seed.players ?? 1,
+      x: altar.x,
+      y: altar.y,
+      bossScale: 1,
+      repeatMinutes: seed.repeatMinutes,
+      rewardXp: seed.rewardXp,
+      rewardGold: seed.rewardGold,
+      rewardItem: seed.rewardItem ?? "",
+      rewardItemCount: seed.rewardItemCount ?? 1,
+      enabled: true,
+      sort: seed.kind === "boss" ? 50 + seed.minLevel : seed.minLevel,
+    });
+  }
+
+  await markDone(QUESTS_KEY, QUESTS_VERSION);
+  console.log("Conteúdo: missões criadas.");
 }
 
 /** Cria os mundos que ainda não existem, os portais de ida e volta e os baús escondidos. */

@@ -18,6 +18,7 @@ import {
 } from "@zuna/shared";
 import { adminRoutes } from "./adminApi.ts";
 import { adminGearRoutes } from "./adminGearApi.ts";
+import { adminQuestRoutes } from "./adminQuestApi.ts";
 import { adminWorldRoutes } from "./adminWorldApi.ts";
 import { paymentRoutes } from "./payments.ts";
 import {
@@ -160,4 +161,5 @@ export const apiRouter = createRouter({
   ...adminWorldRoutes,
   ...paymentRoutes,
   ...adminGearRoutes,
+  ...adminQuestRoutes,
 });

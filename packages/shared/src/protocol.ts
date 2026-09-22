@@ -144,6 +144,9 @@ export const ClientMsg = {
   ItemSell: "itemSell",
   ItemBuy: "itemBuy",
   QuickPotion: "quickPotion",
+  /** Missões: entregar e invocar o chefe do desafio. */
+  QuestClaim: "questClaim",
+  QuestBoss: "questBoss",
 } as const;
 
 /** Clique duplo: veste (ou tira) o item, ou usa a poção. */
@@ -321,4 +324,6 @@ export const ServerMsg = {
   Gear: "gear",
   Shot: "shot",
   MonsterSpell: "monsterSpell",
+  /** Missões do jogador (só ele recebe). */
+  Quests: "quests",
 } as const;
