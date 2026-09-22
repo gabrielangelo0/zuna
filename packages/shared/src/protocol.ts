@@ -187,7 +187,7 @@ export interface ShotEvent {
 
 // ---------------------------------------------------------------- servidor → clientes
 
-export type HitKind = "damage" | "heal" | "block";
+export type HitKind = "damage" | "heal" | "block" | "crit";
 
 export interface HitEvent {
   target: string;
@@ -225,6 +225,8 @@ export interface SpellEffectEvent {
   spell: SpellId;
   x: number;
   y: number;
+  /** Casas atingidas (x, y, x, y…): cada uma ganha uma explosão. */
+  tiles?: number[];
 }
 
 /** Alguém pegou um drop do chão. */

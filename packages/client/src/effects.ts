@@ -24,7 +24,160 @@ function canvasTexture(scene: Phaser.Scene, key: string, width: number, height: 
   texture.refresh();
 }
 
+// ---------------------------------------------------------------- explosões por casa
+
+export type BurstElement = "fire" | "ice" | "energy" | "earth" | "death" | "holy";
+
+/** Cores de cada explosão: miolo, meio, borda e fundo (do mais claro ao mais escuro). */
+const BURST_PALETTE: Record<BurstElement, [number, number, number, number]> = {
+  fire: [0xffe9a0, 0xffb22e, 0xf2560f, 0xa8160a],
+  ice: [0xffffff, 0xc9f6ff, 0x55c8ff, 0x1c5fd0],
+  energy: [0xffffff, 0xf5c8ff, 0xc060ff, 0x5d1fc9],
+  earth: [0xfff6dc, 0xffcf7a, 0xc7792c, 0x6b3a18],
+  death: [0xf4fff0, 0xc6ff9a, 0x5fd35a, 0x1d5b3a],
+  holy: [0xffffff, 0xfff4c2, 0xffd24a, 0xc9901a],
+};
+
+/** Tom do clarão de cada elemento. */
+export const BURST_TINT: Record<BurstElement, number> = {
+  fire: 0xff8a2c,
+  ice: 0x8fe0ff,
+  energy: 0xc57bff,
+  earth: 0xffc36a,
+  death: 0x7ce06a,
+  holy: 0xfff1a8,
+};
+
+export const BURST_W = 96;
+export const BURST_H = 116;
+/** Onde fica o centro da casa na célula da explosão. */
+export const BURST_ANCHOR_Y = 94;
+export const BURST_FRAMES = 12;
+
+/** Números pseudoaleatórios repetíveis: cada explosão tem sempre o mesmo desenho. */
+function seeded(seed: number): () => number {
+  let state = seed;
+  return () => {
+    state = (state * 1103515245 + 12345) % 2147483648;
+    return state / 2147483648;
+  };
+}
+
+/** Um quadro da explosão: línguas de fogo subindo, núcleo que ofusca, faíscas e fumaça no fim. */
+function drawBurst(ctx: Ctx, ox: number, t: number, palette: readonly number[], seed: number) {
+  const random = seeded(seed);
+  const cx = ox + BURST_W / 2;
+  const base = BURST_ANCHOR_Y;
+  const grow = 1 - (1 - Math.min(1, t * 1.25)) ** 3;
+  const life = Math.max(0, 1 - t);
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  // Mancha de luz no chão (achatada, em perspectiva).
+  ctx.save();
+  ctx.translate(cx, base);
+  ctx.scale(1, 0.45);
+  const floor = ctx.createRadialGradient(0, 0, 0, 0, 0, 16 + 26 * grow);
+  floor.addColorStop(0, rgba(palette[1]!, 0.75 * life));
+  floor.addColorStop(0.6, rgba(palette[2]!, 0.35 * life));
+  floor.addColorStop(1, rgba(palette[3]!, 0));
+  ctx.fillStyle = floor;
+  ctx.beginPath();
+  ctx.arc(0, 0, 16 + 26 * grow, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Línguas de fogo: sobem e se abrem, cada uma com o próprio tamanho.
+  const tongues = 9;
+  const rise = Math.sin(Math.PI * Math.min(1, t * 1.15));
+  for (let i = 0; i < tongues; i++) {
+    const spread = (i / (tongues - 1) - 0.5) * 2.5 + (random() - 0.5) * 0.35;
+    const angle = -Math.PI / 2 + spread * 0.55;
+    const length = (30 + random() * 34) * rise * (1 - Math.abs(spread) * 0.22);
+    const width = 7 + random() * 7;
+    if (length < 2) continue;
+    const sx = cx + Math.cos(angle) * 5;
+    const sy = base - 4;
+    const tx = cx + Math.cos(angle) * length * 0.8;
+    const ty = base + Math.sin(angle) * length * 1.15;
+    const nx = -Math.sin(angle);
+    const ny = Math.cos(angle);
+    const gradient = ctx.createLinearGradient(sx, sy, tx, ty);
+    gradient.addColorStop(0, rgba(palette[0]!, 0.7 * life));
+    gradient.addColorStop(0.35, rgba(palette[1]!, 0.62 * life));
+    gradient.addColorStop(0.75, rgba(palette[2]!, 0.45 * life));
+    gradient.addColorStop(1, rgba(palette[3]!, 0));
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.moveTo(sx + nx * width, sy + ny * width);
+    ctx.quadraticCurveTo(sx + (tx - sx) * 0.55 + nx * width * 1.1, sy + (ty - sy) * 0.55 + ny * width * 1.1, tx, ty);
+    ctx.quadraticCurveTo(sx + (tx - sx) * 0.55 - nx * width * 1.1, sy + (ty - sy) * 0.55 - ny * width * 1.1, sx - nx * width, sy - ny * width);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // Núcleo que ofusca no começo.
+  const coreR = 10 + 22 * grow;
+  const core = ctx.createRadialGradient(cx, base - 16, 0, cx, base - 16, coreR);
+  core.addColorStop(0, rgba(palette[0]!, 0.85 * life ** 1.5));
+  core.addColorStop(0.45, rgba(palette[1]!, 0.5 * life ** 1.3));
+  core.addColorStop(1, rgba(palette[2]!, 0));
+  ctx.fillStyle = core;
+  ctx.fillRect(cx - coreR, base - 16 - coreR, coreR * 2, coreR * 2);
+
+  // Faíscas voando para fora e para cima.
+  for (let i = 0; i < 14; i++) {
+    const angle = -Math.PI / 2 + (random() - 0.5) * Math.PI * 1.5;
+    const reach = (12 + random() * 44) * grow;
+    const x = cx + Math.cos(angle) * reach;
+    const y = base - 12 + Math.sin(angle) * reach * 1.1 + t * t * 18;
+    const size = (1.2 + random() * 1.8) * (1 - t * 0.6);
+    ctx.fillStyle = rgba(i % 3 === 0 ? palette[0]! : palette[1]!, life);
+    ctx.fillRect(x - size / 2, y - size / 2, size, size);
+  }
+  ctx.restore();
+
+  // Fumaça subindo no fim (sem somar luz).
+  if (t > 0.45) {
+    const smoke = (t - 0.45) / 0.55;
+    for (let i = 0; i < 4; i++) {
+      const x = cx + (random() - 0.5) * 26;
+      const y = base - 30 - smoke * 34 - random() * 12;
+      const r = 8 + smoke * 12 + random() * 5;
+      const gradient = ctx.createRadialGradient(x, y, 0, x, y, r);
+      gradient.addColorStop(0, `rgba(40, 34, 44, ${0.35 * Math.sin(Math.PI * smoke)})`);
+      gradient.addColorStop(1, "rgba(40, 34, 44, 0)");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+  }
+}
+
+/** Uma folha de explosão por elemento (3 variações), com a animação registrada no Phaser. */
+function createBurstTextures(scene: Phaser.Scene) {
+  for (const [element, palette] of Object.entries(BURST_PALETTE) as [BurstElement, readonly number[]][]) {
+    for (let variant = 0; variant < 3; variant++) {
+      const key = `fxb_${element}_${variant}`;
+      if (scene.textures.exists(key)) continue;
+      const texture = scene.textures.createCanvas(key, BURST_W * BURST_FRAMES, BURST_H);
+      if (!texture) continue;
+      for (let frame = 0; frame < BURST_FRAMES; frame++) {
+        drawBurst(texture.context, frame * BURST_W, frame / (BURST_FRAMES - 1), palette, 1000 * variant + element.length * 17 + 3);
+        texture.add(String(frame), 0, frame * BURST_W, 0, BURST_W, BURST_H);
+      }
+      texture.refresh();
+      scene.anims.create({
+        key,
+        frames: Array.from({ length: BURST_FRAMES }, (_, frame) => ({ key, frame: String(frame) })),
+        frameRate: 30,
+        hideOnComplete: true,
+      });
+    }
+  }
+}
+
 export function createFxTextures(scene: Phaser.Scene) {
+  createBurstTextures(scene);
   // Brilho redondo e macio: núcleo de bola de fogo, clarões e orbes.
   canvasTexture(scene, "fx_glow", 64, 64, (ctx) => {
     const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
@@ -414,6 +567,94 @@ export class SpellFx {
       blend: Phaser.BlendModes.NORMAL,
       depth: this.depths.ground + 2,
     });
+  }
+
+  /**
+   * Uma explosão em cada casa atingida, em onda a partir de `origin` (as mais perto primeiro).
+   * `speed` é em pixels por milissegundo; `scale` aumenta tudo (Inferno).
+   */
+  tileBursts(points: Point[], origin: Point, element: BurstElement, options: { speed?: number; scale?: number; jitter?: number } = {}) {
+    const speed = options.speed ?? 0.9;
+    const scale = options.scale ?? 1;
+    for (const point of points) {
+      const distance = Math.hypot(point.x - origin.x, (point.y - origin.y) * 2);
+      const delay = distance / speed + Math.random() * (options.jitter ?? 60);
+      this.scene.time.delayedCall(delay, () => this.tileBurst(point, element, scale));
+    }
+  }
+
+  private tileBurst(at: Point, element: BurstElement, scale: number) {
+    const key = `fxb_${element}_${Math.floor(Math.random() * 3)}`;
+    const sprite = this.scene.add
+      .sprite(at.x, at.y, key, "0")
+      .setOrigin(0.5, BURST_ANCHOR_Y / BURST_H)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(at.y + 40)
+      .setScale(scale * (0.95 + Math.random() * 0.3))
+      .setAlpha(0.85)
+      .setFlipX(Math.random() < 0.5);
+    sprite.play(key);
+    sprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => sprite.destroy());
+  }
+
+  /** Onda de Fogo: clarão na mão e o leque de chamas se espalhando. */
+  wave(caster: Point, points: Point[], element: BurstElement) {
+    this.flash(caster.x, caster.y - 30, BURST_TINT[element], 1.6, 240);
+    this.tileBursts(points, caster, element, { speed: 1.4, jitter: 30 });
+  }
+
+  /** Chuva de Gelo: um orbe voa até o alvo e a área explode em estilhaços. */
+  frost(from: Point, to: Point, points: Point[]) {
+    const start = { x: from.x, y: from.y - 34 };
+    const orb = this.scene.add.image(start.x, start.y, "fx_glow").setTint(0x9fe8ff).setBlendMode(Phaser.BlendModes.ADD).setScale(1.2);
+    const heart = this.scene.add.image(start.x, start.y, "fx_flare").setTint(0xffffff).setBlendMode(Phaser.BlendModes.ADD).setScale(0.7);
+    for (const part of [orb, heart]) part.setDepth(this.depths.air);
+    const distance = Math.hypot(to.x - start.x, to.y - start.y);
+    this.scene.tweens.add({
+      targets: [orb, heart],
+      x: to.x,
+      y: to.y - 20,
+      duration: Math.min(360, 100 + distance * 0.8),
+      ease: "Sine.easeIn",
+      onUpdate: () => heart.setRotation(heart.rotation + 0.3),
+      onComplete: () => {
+        orb.destroy();
+        heart.destroy();
+        this.flash(to.x, to.y - 18, 0xc9f6ff, 2.6, 300);
+        this.shockwave(to.x, to.y, 20, 200, 0x7fd8ff, 480, 5);
+        this.tileBursts(points, to, "ice", { speed: 1.1, jitter: 50 });
+        this.burst(to.x, to.y - 20, {
+          texture: "fx_rock",
+          tints: [0xe8fbff, 0x9fe8ff, 0x55c8ff],
+          count: 22,
+          speed: [140, 320],
+          lifespan: [500, 900],
+          scale: [0.45, 0.15],
+          gravityY: 520,
+          rotate: true,
+          blend: Phaser.BlendModes.NORMAL,
+          angle: [200, 340],
+        });
+      },
+    });
+  }
+
+  /** Inferno: clarão que cega, a terra treme, anéis de choque e duas ondas de explosões. */
+  inferno(caster: Point, points: Point[], shake: boolean) {
+    this.rune(caster.x, caster.y, 0xff7a1a, 520, 1300, -1);
+    this.flash(caster.x, caster.y - 30, 0xfff1c1, 5, 420);
+    this.flash(caster.x, caster.y - 20, 0xff5a1f, 8, 700, this.depths.ground + 2);
+    for (const [delay, size] of [[0, 820], [160, 620], [320, 420]] as const) {
+      this.scene.time.delayedCall(delay, () => this.shockwave(caster.x, caster.y, 30, size, 0xff8a2c, 700, 9));
+    }
+    if (shake) {
+      this.scene.cameras.main.shake(520, 0.012);
+      this.scene.cameras.main.flash(180, 255, 180, 90, false);
+    }
+    this.tileBursts(points, caster, "fire", { speed: 0.75, scale: 1.2, jitter: 120 });
+    // Segunda onda: menos casas, depois da primeira.
+    const second = points.filter(() => Math.random() < 0.45);
+    this.scene.time.delayedCall(520, () => this.tileBursts(second, caster, "fire", { speed: 1.2, scale: 0.9, jitter: 200 }));
   }
 
   /** Disparo de besta: um virote rápido com um risco de luz atrás. */

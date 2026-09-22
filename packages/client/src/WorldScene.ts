@@ -887,7 +887,15 @@ export class WorldScene extends Phaser.Scene {
     }
 
     const isLocal = event.target === this.localId;
-    this.floatingText(x, top, String(event.amount), isLocal ? "#ff5a4f" : "#ffe27a", 17);
+    if (event.kind === "crit") {
+      // Crítico: número grande e laranja, com a palavra por cima e um tranco na câmera de quem bateu.
+      this.floatingText(x, top - 4, String(event.amount), "#ff6a2c", 26, 46, 1200);
+      this.floatingText(x, top - 26, "CRÍTICO!", "#ffd54a", 13, 46, 1000);
+      this.burst(x, middle, { tints: [0xffd54a, 0xff6a2c, 0xffffff], count: 18, speed: 220 });
+      if (event.attacker === this.localId) this.cameras.main.shake(70, 0.0025);
+    } else {
+      this.floatingText(x, top, String(event.amount), isLocal ? "#ff5a4f" : "#ffe27a", 17);
+    }
     target.hurt(now);
     this.burst(x, middle, { tints: [0xff4d4d, 0xb91c1c, 0xffd1a1], count: 8, speed: 130 });
     if (isLocal) this.cameras.main.shake(90, 0.003);
@@ -1025,15 +1033,22 @@ export class WorldScene extends Phaser.Scene {
     const local = event.caster === this.localId;
 
     const spell = spellById(event.spell);
+    // Casas atingidas, em coordenadas da tela: cada uma ganha uma explosão.
+    const tiles = event.tiles ?? [];
+    const points: { x: number; y: number }[] = [];
+    for (let i = 0; i + 1 < tiles.length; i += 2) points.push(tileToScreen(tiles[i]!, tiles[i + 1]!));
+    const element = spell?.element ?? "fire";
     switch (spell?.family) {
       case "heal":
         this.fx.heal(from);
         return;
       case "whirl":
         this.fx.whirl(from);
+        this.fx.tileBursts(points, from, "earth", { speed: 2, scale: 0.75, jitter: 40 });
         return;
       case "quake":
         this.fx.quake(from, local);
+        this.fx.tileBursts(points, from, "earth", { speed: 0.9, scale: 0.9, jitter: 80 });
         return;
       case "bolt":
         this.fx.fireball(from, at);
@@ -1043,8 +1058,23 @@ export class WorldScene extends Phaser.Scene {
         return;
       case "storm":
         this.fx.storm(from, (spell.range + 0.5) * 64, local);
+        this.fx.tileBursts(points, from, "energy", { speed: 0.6, jitter: 500 });
+        return;
+      case "flame":
+        caster?.play("cast", now);
+        this.fx.wave(from, points, element);
+        if (local) this.cameras.main.shake(160, 0.004);
+        return;
+      case "frost":
+        caster?.play("cast", now);
+        this.fx.frost(from, at, points);
+        return;
+      case "inferno":
+        caster?.play("cast", now);
+        this.fx.inferno(from, points, local);
         return;
     }
+    if (points.length > 0) this.fx.tileBursts(points, from, element);
   }
 
   private floatingText(x: number, y: number, text: string, color: string, size: number, rise = 34, duration = 900) {

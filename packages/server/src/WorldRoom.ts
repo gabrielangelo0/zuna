@@ -1,5 +1,8 @@
 import { Room, ServerError, type Client } from "colyseus";
 import {
+  CRIT_CHANCE,
+  CRIT_MULTIPLIER,
+  spellArea,
   BAG_BASE,
   BAG_MAX,
   EQUIP_SLOTS,
@@ -1095,27 +1098,36 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     }
 
     // Cada poder escolhe seus alvos antes de gastar mana: sem alvo, nada é cobrado.
-    let targets: MonsterSim[] = [];
+    const sim = player.world;
+    const target = s.target ? this.monsters.get(s.target) : undefined;
     let at: Point = s;
-    if (spell.kind === "melee" || spell.kind === "area") {
-      targets = this.monstersAround(player.world, s, spell.range);
-      if (targets.length === 0) {
-        this.sendChat(client, "system", "Nenhum monstro ao seu redor.");
-        return;
-      }
-    } else if (spell.kind === "target" || spell.kind === "leech") {
-      const target = s.target ? this.monsters.get(s.target) : undefined;
-      if (!target || chebyshev(s.x, s.y, target.state.x, target.state.y) > spell.range) {
+    if (spell.kind === "target" || spell.kind === "leech" || spell.kind === "blast") {
+      if (!target || target.world !== sim || chebyshev(s.x, s.y, target.state.x, target.state.y) > spell.range) {
         this.sendChat(client, "system", "Escolha um alvo dentro do alcance (Tab mira no mais próximo).");
         return;
       }
-      targets = [target];
       at = { x: target.state.x, y: target.state.y };
+    }
+    // O leque mira sozinho no alvo escolhido; sem alvo, sai para onde o personagem olha.
+    if (spell.kind === "wave" && target && target.world === sim) this.face(s, target.state);
+    const tiles = spellArea(spell, s, s.dir, at).filter((tile) => tile.x >= 0 && tile.y >= 0 && tile.x < sim.map.width && tile.y < sim.map.height);
+    let targets: MonsterSim[] = [];
+    if (spell.kind !== "heal") {
+      for (const tile of tiles) {
+        const id = sim.monsterAt.get(tileKey(sim, tile.x, tile.y));
+        const monster = id ? this.monsters.get(id) : undefined;
+        if (monster) targets.push(monster);
+      }
+      if (targets.length === 0) {
+        this.sendChat(client, "system", spell.kind === "wave" ? "Nenhum monstro na frente." : "Nenhum monstro ao seu redor.");
+        return;
+      }
     }
 
     s.mana -= spell.mana;
     player.spellReadyAt.set(spell.id, now + spell.cooldownMs);
-    this.broadcast(ServerMsg.SpellEffect, { caster: player.id, spell: spell.id, x: at.x, y: at.y } satisfies SpellEffectEvent);
+    const shown = spell.kind === "target" || spell.kind === "leech" || spell.kind === "heal" ? undefined : tiles.flatMap((tile) => [tile.x, tile.y]);
+    this.broadcast(ServerMsg.SpellEffect, { caster: player.id, spell: spell.id, x: at.x, y: at.y, tiles: shown } satisfies SpellEffectEvent);
 
     if (spell.kind === "heal") {
       const amount = Math.round(healAmount(s.level) * spell.power) + randInt(Math.random, 0, 10);
@@ -1128,9 +1140,10 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     const { maxDamage } = this.statsOf(player);
     let dealt = 0;
     for (const monster of targets) {
-      const roll = Math.round(maxDamage * spell.power * (0.85 + Math.random() * 0.3));
+      const crit = Math.random() < CRIT_CHANCE;
+      const roll = Math.round(maxDamage * spell.power * (0.85 + Math.random() * 0.3) * (crit ? CRIT_MULTIPLIER : 1));
       dealt += Math.max(0, roll - monster.def.armor);
-      this.damageMonster(monster, player, roll - monster.def.armor);
+      this.damageMonster(monster, player, roll - monster.def.armor, crit);
     }
 
     if (spell.kind === "leech" && dealt > 0) {
@@ -1447,14 +1460,15 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     if (target && now >= player.nextAttackAt && chebyshev(s.x, s.y, target.state.x, target.state.y) <= range) {
       player.nextAttackAt = now + PLAYER_ATTACK_MS;
       const { maxDamage } = this.statsOf(player);
-      const roll = Math.round(maxDamage * (0.35 + Math.random() * 0.65));
+      const crit = Math.random() < CRIT_CHANCE;
+      const roll = Math.round(maxDamage * (0.35 + Math.random() * 0.65) * (crit ? CRIT_MULTIPLIER : 1));
       this.face(s, target.state);
       // Besta: dispara de longe e gasta uma flecha.
       if (range > 1) {
         this.broadcast(ServerMsg.Shot, { attacker: player.id, target: target.id } satisfies ShotEvent);
         this.spendAmmo(player);
       }
-      this.damageMonster(target, player, roll - target.def.armor);
+      this.damageMonster(target, player, roll - target.def.armor, crit);
     }
 
     if (player.world.lootAt.size > 0) this.collectLoot(player, now);
@@ -1649,7 +1663,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     if (player.state.hp <= 0) this.killPlayer(player, monster);
   }
 
-  private damageMonster(monster: MonsterSim, attacker: PlayerSim, amount: number) {
+  private damageMonster(monster: MonsterSim, attacker: PlayerSim, amount: number, crit = false) {
     if (!this.monsters.has(monster.id)) return;
     const s = monster.state;
 
@@ -1659,7 +1673,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       const dealt = Math.min(amount, s.hp);
       monster.damageBy.set(attacker.id, (monster.damageBy.get(attacker.id) ?? 0) + dealt);
       s.hp = Math.max(0, s.hp - amount);
-      this.broadcastHit(monster.id, attacker.id, amount, "damage");
+      this.broadcastHit(monster.id, attacker.id, amount, crit ? "crit" : "damage");
     }
 
     if (!monster.targetId && !inSafe(monster.world, attacker.state.x, attacker.state.y)) {
