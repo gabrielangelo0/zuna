@@ -1,15 +1,16 @@
 import Phaser from "phaser";
 import { TILE_H, TILE_W } from "@zuna/shared";
-import { ellipse, rgba, shade, type Ctx } from "./canvas.ts";
+import { ellipse, rgba, type Ctx } from "./canvas.ts";
+import { createWaterTextures } from "./water.ts";
 
-// Texturas desenhadas no próprio cliente: chão, efeitos e marcadores.
+// Texturas desenhadas no próprio cliente: chão, efeitos e marcadores. A água mora em water.ts.
 // Personagens, monstros e cenário vêm dos sprites gerados pelo baker (sprites.ts).
 
 /** Célula do atlas de chão: 1 px a mais de cada lado para os losangos se sobreporem sem frestas. */
 export const TILE_CELL_W = TILE_W + 2;
 export const TILE_CELL_H = TILE_H + 2;
 
-export const GROUND_FRAMES = { grass: 4, grassDark: 3, dirt: 3, sand: 3, water: 3, stone: 3 } as const;
+export const GROUND_FRAMES = { grass: 4, grassDark: 3, dirt: 3, sand: 3, stone: 3 } as const;
 export type GroundFrameName = keyof typeof GROUND_FRAMES;
 
 function pick<T>(items: readonly T[]): T {
@@ -39,7 +40,7 @@ interface GroundStyle {
   base: number;
   detail: readonly number[];
   count: number;
-  kind: "blade" | "pebble" | "dot" | "brick" | "wave";
+  kind: "blade" | "pebble" | "dot" | "brick";
 }
 
 const GROUND_STYLES: Record<GroundFrameName, GroundStyle> = {
@@ -47,11 +48,10 @@ const GROUND_STYLES: Record<GroundFrameName, GroundStyle> = {
   grassDark: { base: 0x447f37, detail: [0x3a6f2f, 0x52913f, 0x335f29], count: 28, kind: "blade" },
   dirt: { base: 0x9a7650, detail: [0x876642, 0xab8660, 0x7a5a3a], count: 14, kind: "pebble" },
   sand: { base: 0xd9c48f, detail: [0xc9b47d, 0xe6d4a3, 0xbfa870], count: 26, kind: "dot" },
-  water: { base: 0x2e6ea6, detail: [0x8cc4f0], count: 5, kind: "wave" },
   stone: { base: 0xb2aca0, detail: [0xa39d91, 0xbdb7ab, 0x9c968a], count: 4, kind: "brick" },
 };
 
-function paintGround(ctx: Ctx, ox: number, style: GroundStyle, frame: number) {
+function paintGround(ctx: Ctx, ox: number, style: GroundStyle) {
   const w = TILE_CELL_W;
   const h = TILE_CELL_H;
   ctx.save();
@@ -93,24 +93,6 @@ function paintGround(ctx: Ctx, ox: number, style: GroundStyle, frame: number) {
       }
       break;
     }
-    case "wave": {
-      const gradient = ctx.createLinearGradient(0, 0, 0, h);
-      gradient.addColorStop(0, rgba(shade(style.base, 0.15)));
-      gradient.addColorStop(1, rgba(shade(style.base, -0.15)));
-      ctx.fillStyle = gradient;
-      ctx.fillRect(ox, 0, w, h);
-      ctx.strokeStyle = rgba(style.detail[0], 0.35);
-      ctx.lineWidth = 1;
-      for (let i = 0; i < style.count; i++) {
-        const y = (i * 7 + frame * 4) % h;
-        const x = ox + ((i * 23 + frame * 9) % w);
-        ctx.beginPath();
-        ctx.moveTo(x - 5, y);
-        ctx.quadraticCurveTo(x, y - 2, x + 5, y);
-        ctx.stroke();
-      }
-      break;
-    }
   }
   ctx.restore();
 
@@ -133,7 +115,7 @@ function createGroundAtlas(scene: Phaser.Scene) {
   for (const name of names) {
     for (let frame = 0; frame < GROUND_FRAMES[name]; frame++) {
       const ox = column * TILE_CELL_W;
-      paintGround(texture.context, ox, GROUND_STYLES[name], frame);
+      paintGround(texture.context, ox, GROUND_STYLES[name]);
       texture.add(`${name}_${frame}`, 0, ox, 0, TILE_CELL_W, TILE_CELL_H);
       column++;
     }
@@ -184,5 +166,6 @@ function createEffectTextures(scene: Phaser.Scene) {
 
 export function createTextures(scene: Phaser.Scene) {
   createGroundAtlas(scene);
+  createWaterTextures(scene);
   createEffectTextures(scene);
 }

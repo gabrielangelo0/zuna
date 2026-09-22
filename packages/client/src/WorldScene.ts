@@ -51,6 +51,7 @@ import { KeyboardInput } from "./keyboard.ts";
 import { SpriteTextures, loadSheet } from "./sprites.ts";
 import { GROUND_FRAMES, TILE_CELL_H, TILE_CELL_W, createTextures, type GroundFrameName } from "./textures.ts";
 import { Wardrobe } from "./wardrobe.ts";
+import { FOAM_FRAMES, WATER_FRAMES, foamFrameName, shallowEdgeName, waterFramePrefix } from "./water.ts";
 
 // Profundidade: chão < decalques (flores, marcadores) < cenário e personagens (ordenados por Y) < nomes < textos.
 const DEPTH_GROUND = -1_000_000;
@@ -66,14 +67,30 @@ const CLOSE_REASON: Record<number, string> = {
 
 const TEXT_RESOLUTION = Math.min(2, window.devicePixelRatio || 1);
 
-const GROUND_FRAME: Record<Ground, GroundFrameName> = {
+/** Quadro do chão de cada tipo. A água tem camada própria (water.ts). */
+const GROUND_FRAME: Record<Exclude<Ground, typeof Ground.Water>, GroundFrameName> = {
   [Ground.Grass]: "grass",
   [Ground.GrassDark]: "grassDark",
   [Ground.Dirt]: "dirt",
   [Ground.Sand]: "sand",
-  [Ground.Water]: "water",
   [Ground.Stone]: "stone",
 };
+
+/** Vizinhos de um tile de água: o lado do losango que encosta em cada um. */
+const SHORE_EDGES: readonly { dx: number; dy: number; part: string }[] = [
+  { dx: 0, dy: -1, part: "ne" },
+  { dx: 1, dy: 0, part: "se" },
+  { dx: 0, dy: 1, part: "sw" },
+  { dx: -1, dy: 0, part: "nw" },
+];
+
+/** Quinas: só ganham espuma quando a terra encosta só na ponta, sem tocar os dois lados vizinhos. */
+const SHORE_CORNERS: readonly { dx: number; dy: number; part: string; sides: [number, number] }[] = [
+  { dx: -1, dy: -1, part: "n", sides: [0, 3] },
+  { dx: 1, dy: -1, part: "e", sides: [0, 1] },
+  { dx: 1, dy: 1, part: "s", sides: [1, 2] },
+  { dx: -1, dy: 1, part: "w", sides: [2, 3] },
+];
 
 /** Sprite de cenário para cada objeto do mapa. As flores ficam rentes ao chão, por baixo de tudo. */
 const OBJECT_PROPS: Partial<Record<Obj, { id: string; decal?: boolean; flip?: boolean }>> = {
@@ -125,7 +142,8 @@ export class WorldScene extends Phaser.Scene {
   private readonly entities = new Map<string, Entity>();
   private lootLayer!: LootLayer;
   private minimap!: Minimap;
-  private groundLayer: Phaser.GameObjects.Blitter | null = null;
+  /** Chão, água e espuma: três camadas de losangos, refeitas quando o mundo muda. */
+  private groundLayers: Phaser.GameObjects.Blitter[] = [];
   private sceneryLayer: Phaser.GameObjects.GameObject[] = [];
   private portalLayer: Phaser.GameObjects.GameObject[] = [];
   private portals: PortalDef[] = [];
@@ -135,8 +153,11 @@ export class WorldScene extends Phaser.Scene {
   private readonly grimoire = new Grimoire((slots) => this.room?.send(ClientMsg.Shortcuts, { slots }));
   private nextMinimapAt = 0;
   private corpses: Actor[] = [];
-  private readonly waterBobs: { bob: Phaser.GameObjects.Bob; offset: number }[] = [];
+  /** Cada tile de água guarda o começo do nome do quadro; a animação só troca o número do fim. */
+  private readonly waterBobs: { bob: Phaser.GameObjects.Bob; prefix: string }[] = [];
+  private readonly foamBobs: { bob: Phaser.GameObjects.Bob; part: string }[] = [];
   private waterFrame = 0;
+  private foamFrame = 0;
   private readonly cameraAnchor = { x: 0, y: 0 };
   private targetMarker!: Phaser.GameObjects.Image;
   private hoverMarker!: Phaser.GameObjects.Image;
@@ -176,7 +197,8 @@ export class WorldScene extends Phaser.Scene {
     this.input.on("wheel", (_pointer: unknown, _objects: unknown, _dx: number, dy: number) => {
       camera.setZoom(Phaser.Math.Clamp(camera.zoom * (dy > 0 ? 0.9 : 1.1), 0.6, 1.6));
     });
-    this.time.addEvent({ delay: 420, loop: true, callback: () => this.animateWater() });
+    this.time.addEvent({ delay: 170, loop: true, callback: () => this.animateWater() });
+    this.time.addEvent({ delay: 260, loop: true, callback: () => this.animateFoam() });
   }
 
   attachRoom(room: Room) {
@@ -391,8 +413,9 @@ export class WorldScene extends Phaser.Scene {
   /** Redesenha chão, cenário e portais do mundo atual. */
   private drawWorld() {
     const token = ++this.drawToken;
-    this.groundLayer?.destroy();
-    this.groundLayer = null;
+    for (const layer of this.groundLayers) layer.destroy();
+    this.groundLayers = [];
+    this.foamBobs.length = 0;
     for (const item of this.sceneryLayer) item.destroy();
     this.sceneryLayer = [];
     for (const item of this.portalLayer) item.destroy();
@@ -456,18 +479,49 @@ export class WorldScene extends Phaser.Scene {
 
   private drawGround() {
     const { width, height, ground } = this.worldMap;
-    const blitter = this.add.blitter(0, 0, "ground").setDepth(DEPTH_GROUND);
-    this.groundLayer = blitter;
+    // A água fica por baixo, a água rasa clareia por cima dela, a borda da terra cobre
+    // o losango vizinho e a espuma vem por cima de tudo.
+    const water = this.add.blitter(0, 0, "water").setDepth(DEPTH_GROUND - 2);
+    const shallow = this.add.blitter(0, 0, "shallow").setDepth(DEPTH_GROUND - 1);
+    const land = this.add.blitter(0, 0, "ground").setDepth(DEPTH_GROUND);
+    const foam = this.add.blitter(0, 0, "foam").setDepth(DEPTH_GROUND + 1);
+    this.groundLayers = [water, shallow, land, foam];
+    const isLand = (x: number, y: number) =>
+      x >= 0 && y >= 0 && x < width && y < height && ground[y * width + x] !== Ground.Water;
+
     // Por diagonais (x + y) para os losangos de baixo sobreporem os de cima.
     for (let sum = 0; sum <= width + height - 2; sum++) {
       for (let x = Math.max(0, sum - height + 1); x <= Math.min(sum, width - 1); x++) {
         const y = sum - x;
         const type = ground[y * width + x] as Ground;
-        const frame = GROUND_FRAME[type];
-        const variant = tileHash(x, y) % GROUND_FRAMES[frame];
         const screen = tileToScreen(x, y);
-        const bob = blitter.create(screen.x - TILE_CELL_W / 2, screen.y - TILE_CELL_H / 2, `${frame}_${variant}`);
-        if (type === Ground.Water) this.waterBobs.push({ bob, offset: variant });
+        const left = screen.x - TILE_CELL_W / 2;
+        const top = screen.y - TILE_CELL_H / 2;
+
+        if (type !== Ground.Water) {
+          const frame = GROUND_FRAME[type];
+          land.create(left, top, `${frame}_${tileHash(x, y) % GROUND_FRAMES[frame]}`);
+          continue;
+        }
+
+        const prefix = waterFramePrefix(x, y);
+        this.waterBobs.push({ bob: water.create(left, top, `${prefix}${this.waterFrame}`), prefix });
+
+        const touching = SHORE_EDGES.map((edge) => isLand(x + edge.dx, y + edge.dy));
+        const corners = SHORE_CORNERS.filter(
+          (corner) => isLand(x + corner.dx, y + corner.dy) && !touching[corner.sides[0]] && !touching[corner.sides[1]],
+        ).map((corner) => corner.part);
+        const edges = SHORE_EDGES.filter((_, index) => touching[index]).map((edge) => edge.part);
+        for (const part of [...edges, ...corners]) {
+          this.foamBobs.push({ bob: foam.create(left, top, foamFrameName(part, this.foamFrame)), part });
+        }
+
+        // Água rasa: o lado que encosta na terra, e também o tile de trás, para o degradê continuar.
+        for (const part of corners) shallow.create(left, top, part);
+        SHORE_EDGES.forEach((edge, index) => {
+          if (touching[index]) shallow.create(left, top, shallowEdgeName(edge.part, 0));
+          else if (isLand(x + edge.dx * 2, y + edge.dy * 2)) shallow.create(left, top, shallowEdgeName(edge.part, 1));
+        });
       }
     }
   }
@@ -498,11 +552,15 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
+  /** Todos os tiles de água andam juntos: é o que mantém as ondas emendadas de um losango ao outro. */
   private animateWater() {
-    this.waterFrame = (this.waterFrame + 1) % GROUND_FRAMES.water;
-    for (const { bob, offset } of this.waterBobs) {
-      bob.setFrame(`water_${(offset + this.waterFrame) % GROUND_FRAMES.water}`);
-    }
+    this.waterFrame = (this.waterFrame + 1) % WATER_FRAMES;
+    for (const { bob, prefix } of this.waterBobs) bob.setFrame(`${prefix}${this.waterFrame}`);
+  }
+
+  private animateFoam() {
+    this.foamFrame = (this.foamFrame + 1) % FOAM_FRAMES;
+    for (const { bob, part } of this.foamBobs) bob.setFrame(foamFrameName(part, this.foamFrame));
   }
 
   // ------------------------------------------------------------ personagens e monstros

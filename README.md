@@ -200,7 +200,7 @@ O primeiro gera só os itens citados. O `--overview` monta uma folha com todos o
 - `packages/baker`: gera os sprites a partir dos modelos 3D
 - `tools/download-assets.mjs`: baixa os modelos 3D originais para `assets/source/` (fora do git)
 
-O chão (grama, terra, água, pedra) ainda é desenhado em canvas pelo cliente (`packages/client/src/textures.ts`).
+O chão (grama, terra, areia, pedra) ainda é desenhado em canvas pelo cliente (`packages/client/src/textures.ts`). A água tem gerador próprio em `packages/client/src/water.ts`: ondas contínuas calculadas pela posição na tela (sem a grade dos losangos), água rasa clareando perto da terra e espuma animada na beira.
 
 ## Checagem de tipos
 
