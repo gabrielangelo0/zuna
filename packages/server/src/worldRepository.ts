@@ -21,6 +21,7 @@ import {
   type WorldBlueprint,
   type WorldDef,
   type WorldsResponse,
+  gearList,
 } from "@zuna/shared";
 import { db } from "./db/index.ts";
 import {
@@ -602,6 +603,7 @@ export async function publicWorlds(): Promise<WorldsResponse> {
     worldsCache = {
       worlds: contents.filter((content) => content.world.published).map(blueprintOf),
       catalog: await listItemOverrides(),
+      gear: gearList(),
     };
   }
   return worldsCache;

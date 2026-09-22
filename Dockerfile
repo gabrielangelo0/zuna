@@ -7,6 +7,8 @@ COPY packages/shared/package.json packages/shared/
 COPY packages/server/package.json packages/server/
 COPY packages/client/package.json packages/client/
 COPY packages/baker/package.json packages/baker/
+# Corrige a biblioteca HTTP do Colyseus logo depois do npm ci (postinstall).
+COPY tools/fix-better-call.mjs tools/
 
 # Compila o cliente.
 FROM manifests AS client

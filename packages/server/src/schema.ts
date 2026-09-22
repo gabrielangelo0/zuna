@@ -55,6 +55,7 @@ export const LootState = schema(
     y: t.int16(),
     gold: t.uint32(),
     diamonds: t.uint16(),
+    item: t.string(),
     owner: t.string(),
     freeAt: t.float64(),
     expiresAt: t.float64(),

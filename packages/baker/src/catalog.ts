@@ -65,6 +65,12 @@ export interface EntrySpec {
   /** Rotações (graus) de cada variação, para ter mais variedade. */
   rotations?: number[];
   dirs?: readonly BakedDir[];
+  /** Só estes nós ficam visíveis (uma peça de dentro de um personagem, como o elmo do cavaleiro). */
+  only?: string[];
+  /** Gira o modelo de lado, em graus (espada deitada na diagonal do ícone). */
+  roll?: number;
+  /** Multiplica a cor de todos os materiais (a mesma peça em versões de outra raridade). */
+  hue?: number;
 }
 
 const KAYKIT = "kaykit/adventurers";
@@ -584,6 +590,101 @@ export const LOOT_SPRITES: EntrySpec[] = [
   { id: "loot_chest", file: `${DUNGEON}/chest_gold.glb`, rotations: [25], height: 36, anims: {} },
   { id: "loot_crystal", file: "builtin:crystal", rotations: [15], height: 34, anims: {} },
 ];
+
+// ---------------------------------------------------------------- ícones de itens
+// Um quadro por ícone, todos no mesmo atlas (sprites/items.webp). Armas e escudos são modelos soltos;
+// elmos, armaduras e botas são as peças de dentro dos heróis e esqueletos (`only`).
+
+const ADV = `${KAYKIT}/Assets`;
+const SKEL = `${SKELETONS}/Assets`;
+const weapon = (id: string, file: string, roll = -45, extra: Partial<EntrySpec> = {}): EntrySpec => ({
+  id,
+  file,
+  height: 64,
+  anims: {},
+  roll,
+  yaw: 20,
+  ...extra,
+});
+const shield = (id: string, file: string, extra: Partial<EntrySpec> = {}): EntrySpec => ({ id, file, height: 64, anims: {}, yaw: 20, ...extra });
+const part = (id: string, file: string, only: string[], extra: Partial<EntrySpec> = {}): EntrySpec => ({
+  id,
+  file,
+  height: 64,
+  anims: {},
+  only,
+  yaw: 25,
+  ...extra,
+});
+const knight = `${KAYKIT}/Characters/Knight.glb`;
+const barbarian = `${KAYKIT}/Characters/Barbarian.glb`;
+const mage = `${KAYKIT}/Characters/Mage.glb`;
+const rogue = `${KAYKIT}/Characters/Rogue.glb`;
+const warrior = `${SKELETONS}/Characters/Skeleton_Warrior.glb`;
+const skelMage = `${SKELETONS}/Characters/Skeleton_Mage.glb`;
+const skelRogue = `${SKELETONS}/Characters/Skeleton_Rogue.glb`;
+
+export const ITEM_ICONS: EntrySpec[] = [
+  // Armas
+  weapon("sword", `${ADV}/sword_1handed.gltf`),
+  weapon("greatsword", `${ADV}/sword_2handed.gltf`),
+  weapon("greatsword_royal", `${ADV}/sword_2handed_color.gltf`),
+  weapon("axe", `${ADV}/axe_1handed.gltf`),
+  weapon("greataxe", `${ADV}/axe_2handed.gltf`),
+  weapon("dagger", `${ADV}/dagger.gltf`),
+  weapon("wand", `${ADV}/wand.gltf`),
+  weapon("staff", `${ADV}/staff.gltf`),
+  weapon("crossbow", `${ADV}/crossbow_1handed.gltf`, 0),
+  weapon("heavy_crossbow", `${ADV}/crossbow_2handed.gltf`, 0),
+  weapon("bone_axe", `${SKEL}/Skeleton_Axe.gltf`),
+  weapon("bone_blade", `${SKEL}/Skeleton_Blade.gltf`),
+  weapon("bone_staff", `${SKEL}/Skeleton_Staff.gltf`),
+  weapon("bone_crossbow", `${SKEL}/Skeleton_Crossbow.gltf`, 0),
+  // Escudos e livros
+  shield("shield_round", `${ADV}/shield_round.gltf`),
+  shield("shield_round_color", `${ADV}/shield_round_color.gltf`),
+  shield("shield_barbarian", `${ADV}/shield_round_barbarian.gltf`),
+  shield("shield_badge", `${ADV}/shield_badge.gltf`),
+  shield("shield_badge_color", `${ADV}/shield_badge_color.gltf`),
+  shield("shield_spikes", `${ADV}/shield_spikes.gltf`),
+  shield("shield_spikes_color", `${ADV}/shield_spikes_color.gltf`),
+  shield("shield_square", `${ADV}/shield_square.gltf`),
+  shield("shield_square_color", `${ADV}/shield_square_color.gltf`),
+  shield("bone_shield_large", `${SKEL}/Skeleton_Shield_Large_A.gltf`),
+  shield("bone_shield_large_b", `${SKEL}/Skeleton_Shield_Large_B.gltf`),
+  shield("bone_shield_small", `${SKEL}/Skeleton_Shield_Small_A.gltf`),
+  shield("spellbook", `${ADV}/spellbook_closed.gltf`),
+  // Elmos
+  part("helm_knight", knight, ["Knight_Helmet"]),
+  part("helm_barbarian", barbarian, ["Barbarian_Hat"]),
+  part("hat_mage", mage, ["Mage_Hat"]),
+  part("helm_bone", warrior, ["Skeleton_Warrior_Helmet"]),
+  part("hat_necro", skelMage, ["Skeleton_Mage_Hat"]),
+  part("hood_rogue", skelRogue, ["Skeleton_Rogue_Hood"]),
+  // Armaduras
+  part("armor_knight", knight, ["Knight_Body"]),
+  part("armor_barbarian", barbarian, ["Barbarian_Body"]),
+  part("robe_mage", mage, ["Mage_Body"]),
+  part("tunic_rogue", rogue, ["Rogue_Body"]),
+  part("armor_bone", warrior, ["Skeleton_Warrior_Body"]),
+  // Botas
+  part("legs_knight", knight, ["Knight_LegLeft", "Knight_LegRight"]),
+  part("legs_barbarian", barbarian, ["Barbarian_LegLeft", "Barbarian_LegRight"]),
+  part("legs_mage", mage, ["Mage_LegLeft", "Mage_LegRight"]),
+  part("legs_rogue", rogue, ["Rogue_LegLeft", "Rogue_LegRight"]),
+];
+
+/** Versões de outra cor das peças principais, para os itens mais fortes: tom multiplicado sobre a textura. */
+const ICON_HUES: Record<string, number> = { gold: 0xffc94a, frost: 0x8fd4ff, obsidian: 0x7a6f9c, ruby: 0xff6f6f };
+const HUED = [
+  "sword", "greatsword", "axe", "greataxe", "dagger", "staff", "wand", "crossbow",
+  "shield_round", "shield_badge", "shield_square", "bone_shield_large",
+  "helm_knight", "helm_bone", "hat_mage", "armor_knight", "armor_bone", "robe_mage", "legs_knight", "legs_mage",
+];
+for (const base of HUED) {
+  const spec = ITEM_ICONS.find((entry) => entry.id === base)!;
+  for (const [name, hue] of Object.entries(ICON_HUES)) ITEM_ICONS.push({ ...spec, id: `${base}_${name}`, hue });
+}
 
 export const CATALOG: EntrySpec[] = [
   ...OUTFITS,

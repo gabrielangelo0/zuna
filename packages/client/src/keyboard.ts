@@ -10,6 +10,7 @@ export interface KeyboardHandlers {
   togglePowers(): void;
   toggleMap(): void;
   toggleShop(): void;
+  toggleInventory(): void;
 }
 
 const UP = new Set(["w", "arrowup"]);
@@ -86,6 +87,9 @@ export class KeyboardInput {
         return;
       case "l":
         this.handlers.toggleShop();
+        return;
+      case "i":
+        this.handlers.toggleInventory();
         return;
     }
     if (/^[1-9]$/.test(key)) this.handlers.spell(key);

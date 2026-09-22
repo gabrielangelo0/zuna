@@ -106,6 +106,8 @@ Nível 2 = 100 XP · nível 10 = 9.300 · nível 50 ≈ 1,8 milhão · nível 10
 
 **8 slots:** arma, elmo, armadura, calça, bota, escudo/secundária, anel e amuleto.
 
+✅ **No jogo (primeira versão):** 5 espaços (arma, escudo, capacete, armadura e botas), as raridades comum a lendário, drops por nível do monstro, loja por ouro (comum/incomum) e diamantes (épico), venda por ouro e tudo editável no painel. Falta: anel, amuleto, calça separada da bota, Mítico, refino e gemas.
+
 **Qualidade** (teto: Mítico):
 
 | Qualidade | Cor | Como consegue |

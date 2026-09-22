@@ -8,6 +8,7 @@ import { apiRouter } from "./api.ts";
 import { connectDatabase, disconnectDatabase } from "./db/index.ts";
 import { ensureAdmins } from "./adminRepository.ts";
 import { ensureContent } from "./content.ts";
+import { ensureGearSeed } from "./gear.ts";
 import { ensurePaymentSeed } from "./paymentCatalog.ts";
 import { startPaymentReconciler } from "./payments.ts";
 import { ensureWorldSeed, listItemOverrides } from "./worldRepository.ts";
@@ -36,6 +37,7 @@ await connectDatabase();
 await ensureWorldSeed();
 await ensureContent();
 await ensurePaymentSeed();
+await ensureGearSeed();
 applyCatalogOverrides(await listItemOverrides());
 
 // ADMIN_USERS=gabriel,outro marca essas contas como administradoras ao subir o servidor.

@@ -53,6 +53,8 @@ export interface LootData {
   y: number;
   gold: number;
   diamonds: number;
+  /** Equipamento no chão (kind "item"), ou vazio. */
+  item: string;
   /** Id de quem derrubou o monstro: só ele pega até `freeAt`. */
   owner: string;
   /** Instante em que o drop libera para todo mundo. */

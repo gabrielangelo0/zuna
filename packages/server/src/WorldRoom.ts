@@ -1,5 +1,23 @@
 import { Room, ServerError, type Client } from "colyseus";
 import {
+  BAG_SIZE,
+  EQUIP_SLOTS,
+  MONSTER_LEVEL,
+  RARITY,
+  gearItem,
+  gearList,
+  rollGear,
+  sumStats,
+  type EquipSlot,
+  type GearCatalogEvent,
+  type GearStats,
+  type InventoryEvent,
+  type ItemBuyMessage,
+  type ItemEquipMessage,
+  type ItemSellMessage,
+  type ItemUnequipMessage,
+  type OwnedItem,
+  type PlayerStats,
   CHASE_LOSE_RANGE,
   CHAT_MAX_LEN,
   ClientMsg,
@@ -74,6 +92,14 @@ import {
 import { accountFromToken } from "./auth.ts";
 import { EventManager } from "./events.ts";
 import {
+  addCharacterItem,
+  buyGearWithDiamonds,
+  gearSettings,
+  listCharacterItems,
+  removeCharacterItem,
+  setItemEquipped,
+} from "./gear.ts";
+import {
   registerLiveRoom,
   unregisterLiveRoom,
   type LiveAccountPatch,
@@ -129,6 +155,20 @@ export function banMessage(reason: string): string {
   return reason ? `Sua conta está bloqueada: ${reason}` : "Sua conta está bloqueada.";
 }
 
+/** Atributos do nível somados aos dos equipamentos. */
+function withGear(base: PlayerStats, gear: GearStats): PlayerStats {
+  return {
+    maxHp: base.maxHp + gear.hp,
+    maxMana: base.maxMana + gear.mana,
+    maxDamage: base.maxDamage + gear.attack,
+    armor: base.armor + gear.defense,
+  };
+}
+
+function equippedStats(items: readonly OwnedItem[]): GearStats {
+  return sumStats(items.filter((item) => item.equipped !== "").map((item) => gearItem(item.itemId)));
+}
+
 const pendingWrites = new Set<Promise<void>>();
 /** Última gravação de cada personagem: quem entra de novo espera a saída anterior terminar de salvar. */
 const lastWriteByCharacter = new Map<number, Promise<void>>();
@@ -159,6 +199,12 @@ interface PlayerSim {
   kills: number;
   /** Poderes na barra, na ordem das teclas. */
   shortcuts: string[];
+  /** Equipamentos do personagem (equipados e na mochila). */
+  items: OwnedItem[];
+  /** Soma dos atributos dos equipados. */
+  gear: GearStats;
+  /** Último aviso de mochila cheia (para não repetir a cada passo). */
+  bagFullWarnAt: number;
   path: Point[];
   moveDir: Point | null;
   nextStepAt: number;
@@ -256,6 +302,10 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     this.onMessage(ClientMsg.Buy, (client, message: BuyMessage) => this.handleBuy(client, message));
     this.onMessage(ClientMsg.ToggleMount, (client) => this.handleToggleMount(client));
     this.onMessage(ClientMsg.Shortcuts, (client, message: ShortcutsMessage) => this.handleShortcuts(client, message));
+    this.onMessage(ClientMsg.ItemEquip, (client, message: ItemEquipMessage) => this.handleItemEquip(client, message));
+    this.onMessage(ClientMsg.ItemUnequip, (client, message: ItemUnequipMessage) => this.handleItemUnequip(client, message));
+    this.onMessage(ClientMsg.ItemSell, (client, message: ItemSellMessage) => this.handleItemSell(client, message));
+    this.onMessage(ClientMsg.ItemBuy, (client, message: ItemBuyMessage) => this.handleItemBuy(client, message));
 
     this.setPatchRate(TICK_MS);
     this.setSimulationInterval(() => this.tick(), TICK_MS);
@@ -515,8 +565,8 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       this.placePlayer(player, patch.x ?? s.x, patch.y ?? s.y);
     }
     if (patch.level !== undefined && patch.level !== s.level) {
-      const stats = playerStats(patch.level);
       s.level = patch.level;
+      const stats = this.statsOf(player);
       s.maxHp = stats.maxHp;
       s.maxMana = stats.maxMana;
       s.hp = Math.min(s.hp, stats.maxHp) || stats.maxHp;
@@ -548,6 +598,25 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       this.sendProfile(player);
       this.sendChat(player.client, "system", patch.notice ?? "Um administrador atualizou sua conta.");
     }
+  }
+
+  /** Presente do painel: entra na mochila de quem está online. Falso quando ele não está nesta sala. */
+  giveItem(characterId: number, itemId: string): boolean {
+    for (const player of this.players.values()) {
+      if (player.characterId !== characterId) continue;
+      const item = gearItem(itemId);
+      if (!item) return true;
+      this.grantItem(player, item.id);
+      this.sendChat(player.client, "loot", `Um administrador te deu ${item.name}.`);
+      return true;
+    }
+    return false;
+  }
+
+  /** O painel mexeu nos equipamentos: catálogo novo para todos e atributos recalculados. */
+  sendGear() {
+    this.broadcast(ServerMsg.Gear, { items: gearList() } satisfies GearCatalogEvent);
+    for (const player of this.players.values()) this.refreshGear(player);
   }
 
   kickAccount(accountId: number, reason: string) {
@@ -701,7 +770,9 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       DEFAULT_APPEARANCE;
     const pet = row.pet && owns(row.pet, "pet") ? row.pet : "";
     const mount = row.mount && owns(row.mount, "mount") ? row.mount : "";
-    const stats = playerStats(row.level);
+    const items = await listCharacterItems(row.id);
+    const gear = equippedStats(items);
+    const stats = withGear(playerStats(row.level), gear);
     const sim = this.worldFor(row.worldId);
     const spot = this.spawnPointFor(sim, row);
 
@@ -738,6 +809,9 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       diamonds: account?.diamonds ?? 0,
       kills: row.kills,
       shortcuts: sanitizeShortcuts(row.shortcuts ? row.shortcuts.split(",") : [], row.level),
+      items,
+      gear,
+      bagFullWarnAt: 0,
       path: [],
       moveDir: null,
       nextStepAt: 0,
@@ -754,6 +828,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     occupyPlayer(sim, spot.x, spot.y, 1);
 
     this.sendProfile(player);
+    this.sendInventory(player);
     const greeting = row.lastLoginAt ? "Bem-vindo de volta" : "Bem-vindo";
     this.sendChat(client, "system", `${greeting}, ${row.name}! Aperte O para abrir o guarda-roupa e a loja.`);
     if (sim !== this.defaultWorld()) this.sendChat(client, "event", `Você está em ${sim.def.name}.`);
@@ -1034,7 +1109,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       return;
     }
 
-    const { maxDamage } = playerStats(s.level);
+    const { maxDamage } = this.statsOf(player);
     let dealt = 0;
     for (const monster of targets) {
       const roll = Math.round(maxDamage * spell.power * (0.85 + Math.random() * 0.3));
@@ -1197,7 +1272,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
           player.client,
           "system",
           DEV_COMMANDS
-            ? "Comandos: /online · teste: /evento <chave> · /ir <mundo> · /xp 500 · /ouro 2000 · /diamantes 1000"
+            ? "Comandos: /online · teste: /evento <chave> · /ir <mundo> · /xp 500 · /ouro 2000 · /diamantes 1000 · /item <id>"
             : "Comandos: /online",
         );
         return;
@@ -1260,6 +1335,17 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
           this.sendProfile(player);
           this.sendChat(player.client, "loot", `Você recebeu ${amount} diamantes (teste).`);
         }).catch(() => undefined);
+        return;
+      }
+      case "item": {
+        if (!testOnly()) return;
+        const item = gearItem(argument);
+        if (!item) {
+          this.sendChat(player.client, "system", `Use /item <id>. Ex.: ${gearList().slice(0, 6).map((entry) => entry.id).join(", ")}…`);
+          return;
+        }
+        this.grantItem(player, item.id);
+        this.sendChat(player.client, "loot", `Você recebeu ${item.name} (teste).`);
         return;
       }
       default:
@@ -1342,7 +1428,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
 
     if (target && now >= player.nextAttackAt && chebyshev(s.x, s.y, target.state.x, target.state.y) <= 1) {
       player.nextAttackAt = now + PLAYER_ATTACK_MS;
-      const { maxDamage } = playerStats(s.level);
+      const { maxDamage } = this.statsOf(player);
       const roll = Math.round(maxDamage * (0.35 + Math.random() * 0.65));
       this.face(s, target.state);
       this.damageMonster(target, player, roll - target.def.armor);
@@ -1529,7 +1615,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
   private monsterAttack(monster: MonsterSim, player: PlayerSim) {
     // Revida sozinho quando está parado e sem alvo; não atrapalha quem está fugindo.
     if (!player.state.target && !player.moveDir && player.path.length === 0) player.state.target = monster.id;
-    const { armor } = playerStats(player.state.level);
+    const { armor } = this.statsOf(player);
     const damage = Math.max(0, randInt(Math.random, 0, monster.def.maxHit) - armor);
     if (damage === 0) {
       this.broadcastHit(player.id, monster.id, 0, "block");
@@ -1587,6 +1673,8 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       for (const drop of rollDrops(Math.random, def, goldBonus)) {
         this.dropLoot(sim, drop, s.x, s.y, topDamager.id);
       }
+      const gear = rollGear(Math.random, MONSTER_LEVEL[def.kind] ?? 1, def.boss === true, gearSettings().dropRate);
+      if (gear) this.dropLoot(sim, { kind: "item", gold: 0, diamonds: 0, item: gear.id }, s.x, s.y, topDamager.id);
     }
 
     if (monster.respawns) this.after(def.respawnMs, () => this.respawn(sim, def.kind, monster.home));
@@ -1610,8 +1698,8 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     const newLevel = levelForXp(s.xp);
     if (newLevel <= s.level) return;
     const oldLevel = s.level;
-    const stats = playerStats(newLevel);
     s.level = newLevel;
+    const stats = this.statsOf(player);
     s.maxHp = stats.maxHp;
     s.maxMana = stats.maxMana;
     s.hp = stats.maxHp;
@@ -1711,6 +1799,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       y: spot.y,
       gold: drop.gold,
       diamonds: drop.diamonds,
+      item: drop.item ?? "",
       owner,
       freeAt: options.forever ? 0 : now + LOOT_OWNER_MS,
       expiresAt: options.forever ? Number.MAX_SAFE_INTEGER : now + LOOT_TTL_MS,
@@ -1736,6 +1825,13 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
         continue;
       }
       if (loot.owner && loot.owner !== player.id && now < loot.freeAt) continue;
+      if (loot.kind === "item" && this.bagCount(player) >= BAG_SIZE) {
+        if (now - player.bagFullWarnAt > 5000) {
+          player.bagFullWarnAt = now;
+          this.sendChat(player.client, "system", "Sua mochila está cheia. Venda ou equipe algum item (tecla I).");
+        }
+        continue;
+      }
       this.removeLoot(sim, id, key);
       this.giveLoot(player, loot);
     }
@@ -1757,6 +1853,10 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
   }
 
   private giveLoot(player: PlayerSim, loot: LootState) {
+    if (loot.kind === "item") {
+      this.giveItemLoot(player, loot);
+      return;
+    }
     const def = LOOT[loot.kind as keyof typeof LOOT];
     const s = player.state;
     if (loot.gold > 0) s.gold += loot.gold;
@@ -1782,6 +1882,173 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     if (def.announce) this.announce(`${s.name} encontrou um ${def.name} (${description})!`);
     else if (def.rarity !== "comum") this.sendChat(player.client, "loot", `${def.name}: ${description}.`);
     if (loot.gold > 0 || loot.diamonds > 0) void this.persist(player);
+  }
+
+  /** Equipamento do chão vai para a mochila. */
+  private giveItemLoot(player: PlayerSim, loot: LootState) {
+    const item = gearItem(loot.item);
+    if (!item) return;
+    this.broadcast(ServerMsg.Loot, {
+      id: player.id,
+      kind: "item",
+      item: item.id,
+      gold: 0,
+      diamonds: 0,
+      x: loot.x,
+      y: loot.y,
+    } satisfies LootEvent);
+    const rarity = RARITY[item.rarity].label;
+    if (item.rarity === "epico" || item.rarity === "lendario") {
+      this.announce(`${player.state.name} encontrou ${item.name} (${rarity})!`);
+    } else {
+      this.sendChat(player.client, "loot", `Você encontrou ${item.name} (${rarity}).`);
+    }
+    this.grantItem(player, item.id);
+  }
+
+  /** Põe um item na mochila (drop, compra ou presente do painel). */
+  private grantItem(player: PlayerSim, itemId: string, after?: () => void) {
+    // Entra na hora (a mochila já conta com ele); o id do banco chega em seguida.
+    const owned: OwnedItem = { uid: 0, itemId, equipped: "" };
+    player.items.push(owned);
+    this.enqueue(player, async () => {
+      owned.uid = await addCharacterItem(player.characterId, itemId);
+      this.sendInventory(player);
+      after?.();
+    }).catch(() => {
+      player.items = player.items.filter((entry) => entry !== owned);
+      this.sendInventory(player);
+    });
+  }
+
+  private bagCount(player: PlayerSim): number {
+    return player.items.filter((item) => item.equipped === "").length;
+  }
+
+  /** Atributos com os equipamentos. */
+  private statsOf(player: PlayerSim): PlayerStats {
+    return withGear(playerStats(player.state.level), player.gear);
+  }
+
+  /** Recalcula os atributos depois de vestir, tirar ou o painel mudar um item. */
+  private refreshGear(player: PlayerSim) {
+    player.gear = equippedStats(player.items);
+    const s = player.state;
+    const stats = this.statsOf(player);
+    s.maxHp = stats.maxHp;
+    s.maxMana = stats.maxMana;
+    s.hp = Math.min(s.hp, s.maxHp);
+    s.mana = Math.min(s.mana, s.maxMana);
+    this.sendInventory(player);
+  }
+
+  private sendInventory(player: PlayerSim) {
+    if (!this.players.has(player.id)) return;
+    player.client.send(ServerMsg.Inventory, {
+      items: player.items.filter((item) => item.uid > 0),
+      stats: player.gear,
+    } satisfies InventoryEvent);
+  }
+
+  private itemNotice(player: PlayerSim, ok: boolean, message: string) {
+    this.sendPurchase(player, ok, "", message);
+  }
+
+  private handleItemEquip(client: Client, message: ItemEquipMessage) {
+    const player = this.players.get(client.sessionId);
+    if (!player) return;
+    const owned = player.items.find((item) => item.uid > 0 && item.uid === Number(message?.uid));
+    const item = owned ? gearItem(owned.itemId) : undefined;
+    if (!owned || !item) return;
+    if (player.state.level < item.level) {
+      this.itemNotice(player, false, `${item.name} precisa do nível ${item.level}.`);
+      return;
+    }
+    if (owned.equipped === item.slot) return;
+    const current = player.items.find((entry) => entry.equipped === item.slot);
+    if (current) current.equipped = "";
+    owned.equipped = item.slot;
+    this.refreshGear(player);
+    this.enqueue(player, async () => {
+      if (current) await setItemEquipped(player.characterId, current.uid, "");
+      await setItemEquipped(player.characterId, owned.uid, item.slot);
+    }).catch(() => undefined);
+  }
+
+  private handleItemUnequip(client: Client, message: ItemUnequipMessage) {
+    const player = this.players.get(client.sessionId);
+    if (!player) return;
+    const slot = String(message?.slot ?? "") as EquipSlot;
+    if (!EQUIP_SLOTS.includes(slot)) return;
+    const owned = player.items.find((entry) => entry.equipped === slot);
+    if (!owned) return;
+    if (this.bagCount(player) >= BAG_SIZE) {
+      this.itemNotice(player, false, "A mochila está cheia.");
+      return;
+    }
+    owned.equipped = "";
+    this.refreshGear(player);
+    this.enqueue(player, () => setItemEquipped(player.characterId, owned.uid, "")).catch(() => undefined);
+  }
+
+  private handleItemSell(client: Client, message: ItemSellMessage) {
+    const player = this.players.get(client.sessionId);
+    if (!player) return;
+    const owned = player.items.find((entry) => entry.uid > 0 && entry.uid === Number(message?.uid));
+    if (!owned) return;
+    const item = gearItem(owned.itemId);
+    const price = item?.sellGold ?? 0;
+    const wasEquipped = owned.equipped !== "";
+    player.items = player.items.filter((entry) => entry !== owned);
+    if (wasEquipped) this.refreshGear(player);
+    else this.sendInventory(player);
+    this.enqueue(player, async () => {
+      if (!(await removeCharacterItem(player.characterId, owned.uid))) return;
+      player.state.gold += price;
+      this.itemNotice(player, true, `Vendido${item ? `: ${item.name}` : ""} por ${price} moedas de ouro.`);
+      // Fora desta tarefa: gravar daqui de dentro esperaria a própria fila e travaria o personagem.
+      void this.persist(player);
+    }).catch(() => undefined);
+  }
+
+  private handleItemBuy(client: Client, message: ItemBuyMessage) {
+    const player = this.players.get(client.sessionId);
+    if (!player) return;
+    const item = gearItem(String(message?.id ?? ""));
+    const currency = message?.currency === "diamonds" ? "diamonds" : "gold";
+    const price = currency === "gold" ? (item?.priceGold ?? 0) : (item?.priceDiamonds ?? 0);
+    if (!item || !item.enabled || price <= 0) {
+      this.itemNotice(player, false, "Item indisponível.");
+      return;
+    }
+    if (this.bagCount(player) >= BAG_SIZE) {
+      this.itemNotice(player, false, "A mochila está cheia.");
+      return;
+    }
+    if (currency === "gold") {
+      if (player.state.gold < price) {
+        this.itemNotice(player, false, `Faltam ${Math.ceil(price - player.state.gold)} moedas de ouro.`);
+        return;
+      }
+      player.state.gold -= price;
+      this.grantItem(player, item.id, () => {
+        this.itemNotice(player, true, `Você comprou ${item.name}!`);
+        void this.persist(player);
+      });
+      return;
+    }
+    this.enqueue(player, async () => {
+      const result = await buyGearWithDiamonds({ accountId: player.accountId, characterId: player.characterId, item, price });
+      if (!result.ok) {
+        this.itemNotice(player, false, result.message);
+        return;
+      }
+      player.diamonds = result.diamonds;
+      player.items.push({ uid: result.uid, itemId: item.id, equipped: "" });
+      this.sendProfile(player);
+      this.sendInventory(player);
+      this.itemNotice(player, true, `Você comprou ${item.name}!`);
+    }).catch(() => this.itemNotice(player, false, "Não foi possível concluir a compra. Tente de novo."));
   }
 
   /** Tira do chão o que ninguém pegou a tempo. */

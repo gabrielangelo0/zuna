@@ -1,4 +1,5 @@
 import type { Appearance, CatalogOverride, ItemKind } from "./cosmetics.ts";
+import type { EquipSlot, GearDef } from "./items.ts";
 import type { LootKind } from "./loot.ts";
 import type { MonsterKind } from "./monsters.ts";
 import type { SpellId } from "./spells.ts";
@@ -47,6 +48,8 @@ export interface ApiErrorBody {
 export interface WorldsResponse {
   worlds: WorldBlueprint[];
   catalog: CatalogOverride[];
+  /** Equipamentos em vigor (nomes, ícones e atributos editados no painel). */
+  gear: GearDef[];
 }
 
 // ---------------------------------------------------------------- cliente → servidor (sala)
@@ -134,7 +137,29 @@ export const ClientMsg = {
   Buy: "buy",
   Shortcuts: "shortcuts",
   ToggleMount: "toggleMount",
+  /** Equipamentos: vestir, tirar, vender e comprar. */
+  ItemEquip: "itemEquip",
+  ItemUnequip: "itemUnequip",
+  ItemSell: "itemSell",
+  ItemBuy: "itemBuy",
 } as const;
+
+export interface ItemEquipMessage {
+  uid: number;
+}
+
+export interface ItemUnequipMessage {
+  slot: EquipSlot;
+}
+
+export interface ItemSellMessage {
+  uid: number;
+}
+
+export interface ItemBuyMessage {
+  id: string;
+  currency: "gold" | "diamonds";
+}
 
 // ---------------------------------------------------------------- servidor → clientes
 
@@ -183,6 +208,8 @@ export interface LootEvent {
   /** Jogador que pegou. */
   id: string;
   kind: LootKind;
+  /** Equipamento pego (kind "item"). */
+  item?: string;
   gold: number;
   diamonds: number;
   x: number;
@@ -251,4 +278,8 @@ export const ServerMsg = {
   Travel: "travel",
   WorldPatch: "worldPatch",
   Catalog: "catalog",
+  /** Itens do jogador (só ele recebe). */
+  Inventory: "inventory",
+  /** Catálogo de equipamentos mudou no painel. */
+  Gear: "gear",
 } as const;

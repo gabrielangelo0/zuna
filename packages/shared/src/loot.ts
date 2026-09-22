@@ -3,7 +3,7 @@ import { randInt } from "./rng.ts";
 
 // O que os monstros deixam cair no chão. O servidor sorteia; o cliente só desenha.
 
-export type LootKind = "coins" | "chest" | "crystal";
+export type LootKind = "coins" | "chest" | "crystal" | "item";
 
 export type LootRarity = "comum" | "raro" | "lendario";
 
@@ -21,6 +21,8 @@ export const LOOT: Record<LootKind, LootDef> = {
   coins: { kind: "coins", name: "Moedas", rarity: "comum", color: 0xf2c94c, announce: false },
   chest: { kind: "chest", name: "Baú de Ouro", rarity: "raro", color: 0xffd479, announce: false },
   crystal: { kind: "crystal", name: "Cristal de Zuna", rarity: "lendario", color: 0x5ef08f, announce: true },
+  // Equipamento: nome, cor e anúncio vêm da raridade do item (items.ts).
+  item: { kind: "item", name: "Equipamento", rarity: "raro", color: 0x4aa8ff, announce: false },
 };
 
 export const LOOT_KINDS = Object.keys(LOOT) as LootKind[];
@@ -38,6 +40,8 @@ export interface DropRoll {
   kind: LootKind;
   gold: number;
   diamonds: number;
+  /** Id do equipamento (kind "item"). */
+  item?: string;
 }
 
 /** Sorteia o que um monstro deixa cair. O bônus de ouro do mascote entra aqui. */

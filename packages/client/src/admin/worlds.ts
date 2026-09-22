@@ -59,7 +59,7 @@ const TOOLS: { id: Tool; label: string; mark: string }[] = [
 ];
 
 const MONSTER_OPTIONS = Object.values(MONSTERS).map((def) => ({ id: def.kind, label: def.name }));
-const LOOT_OPTIONS = LOOT_KINDS.map((kind) => ({ id: kind, label: LOOT[kind].name }));
+const LOOT_OPTIONS = LOOT_KINDS.filter((kind) => kind !== "item").map((kind) => ({ id: kind, label: LOOT[kind].name }));
 const STYLE_OPTIONS = MAP_STYLES.map((style) => ({ id: style.id, label: style.name }));
 
 /** Mundo aberto no editor (null = a lista). */

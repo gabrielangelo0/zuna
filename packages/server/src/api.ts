@@ -17,6 +17,7 @@ import {
   type RankingResponse,
 } from "@zuna/shared";
 import { adminRoutes } from "./adminApi.ts";
+import { adminGearRoutes } from "./adminGearApi.ts";
 import { adminWorldRoutes } from "./adminWorldApi.ts";
 import { paymentRoutes } from "./payments.ts";
 import {
@@ -158,4 +159,5 @@ export const apiRouter = createRouter({
   ...adminRoutes,
   ...adminWorldRoutes,
   ...paymentRoutes,
+  ...adminGearRoutes,
 });

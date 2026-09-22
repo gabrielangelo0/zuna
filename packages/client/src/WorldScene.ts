@@ -1,6 +1,12 @@
 import Phaser from "phaser";
 import { Callbacks, type Room } from "@colyseus/sdk";
 import {
+  RARITY,
+  gearItem,
+  rarityCss,
+  setGearCatalog,
+  type GearCatalogEvent,
+  type InventoryEvent,
   ClientMsg,
   Ground,
   LOOT,
@@ -43,6 +49,7 @@ import { GAME_FONT } from "./canvas.ts";
 import { element } from "./dom.ts";
 import { SpellFx, createFxTextures } from "./effects.ts";
 import { Hud } from "./hud.ts";
+import { Inventory } from "./inventory.ts";
 import { screenToTile, tileToScreen } from "./iso.ts";
 import { Grimoire } from "./grimoire.ts";
 import { LootLayer } from "./loot.ts";
@@ -167,6 +174,13 @@ export class WorldScene extends Phaser.Scene {
     buyDiamonds: () => this.openShop(),
   });
   private readonly shop = new DiamondShop();
+  private readonly inventory = new Inventory({
+    equip: (uid) => this.room?.send(ClientMsg.ItemEquip, { uid }),
+    unequip: (slot) => this.room?.send(ClientMsg.ItemUnequip, { slot }),
+    sell: (uid) => this.room?.send(ClientMsg.ItemSell, { uid }),
+    buy: (id, currency) => this.room?.send(ClientMsg.ItemBuy, { id, currency }),
+    buyDiamonds: () => this.openShop(),
+  });
   private spriteTextures!: SpriteTextures;
   private room: Room | null = null;
   private localId = "";
@@ -297,11 +311,17 @@ export class WorldScene extends Phaser.Scene {
     room.onMessage(ServerMsg.Profile, (event: ProfileEvent) => {
       this.hud.setDiamonds(event.diamonds);
       this.shop.setDiamonds(event.diamonds);
+      this.inventory.setDiamonds(event.diamonds);
       this.hud.setShortcuts(event.shortcuts);
       this.grimoire.setShortcuts(event.shortcuts);
       this.wardrobe.setProfile(event);
     });
     room.onMessage(ServerMsg.Purchase, (event: PurchaseEvent) => this.onPurchase(event));
+    room.onMessage(ServerMsg.Inventory, (event: InventoryEvent) => this.inventory.setInventory(event));
+    room.onMessage(ServerMsg.Gear, (event: GearCatalogEvent) => {
+      setGearCatalog(event.items);
+      this.inventory.refresh();
+    });
     room.onMessage(ServerMsg.Travel, (event: TravelEvent) => {
       this.useWorld(event.world);
       this.hud.showBanner(event.name);
@@ -313,6 +333,7 @@ export class WorldScene extends Phaser.Scene {
     });
     room.onLeave((code, reason) => {
       this.wardrobe.close();
+      this.inventory.close();
       this.shop.close();
       this.hud.showDisconnected(reason || CLOSE_REASON[code]);
     });
@@ -323,6 +344,7 @@ export class WorldScene extends Phaser.Scene {
     this.hud.onWardrobe(() => this.wardrobe.toggle());
     this.hud.onRanking(() => this.ranking.toggle());
     this.hud.onShop(() => this.openShop(true));
+    this.hud.onInventory(() => this.toggleInventory());
     this.hud.onPowers(() => this.grimoire.toggle());
     this.hud.onMount(() => room.send(ClientMsg.ToggleMount));
     this.keyboard = new KeyboardInput({
@@ -337,6 +359,7 @@ export class WorldScene extends Phaser.Scene {
         if (this.shop.isOpen) this.shop.close();
         else if (this.grimoire.isOpen) this.grimoire.close();
         else if (this.ranking.isOpen) this.ranking.close();
+        else if (this.inventory.isOpen) this.inventory.close();
         else if (this.wardrobe.isOpen) this.wardrobe.close();
         else if (element("#minimap").classList.contains("expanded")) this.toggleMap();
         else room.send(ClientMsg.Target, { id: "" });
@@ -351,6 +374,7 @@ export class WorldScene extends Phaser.Scene {
       togglePowers: () => this.grimoire.toggle(),
       toggleMap: () => this.toggleMap(),
       toggleShop: () => this.openShop(true),
+      toggleInventory: () => this.toggleInventory(),
     });
   }
 
@@ -680,6 +704,7 @@ export class WorldScene extends Phaser.Scene {
     this.hud.updatePlayer(actor.data as PlayerData);
     this.grimoire.setLevel((actor.data as PlayerData).level);
     this.wardrobe.setPlayer(actor.data as PlayerData);
+    this.inventory.setPlayer(actor.data as PlayerData);
     this.ranking.setMyName((actor.data as PlayerData).name);
   }
 
@@ -771,6 +796,18 @@ export class WorldScene extends Phaser.Scene {
     if (candidates.length === 0) return;
     const index = candidates.findIndex((candidate) => candidate.actor.id === current);
     this.room.send(ClientMsg.Target, { id: candidates[(index + 1) % candidates.length].actor.id });
+  }
+
+  /** Equipamentos: fecha os outros painéis grandes, que ocupam o mesmo lugar. */
+  private toggleInventory() {
+    if (this.inventory.isOpen) {
+      this.inventory.close();
+      return;
+    }
+    this.wardrobe.close();
+    this.grimoire.close();
+    this.ranking.close();
+    this.inventory.open();
   }
 
   /** Loja de diamantes por cima de tudo: fecha os outros painéis grandes. */
@@ -891,7 +928,8 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private onPurchase(event: PurchaseEvent) {
-    this.wardrobe.showStatus(event.message, event.ok);
+    if (this.inventory.isOpen) this.inventory.showStatus(event.message, event.ok);
+    else this.wardrobe.showStatus(event.message, event.ok);
     const local = this.actors.get(this.localId);
     if (!event.ok || !local) return;
     const { x, y } = local.position(this.time.now);
@@ -918,8 +956,25 @@ export class WorldScene extends Phaser.Scene {
 
   /** Alguém pegou um drop: brilho no chão e o valor subindo. */
   private onLoot(event: LootEvent) {
-    const def = LOOT[event.kind];
     const screen = tileToScreen(event.x, event.y);
+    if (event.kind === "item") {
+      const item = gearItem(event.item ?? "");
+      if (!item) return;
+      const rarity = RARITY[item.rarity];
+      const big = item.rarity !== "comum";
+      this.burst(screen.x, screen.y - 14, {
+        tints: [rarity.color, 0xffffff],
+        count: big ? 34 : 14,
+        speed: big ? 220 : 110,
+        gravityY: 200,
+        lifespan: 800,
+        angle: { min: 200, max: 340 },
+      });
+      const mine = event.id === this.localId;
+      this.floatingText(screen.x, screen.y - 30, item.name, rarityCss(item.rarity), mine ? 16 : 12, 44, mine ? 1500 : 900);
+      return;
+    }
+    const def = LOOT[event.kind];
     const color = `#${def.color.toString(16).padStart(6, "0")}`;
     this.burst(screen.x, screen.y - 10, {
       tints: [def.color, 0xffffff],

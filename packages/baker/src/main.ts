@@ -7,7 +7,7 @@ import {
   type SpriteFrameMeta,
   type SpriteSheetMeta,
 } from "@zuna/shared";
-import { CATALOG, type EntrySpec } from "./catalog.ts";
+import { CATALOG, ITEM_ICONS, type EntrySpec } from "./catalog.ts";
 import { ATLAS_MAX_WIDTH, DIR_YAW, OUTLINE_COLOR, OUTLINE_STRENGTH, PPU, SUPERSAMPLE, TINT_REF } from "./config.ts";
 import {
   blit,
@@ -313,6 +313,76 @@ async function savePreview(spec: EntrySpec, sheet: SpriteSheetMeta, atlas: Rgba,
   await post(`/__bake/preview?file=${spec.id}.png`, await canvas.convertToBlob({ type: "image/png" }));
 }
 
+// ---------------------------------------------------------------- ícones de itens
+
+/** Lado de cada ícone no atlas. O cliente mostra em 48–64 px: sobra resolução para telas densas. */
+const ICON_SIZE = 112;
+
+/** Todos os ícones numa folha só: quadrados do mesmo tamanho, com o objeto centralizado. */
+async function bakeIcons(renderer: BakeRenderer, only: string[]) {
+  const started = performance.now();
+  const specs = only.length > 0 ? ITEM_ICONS.filter((spec) => only.includes(spec.id)) : ITEM_ICONS;
+  const view: View = { cellW: ICON_SIZE, cellH: ICON_SIZE, anchorX: ICON_SIZE / 2, anchorY: ICON_SIZE / 2 };
+  renderer.setView(view, 2);
+  const frames: { id: string; image: Rgba }[] = [];
+  const target = (ICON_SIZE * 0.84) / PPU;
+  for (const spec of specs) {
+    const model = await BakeModel.create(spec);
+    renderer.scene.add(model.root);
+    try {
+      model.setYaw(0);
+      // Primeira foto para medir; a segunda ocupa o quadro inteiro, seja qual for o formato da peça.
+      let radius = target / 2;
+      let image: Rgba | null = null;
+      for (let pass = 0; pass < 2; pass++) {
+        model.center(radius);
+        model.usePass("lit");
+        const lit = downsample(renderer.render("lit"), SUPERSAMPLE);
+        image = composite(outline(lit, OUTLINE_COLOR, OUTLINE_STRENGTH), lit);
+        const bounds = opaqueBounds(image);
+        if (!bounds) throw new Error(`${spec.id}: ícone vazio.`);
+        radius *= (ICON_SIZE * 0.86) / Math.max(bounds.w, bounds.h);
+      }
+      frames.push({ id: spec.id, image: image! });
+    } finally {
+      model.dispose();
+    }
+    await nextTick();
+  }
+
+  const columns = Math.min(frames.length, Math.floor(ATLAS_MAX_WIDTH / ICON_SIZE));
+  const rows = Math.ceil(frames.length / columns);
+  const atlas = createRgba(columns * ICON_SIZE, rows * ICON_SIZE);
+  const icons: Record<string, [number, number]> = {};
+  frames.forEach((frame, index) => {
+    const x = (index % columns) * ICON_SIZE;
+    const y = Math.floor(index / columns) * ICON_SIZE;
+    blit(atlas, frame.image, x, y);
+    icons[frame.id] = [x, y];
+  });
+  await post("/__bake/save?file=items.webp", await toImage(atlas, "image/webp", 0.95));
+  await post("/__bake/save?file=items.json", JSON.stringify({ image: "items.webp", size: ICON_SIZE, width: atlas.width, height: atlas.height, icons }));
+
+  // Conferência: os ícones sobre o fundo escuro do inventário, com o nome embaixo.
+  const label = 16;
+  const canvas = new OffscreenCanvas(columns * ICON_SIZE, rows * (ICON_SIZE + label));
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#101a2c";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.font = "11px system-ui, sans-serif";
+  const plain = toCanvas(atlas);
+  frames.forEach((frame, index) => {
+    const x = (index % columns) * ICON_SIZE;
+    const y = Math.floor(index / columns) * (ICON_SIZE + label);
+    ctx.drawImage(plain, x, Math.floor(index / columns) * ICON_SIZE, ICON_SIZE, ICON_SIZE, x, y, ICON_SIZE, ICON_SIZE);
+    ctx.fillStyle = "#cfe0ff";
+    ctx.fillText(frame.id, x + 4, y + ICON_SIZE + 12);
+  });
+  await post("/__bake/preview?file=items.png", await canvas.convertToBlob({ type: "image/png" }));
+  const seconds = ((performance.now() - started) / 1000).toFixed(1);
+  log(`✓ ícones: ${frames.length} itens, atlas ${atlas.width}×${atlas.height}, ${seconds} s`);
+}
+
 // ---------------------------------------------------------------- mostruário
 
 async function survey(renderer: BakeRenderer, folder: string) {
@@ -478,6 +548,11 @@ async function run(params: URLSearchParams) {
       const folders = (params.get("only") || "quaternius/monsters,quaternius/animals").split(",");
       for (const folder of folders) await survey(renderer, folder);
       await done(`ok: mostruário de ${folders.join(", ")}`);
+      return;
+    }
+    if (params.get("mode") === "icons") {
+      await bakeIcons(renderer, (params.get("only") ?? "").split(",").filter(Boolean));
+      await done("ok: ícones de itens gerados");
       return;
     }
     if (params.get("mode") === "overview") {

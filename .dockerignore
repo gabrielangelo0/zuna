@@ -10,4 +10,5 @@
 assets
 docs
 tools
+!tools/fix-better-call.mjs
 packages/baker/previews

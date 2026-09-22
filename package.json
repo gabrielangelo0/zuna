@@ -10,7 +10,8 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "assets:download": "node tools/download-assets.mjs",
     "brand": "./tools/make-brand.sh",
-    "bake": "npm run bake -w @zuna/baker"
+    "bake": "npm run bake -w @zuna/baker",
+    "postinstall": "node tools/fix-better-call.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.2.4",

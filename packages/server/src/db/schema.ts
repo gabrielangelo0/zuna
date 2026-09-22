@@ -334,3 +334,42 @@ export const diamondPacks = pgTable("diamond_packs", {
   sort: smallint("sort").notNull().default(0),
   createdAt: createdAt(),
 });
+
+// ---------------------------------------------------------------- equipamentos
+
+/** Armas, escudos, elmos, armaduras e botas. Nascem da lista de fábrica e depois são editados no painel. */
+export const gearItems = pgTable("gear_items", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  /** weapon, shield, helmet, armor ou boots. */
+  slot: text("slot").notNull(),
+  /** Quadro do atlas de ícones. */
+  icon: text("icon").notNull(),
+  rarity: text("rarity").notNull(),
+  level: integer("level").notNull().default(1),
+  attack: integer("attack").notNull().default(0),
+  defense: integer("defense").notNull().default(0),
+  hp: integer("hp").notNull().default(0),
+  mana: integer("mana").notNull().default(0),
+  priceGold: integer("price_gold").notNull().default(0),
+  priceDiamonds: integer("price_diamonds").notNull().default(0),
+  sellGold: integer("sell_gold").notNull().default(0),
+  drops: boolean("drops").notNull().default(true),
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: createdAt(),
+});
+
+/** Itens de cada personagem. `equipped` vazio = na mochila; senão, o espaço do corpo onde está. */
+export const characterItems = pgTable(
+  "character_items",
+  {
+    id: serial("id").primaryKey(),
+    characterId: integer("character_id")
+      .notNull()
+      .references(() => characters.id, { onDelete: "cascade" }),
+    itemId: text("item_id").notNull(),
+    equipped: text("equipped").notNull().default(""),
+    createdAt: createdAt(),
+  },
+  (table) => [index("character_items_character_idx").on(table.characterId), index("character_items_item_idx").on(table.itemId)],
+);

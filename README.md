@@ -53,6 +53,16 @@ Abra http://localhost:5173, crie uma conta e um personagem. Para ver o multiplay
 - O drop cai no chão, no tile da morte, e é coletado ao passar por cima. Nos primeiros 20 s só quem derrubou o monstro pega; depois libera para todos. O que ninguém pegar some em 90 s.
 - O ranking tem três listas (nível, ouro e caçadas), servidas por `GET /api/ranking?board=level|gold|kills` com cache de 30 s. Aparecem na tecla `R` dentro do jogo e ao lado do menu de login.
 
+## Equipamentos
+
+- Cinco espaços: **arma, escudo, capacete, armadura e botas**. Cada item soma **ataque, defesa, vida e mana** ao personagem (o ataque entra no golpe e nos poderes; a defesa desconta o dano dos monstros).
+- Cinco raridades: comum, incomum, raro, épico e lendário (cor da moldura e do brilho no chão). Os 63 itens de fábrica estão em `packages/shared/src/items.ts`; vão para o banco (`gear_items`) no primeiro arranque e depois quem manda é o painel.
+- **Drops:** cada monstro tem um nível (`MONSTER_LEVEL`) e derruba itens de até 20 níveis abaixo dele, no máximo um por monstro. Chefes sempre derrubam um raro ou melhor. Épicos e lendários são anunciados para o servidor. A mochila tem 30 espaços.
+- **Loja (tecla `I` → Loja):** comuns e incomuns por ouro, épicos por diamantes (resultado garantido, sem sorteio pago). Raros e lendários só caem. Qualquer item pode ser vendido de volta por ouro.
+- **Painel → Equipamentos:** criar, editar (nome, espaço, raridade, ícone, nível, atributos, preços, se cai e se está no jogo), tirar do jogo, apagar, dar a um personagem (online ou não) e a taxa de drop. Tudo vale na hora para quem está jogando.
+- **Ícones:** `npm run bake -- --icons` renderiza os 122 ícones (`sprites/items.webp`) a partir dos modelos 3D: armas e escudos da KayKit e as peças de dentro dos heróis e esqueletos (elmos, torsos e pernas), com versões dourada, gelo, obsidiana e rubi.
+- Comando de teste: `/item <id>` põe um item na mochila.
+
 ## Mundos e portais
 
 - O jogo tem vários mundos ao mesmo tempo. Todos rodam na mesma sala do Colyseus: quem está em outro mundo não aparece na sua tela, mas o chat e os anúncios chegam a todo mundo.
@@ -105,6 +115,10 @@ A praça de Zuna tem seis portais, cada um para um mundo temático maior que a c
 1. Crie a conta na [Asaas](https://www.asaas.com) e pegue a chave em *Integrações → Chaves de API*. Para testar antes, use uma conta do [sandbox](https://sandbox.asaas.com) (a chave de sandbox não cobra nada).
 2. Em *Integrações → Webhooks*, crie um webhook com a URL `https://api.zuna.devfly.net/api/payments/webhook`, um **token de autenticação** inventado por você (uma senha longa), envio sequencial e os eventos de **Cobranças**.
 3. Na Railway: `ASAAS_API_KEY=<chave>` e `ASAAS_WEBHOOK_TOKEN=<o mesmo token do passo 2>`, e publique de novo.
+
+## Nota sobre o Colyseus
+
+O `@colyseus/better-call` 1.3.x não fecha respostas HTTP maiores que 16 KB (o navegador fica esperando para sempre). `tools/fix-better-call.mjs` corrige isso sozinho depois de todo `npm install`/`npm ci` (postinstall, também no Docker). Se a biblioteca mudar, o script avisa e não altera nada.
 
 ## Variáveis de ambiente do servidor
 

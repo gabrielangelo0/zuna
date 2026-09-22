@@ -27,6 +27,10 @@ export interface LiveRoom {
   reloadEvents(): Promise<void>;
   /** O painel mudou os preços: manda a tabela nova para quem está jogando. */
   sendCatalog(overrides: CatalogOverride[]): void;
+  /** Presente do painel para um personagem online. Falso quando ele não está nesta sala. */
+  giveItem(characterId: number, itemId: string): boolean;
+  /** O painel mexeu nos equipamentos. */
+  sendGear(): void;
 }
 
 export interface LiveCharacterPatch {
@@ -171,4 +175,14 @@ export function runWorldEvent(event: LiveEvent): LiveEventResult {
     else if (answer === "busy" && result !== "ok") result = "busy";
   }
   return result;
+}
+
+/** Entrega o item a quem está online. Falso = offline (o painel grava direto no banco). */
+export function giveLiveItem(characterId: number, itemId: string): boolean {
+  for (const room of rooms) if (room.giveItem(characterId, itemId)) return true;
+  return false;
+}
+
+export function pushGear() {
+  for (const room of rooms) room.sendGear();
 }

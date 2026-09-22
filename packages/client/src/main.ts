@@ -3,7 +3,7 @@ import "@fontsource/permanent-marker/400.css";
 import "@fontsource-variable/montserrat/wght.css";
 import Phaser from "phaser";
 import { Client, type Room } from "@colyseus/sdk";
-import { ROOM_NAME, applyCatalogOverrides, type JoinOptions, type WorldsResponse } from "@zuna/shared";
+import { ROOM_NAME, applyCatalogOverrides, setGearCatalog, type JoinOptions, type WorldsResponse } from "@zuna/shared";
 import { apiRequest, wsEndpoint } from "./api.ts";
 import { Menu } from "./menu.ts";
 import { WorldScene } from "./WorldScene.ts";
@@ -27,6 +27,7 @@ try {
   const response = await apiRequest<WorldsResponse>("/api/worlds");
   scene.setWorlds(response.worlds);
   applyCatalogOverrides(response.catalog);
+  if (response.gear?.length) setGearCatalog(response.gear);
 } catch {
   // Servidor fora do ar: o menu já avisa quando o login falhar.
 }

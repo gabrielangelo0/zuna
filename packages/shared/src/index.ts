@@ -16,3 +16,4 @@ export * from "./cosmetics.ts";
 export * from "./validation.ts";
 export * from "./sprites.ts";
 export * from "./payments.ts";
+export * from "./items.ts";

@@ -1230,3 +1230,18 @@ button.tool.active {
     display: none;
   }
 }
+
+/* Ícone do equipamento na tabela. */
+.gear-thumb {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.item-icon {
+  display: block;
+  background-repeat: no-repeat;
+}

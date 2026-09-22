@@ -155,6 +155,7 @@ export class BakeModel {
     this.tilt.add(object);
     // Rotação positiva em X leva o topo (+Y) para a frente (+Z): o modelo "deita" para voar.
     this.tilt.rotation.x = THREE.MathUtils.degToRad(spec.pitch ?? 0);
+    this.tilt.rotation.z = THREE.MathUtils.degToRad(spec.roll ?? 0);
     this.mixer = new THREE.AnimationMixer(object);
     this.seat = spec.seatBone ? findNode(object, spec.seatBone) : null;
     if (spec.seatBone && !this.seat) throw new Error(`${spec.id}: osso "${spec.seatBone}" não encontrado.`);
@@ -168,6 +169,12 @@ export class BakeModel {
     object.traverse((node) => {
       if (hidden.has(node.name)) node.visible = false;
     });
+    const only = spec.only;
+    if (only) {
+      object.traverse((node) => {
+        if ((node as THREE.Mesh).isMesh && !namedLike(node, (name) => only.includes(name))) node.visible = false;
+      });
+    }
 
     for (const attachment of spec.attach ?? []) {
       const bone = findNode(object, attachment.bone);
@@ -201,6 +208,7 @@ export class BakeModel {
         lit.metalness = 0;
         lit.roughness = Math.max(0.78, lit.roughness);
       }
+      if (this.spec.hue !== undefined) lit.color.multiply(new THREE.Color(this.spec.hue));
       const recolor = this.spec.recolor?.[source.name];
       if (recolor !== undefined) lit.color.setHex(recolor);
       const flat = this.spec.flat?.[source.name];
@@ -284,6 +292,24 @@ export class BakeModel {
       radius: Math.max(extent, size.y * scale) / 2 + lift,
       footprint: Math.min(size.x, size.z) * scale * (this.spec.footprint ?? 1),
     };
+  }
+
+  /**
+   * Ícone: centraliza o modelo na origem e escala para caber numa esfera de `radius` unidades,
+   * seja qual for o formato (espada comprida ou elmo redondo).
+   */
+  center(radius: number) {
+    this.scaler.scale.setScalar(1);
+    this.scaler.position.set(0, 0, 0);
+    this.root.updateMatrixWorld(true);
+    const box = visibleBounds(this.object);
+    if (box.isEmpty()) throw new Error(`${this.spec.id}: nenhuma malha visível (only: ${this.spec.only?.join(", ")}).`);
+    const size = box.getSize(new THREE.Vector3()).length() / 2;
+    const center = this.root.worldToLocal(box.getCenter(new THREE.Vector3()));
+    const scale = radius / Math.max(size, 1e-4);
+    this.scaler.scale.setScalar(scale);
+    this.scaler.position.copy(center.multiplyScalar(-scale));
+    this.root.updateMatrixWorld(true);
   }
 
   seatPosition(): THREE.Vector3 | null {

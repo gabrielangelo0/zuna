@@ -138,6 +138,7 @@
               <button id="hud-mount" type="button"><kbd>M</kbd> <span id="hud-mount-label">Montar</span></button>
               <button id="hud-powers" type="button"><kbd>P</kbd> Poderes</button>
               <button id="hud-ranking" type="button"><kbd>R</kbd> Ranking</button>
+              <button id="hud-inventory" type="button"><kbd>I</kbd> Itens</button>
               <button id="hud-shop" class="shop-button" type="button"><kbd>L</kbd> 💎 Comprar diamantes</button>
             </div>
           </div>
@@ -242,6 +243,33 @@
           <button type="button" class="tab" data-board="kills">Caçadas</button>
         </nav>
         <div id="ranking-body"></div>
+      </section>
+
+      <section id="inventory" class="card kit-panel" hidden>
+        <header class="panel-header">
+          <h2>Equipamentos</h2>
+          <div class="balances">
+            <span title="Ouro">🪙 <strong id="inventory-gold">0</strong></span>
+            <span title="Diamantes" class="diamonds">💎 <strong id="inventory-diamonds">0</strong></span>
+            <button id="inventory-buy" class="shop-plus" type="button" title="Comprar diamantes">+</button>
+          </div>
+          <button id="inventory-close" class="icon" type="button" aria-label="Fechar">✕</button>
+        </header>
+        <div class="inventory-body">
+          <aside class="inventory-side">
+            <div id="inventory-doll"></div>
+            <div id="inventory-stats"></div>
+          </aside>
+          <div class="inventory-main">
+            <nav class="tabs">
+              <button type="button" class="tab active" data-tab="bag">Mochila</button>
+              <button type="button" class="tab" data-tab="shop">Loja</button>
+            </nav>
+            <div id="inventory-content"></div>
+            <div id="inventory-detail"></div>
+          </div>
+        </div>
+        <p id="inventory-status" class="status" hidden></p>
       </section>
 
       <section id="shop" class="card kit-panel" hidden>
