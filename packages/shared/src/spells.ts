@@ -353,7 +353,7 @@ export const CRIT_CHANCE = 0.12;
 export const CRIT_MULTIPLIER = 1.8;
 
 /** Casas de um círculo (quadrado, como no Tibia) em volta de um ponto, sem o centro quando `hollow`. */
-function square(center: Point, radius: number, hollow: boolean): Point[] {
+export function square(center: Point, radius: number, hollow: boolean): Point[] {
   const tiles: Point[] = [];
   for (let dy = -radius; dy <= radius; dy++) {
     for (let dx = -radius; dx <= radius; dx++) {
@@ -370,7 +370,7 @@ function square(center: Point, radius: number, hollow: boolean): Point[] {
  * Leque na direção `dir` (índice de DIRS), abrindo como o fogo do Tibia: 1, 3, 3, 5, 5 casas de largura.
  * Funciona nas 8 direções pela projeção de cada casa sobre a direção.
  */
-function cone(origin: Point, dir: number, length: number): Point[] {
+export function cone(origin: Point, dir: number, length: number): Point[] {
   const d = DIRS[dir] ?? DIRS[2]!;
   const norm = Math.hypot(d.x, d.y);
   const ux = d.x / norm;

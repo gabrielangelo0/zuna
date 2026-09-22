@@ -1,5 +1,8 @@
 import { Room, ServerError, type Client } from "colyseus";
 import {
+  cone,
+  square,
+  type MonsterSpellEvent,
   CRIT_CHANCE,
   CRIT_MULTIPLIER,
   spellArea,
@@ -249,6 +252,8 @@ export interface MonsterSim {
   nextStepAt: number;
   nextAttackAt: number;
   nextThinkAt: number;
+  /** Próximo ataque especial em área liberado. */
+  nextSpecialAt: number;
   /** Dano causado por cada jogador: a XP é dividida nessa proporção. */
   damageBy: Map<string, number>;
   onDeath?: () => void;
@@ -913,6 +918,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       nextStepAt: 0,
       nextAttackAt: 0,
       nextThinkAt: 0,
+      nextSpecialAt: Date.now() + 2500,
       damageBy: new Map(),
     };
     this.monsters.set(id, monster);
@@ -1533,6 +1539,8 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       }
     }
 
+    if (target && monster.def.special && now >= monster.nextSpecialAt && this.monsterSpecial(monster, target)) return;
+
     if (target) {
       const t = target.state;
       if (chebyshev(s.x, s.y, t.x, t.y) <= 1) {
@@ -1648,6 +1656,53 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
   }
 
   // ------------------------------------------------------------ combate
+
+  /**
+   * Ataque especial em área (baforada, explosão): atinge todo jogador nas casas da área.
+   * Devolve falso quando o alvo está fora do alcance (aí o monstro só anda e morde).
+   */
+  private monsterSpecial(monster: MonsterSim, target: PlayerSim): boolean {
+    const special = monster.def.special!;
+    const s = monster.state;
+    const t = target.state;
+    const distance = chebyshev(s.x, s.y, t.x, t.y);
+    if (distance > special.range || inSafe(monster.world, t.x, t.y)) return false;
+    const now = Date.now();
+    monster.nextSpecialAt = now + special.cooldownMs * (0.85 + Math.random() * 0.3);
+    monster.nextAttackAt = Math.max(monster.nextAttackAt, now + 700);
+    this.face(s, t);
+    const tiles =
+      special.kind === "wave"
+        ? cone(s, dirIndex(t.x - s.x, t.y - s.y), special.range)
+        : special.kind === "blast"
+          ? square(t, special.radius ?? 1, false)
+          : square(s, special.range, true);
+    const sim = monster.world;
+    const inside = new Set(tiles.map((tile) => tileKey(sim, tile.x, tile.y)));
+    this.broadcast(ServerMsg.MonsterSpell, {
+      caster: monster.id,
+      element: special.element,
+      kind: special.kind,
+      tiles: tiles.flatMap((tile) => [tile.x, tile.y]),
+      x: t.x,
+      y: t.y,
+    } satisfies MonsterSpellEvent);
+    for (const player of this.players.values()) {
+      const p = player.state;
+      if (player.world !== sim || p.hp <= 0 || !inside.has(tileKey(sim, p.x, p.y)) || inSafe(sim, p.x, p.y)) continue;
+      const { armor } = this.statsOf(player);
+      const damage = Math.max(0, Math.round(special.power * (0.8 + Math.random() * 0.4) - armor * 0.5));
+      if (damage === 0) {
+        this.broadcastHit(player.id, monster.id, 0, "block");
+        continue;
+      }
+      p.hp -= damage;
+      this.broadcastHit(player.id, monster.id, damage, "damage");
+      if (!p.target && !player.moveDir && player.path.length === 0) p.target = monster.id;
+      if (p.hp <= 0) this.killPlayer(player, monster);
+    }
+    return true;
+  }
 
   private monsterAttack(monster: MonsterSim, player: PlayerSim) {
     // Revida sozinho quando está parado e sem alvo; não atrapalha quem está fugindo.

@@ -2,7 +2,7 @@ import type { Appearance, CatalogOverride, ItemKind } from "./cosmetics.ts";
 import type { EquipSlot, GearDef } from "./items.ts";
 import type { LootKind } from "./loot.ts";
 import type { MonsterKind } from "./monsters.ts";
-import type { SpellId } from "./spells.ts";
+import type { SpellElement, SpellId } from "./spells.ts";
 import type { WorldBlueprint } from "./world.ts";
 
 // ---------------------------------------------------------------- API HTTP
@@ -179,6 +179,17 @@ export interface ItemBuyMessage {
   count?: number;
 }
 
+/** Ataque especial de monstro (baforada, explosão): explosão em cada casa atingida. */
+export interface MonsterSpellEvent {
+  caster: string;
+  element: SpellElement;
+  kind: "wave" | "blast" | "area";
+  /** Casas atingidas (x, y, x, y…). */
+  tiles: number[];
+  x: number;
+  y: number;
+}
+
 /** Disparo de besta, para o cliente desenhar a flecha voando. */
 export interface ShotEvent {
   attacker: string;
@@ -309,4 +320,5 @@ export const ServerMsg = {
   /** Catálogo de equipamentos mudou no painel. */
   Gear: "gear",
   Shot: "shot",
+  MonsterSpell: "monsterSpell",
 } as const;

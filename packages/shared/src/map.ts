@@ -75,7 +75,9 @@ export type MapStyle =
   | "deserto"
   | "neve"
   | "cripta"
-  | "vulcao";
+  | "vulcao"
+  | "covil"
+  | "abismo";
 
 export const MAP_STYLES: readonly { id: MapStyle; name: string; description: string }[] = [
   { id: "campina", name: "Campina", description: "Cidade de pedra, estradas em cruz, lagos e floresta." },
@@ -85,6 +87,8 @@ export const MAP_STYLES: readonly { id: MapStyle; name: string; description: str
   { id: "neve", name: "Montanhas Geladas", description: "Neve, pinheiros brancos, lagos e cristais." },
   { id: "cripta", name: "Cripta", description: "Salões escuros, corredores de rocha e cristais." },
   { id: "vulcao", name: "Vulcão", description: "Cinza, rios de lava e rochas queimadas." },
+  { id: "covil", name: "Covil dos Dragões", description: "Cânions de rocha, poças de lava e cristais nas paredes." },
+  { id: "abismo", name: "Abismo", description: "Pedra escura rachada de lava, cristais e árvores retorcidas." },
   { id: "caverna", name: "Caverna", description: "Salões de pedra, veios de terra e paredes de rocha." },
   { id: "ilha", name: "Ilha", description: "Praia em volta, mata no meio, mar até a borda." },
   { id: "vazio", name: "Vazio", description: "Campo liso com uma praça no centro, para desenhar à mão." },
@@ -159,6 +163,8 @@ export function generateMap(shape: MapShape = DEFAULT_SHAPE): GameMap {
   else if (shape.style === "neve") paintSnow(map, shape, rng);
   else if (shape.style === "cripta") paintCrypt(map, shape, rng);
   else if (shape.style === "vulcao") paintVolcano(map, shape, rng);
+  else if (shape.style === "covil") paintLair(map, shape, rng);
+  else if (shape.style === "abismo") paintAbyss(map, shape, rng);
   else paintMeadow(map, shape, rng);
 
   return map;
@@ -542,6 +548,61 @@ function paintCrypt(map: GameMap, shape: MapShape, rng: () => number) {
   clearings(painter, Math.round((map.width * map.height) / 600), null);
   carveRoads(painter, Ground.Cave);
   fence(map, Ground.Cave, Obj.Rock);
+  clearPlaza(map, shape);
+}
+
+/** Covil dos Dragões: cânions de pedra com paredões de rocha, lama queimada, poças de lava e cristais. */
+function paintLair(map: GameMap, shape: MapShape, rng: () => number) {
+  const painter = { map, shape, rng };
+  const { seed } = shape;
+  each(map, (x, y, i) => {
+    const ridge = Math.abs(fbm(x / 11, y / 11, seed + 23) - 0.5);
+    const floor = fbm(x / 8, y / 8, seed + 71);
+    const pool = fbm(x / 7, y / 7, seed + 97);
+    const near = fromPlaza(shape, x, y) < shape.townRadius + 4;
+    map.ground[i] = floor > 0.55 ? Ground.Mud : Ground.Cave;
+    if (near) return;
+    if (ridge < 0.05) {
+      map.objects[i] = rng() < 0.85 ? Obj.Rock : Obj.Crystal;
+      return;
+    }
+    if (pool > 0.76) {
+      map.ground[i] = Ground.Lava;
+      return;
+    }
+    const r = rng();
+    if (r < 0.05) map.objects[i] = Obj.LavaRock;
+    else if (r < 0.065) map.objects[i] = Obj.Crystal;
+    else if (r < 0.075) map.objects[i] = Obj.DeadTree;
+  });
+  clearings(painter, Math.round((map.width * map.height) / 800), null);
+  carveRoads(painter, Ground.Ash);
+  fence(map, Ground.Cave, Obj.Rock);
+  clearPlaza(map, shape);
+}
+
+/** Abismo: pedra escura rachada por veios de lava, cristais e árvores retorcidas. */
+function paintAbyss(map: GameMap, shape: MapShape, rng: () => number) {
+  const painter = { map, shape, rng };
+  const { seed } = shape;
+  each(map, (x, y, i) => {
+    const crack = Math.abs(fbm(x / 9, y / 9, seed + 41) - 0.5);
+    const glow = fbm(x / 5, y / 5, seed + 13);
+    const near = fromPlaza(shape, x, y) < shape.townRadius + 4;
+    map.ground[i] = glow > 0.62 ? Ground.Ash : Ground.Cave;
+    if (!near && crack < 0.045) {
+      map.ground[i] = Ground.Lava;
+      return;
+    }
+    if (near) return;
+    const r = rng();
+    if (r < 0.035) map.objects[i] = Obj.Crystal;
+    else if (r < 0.06) map.objects[i] = Obj.TwistedTree;
+    else if (r < 0.085) map.objects[i] = Obj.LavaRock;
+  });
+  clearings(painter, Math.round((map.width * map.height) / 800), null);
+  carveRoads(painter, Ground.Cave);
+  fence(map, Ground.Cave, Obj.Crystal);
   clearPlaza(map, shape);
 }
 

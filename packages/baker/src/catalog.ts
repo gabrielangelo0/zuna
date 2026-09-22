@@ -389,6 +389,81 @@ export const MONSTER_SPRITES: EntrySpec[] = [
     headExtra: 20,
     anims: flying("Headbutt"),
   },
+
+  // Covil dos Dragões
+  {
+    id: "monster_dragonGreen",
+    file: `${MONSTERS}/Dragon.glb`,
+    height: 60,
+    lift: 24,
+    recolor: { Dragon_Main: 0x3f8a3a, Dragon_Secondary: 0xd8c070, Dragon_Horn: 0xe8e0c8 },
+    anims: flying("Headbutt"),
+  },
+  {
+    id: "monster_dragonIce",
+    file: `${MONSTERS}/Dragon.glb`,
+    height: 64,
+    lift: 26,
+    recolor: { Dragon_Main: 0x9fd6ee, Dragon_Secondary: 0xeaf6ff, Dragon_Horn: 0x4a6fa0 },
+    anims: flying("Headbutt"),
+  },
+  {
+    id: "monster_dragonRed",
+    file: `${MONSTERS}/Dragon_Evolved.glb`,
+    height: 128,
+    lift: 30,
+    cellScale: 1.3,
+    headExtra: 16,
+    recolor: { Dragon_Main: 0xb3261e, Dragon_Secondary: 0x3a1a14, Dragon_Horn: 0xe8d8b0 },
+    anims: flying("Headbutt"),
+  },
+  {
+    id: "monster_dragonLord",
+    file: `${MONSTERS}/Dragon_Evolved.glb`,
+    height: 134,
+    lift: 32,
+    cellScale: 1.3,
+    headExtra: 22,
+    recolor: { Dragon_Main: 0x2a2438, Dragon_Secondary: 0xc8322a, Dragon_Horn: 0xe8c060 },
+    anims: flying("Headbutt"),
+  },
+
+  // Abismo Demoníaco
+  {
+    id: "monster_hellfire",
+    file: `${MONSTERS}/Demon_B.glb`,
+    height: 120,
+    cellScale: 1.2,
+    headExtra: 16,
+    recolor: { Demon_Main: 0x2a1616, Black: 0xff6a1f },
+    anims: bigMonster("Weapon"),
+  },
+  {
+    id: "monster_shadowBeast",
+    file: `${MONSTERS}/Alien_B.glb`,
+    height: 104,
+    cellScale: 1.2,
+    recolor: { Alien_Main: 0x2c2240, Alien_Secondary: 0x9a4ad8 },
+    anims: bigMonster("Punch"),
+  },
+  {
+    id: "monster_behemoth",
+    file: `${MONSTERS}/Yeti.glb`,
+    height: 118,
+    cellScale: 1.3,
+    headExtra: 14,
+    recolor: { Yeti_Main: 0x4a3a30, Yeti_Secondary: 0x8a6a4a },
+    anims: BLOB,
+  },
+  {
+    id: "monster_archdemon",
+    file: `${MONSTERS}/Demon_B.glb`,
+    height: 150,
+    cellScale: 1.3,
+    headExtra: 22,
+    recolor: { Demon_Main: 0x5a1a6a, Black: 0x1a0a20 },
+    anims: bigMonster("Weapon"),
+  },
 ];
 
 // ---------------------------------------------------------------- mascotes

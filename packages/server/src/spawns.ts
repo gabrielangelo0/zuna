@@ -75,6 +75,18 @@ const STYLE_ZONES: Partial<Record<MapStyle, Zone[]>> = {
     { kind: "skeletonMage", count: 14, minDist: 26, maxDist: 52 },
     { kind: "necroLord", count: 1, minDist: 40, maxDist: 72 },
   ],
+  covil: [
+    { kind: "dragonGreen", count: 22, minDist: 9, maxDist: 36 },
+    { kind: "dragonIce", count: 16, minDist: 18, maxDist: 46 },
+    { kind: "dragonRed", count: 14, minDist: 26, maxDist: 54 },
+    { kind: "dragonLord", count: 1, minDist: 44, maxDist: 74 },
+  ],
+  abismo: [
+    { kind: "hellfire", count: 20, minDist: 9, maxDist: 36 },
+    { kind: "shadowBeast", count: 16, minDist: 16, maxDist: 46 },
+    { kind: "behemoth", count: 14, minDist: 26, maxDist: 54 },
+    { kind: "archdemon", count: 1, minDist: 44, maxDist: 74 },
+  ],
   vulcao: [
     { kind: "imp", count: 22, minDist: 9, maxDist: 34 },
     { kind: "cyclops", count: 14, minDist: 18, maxDist: 44 },

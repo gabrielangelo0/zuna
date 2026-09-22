@@ -1,3 +1,5 @@
+import type { SpellElement } from "./spells.ts";
+
 export type MonsterKind =
   // Zuna, o mundo inicial
   | "rat"
@@ -36,7 +38,17 @@ export type MonsterKind =
   // Vulcão
   | "imp"
   | "blueDemon"
-  | "dragon";
+  | "dragon"
+  // Covil dos Dragões
+  | "dragonGreen"
+  | "dragonIce"
+  | "dragonRed"
+  | "dragonLord"
+  // Abismo Demoníaco
+  | "hellfire"
+  | "shadowBeast"
+  | "behemoth"
+  | "archdemon";
 
 export interface MonsterDef {
   kind: MonsterKind;
@@ -60,6 +72,25 @@ export interface MonsterDef {
   respawnMs: number;
   /** Chefe: barra de vida maior, nome em destaque e anúncio quando cai. */
   boss?: boolean;
+  /** Ataque especial em área (baforada, explosão), com explosões em cada casa atingida. */
+  special?: MonsterSpecial;
+}
+
+/**
+ * wave: leque na direção do alvo (baforada) · blast: círculo em volta do alvo ·
+ * area: círculo em volta do próprio monstro.
+ */
+export interface MonsterSpecial {
+  name: string;
+  kind: "wave" | "blast" | "area";
+  element: SpellElement;
+  /** wave: comprimento · area: raio · blast: alcance até o alvo. */
+  range: number;
+  /** blast: raio em volta do alvo. */
+  radius?: number;
+  /** Dano médio antes da defesa. */
+  power: number;
+  cooldownMs: number;
 }
 
 export const MONSTERS: Record<MonsterKind, MonsterDef> = {
@@ -105,5 +136,17 @@ export const MONSTERS: Record<MonsterKind, MonsterDef> = {
   // Vulcão (nível 60 a 120)
   imp: { kind: "imp", name: "Diabrete", hp: 820, xp: 460, armor: 10, maxHit: 160, attackMs: 1600, stepMs: 300, aggroRange: 9, gold: [26, 84], chestChance: 0.11, crystalChance: 0.01, crystalDiamonds: 1, respawnMs: 40_000 },
   blueDemon: { kind: "blueDemon", name: "Demônio Azul", hp: 1200, xp: 640, armor: 16, maxHit: 185, attackMs: 2200, stepMs: 420, aggroRange: 8, gold: [36, 110], chestChance: 0.12, crystalChance: 0.012, crystalDiamonds: 2, respawnMs: 50_000 },
-  dragon: { kind: "dragon", name: "Dragão Ancião", hp: 18000, xp: 18000, armor: 30, maxHit: 320, attackMs: 2400, stepMs: 420, aggroRange: 12, gold: [900, 2200], chestChance: 1, crystalChance: 1, crystalDiamonds: 10, respawnMs: 600_000, boss: true },
+  dragon: { kind: "dragon", name: "Dragão Ancião", hp: 18000, xp: 18000, armor: 30, maxHit: 320, attackMs: 2400, stepMs: 420, aggroRange: 12, gold: [900, 2200], chestChance: 1, crystalChance: 1, crystalDiamonds: 10, respawnMs: 600_000, boss: true, special: { name: "Sopro de Fogo", kind: "wave", element: "fire", range: 5, power: 300, cooldownMs: 6000 } },
+
+  // Covil dos Dragões (nível 70 a 100): baforadas de fogo e gelo
+  dragonGreen: { kind: "dragonGreen", name: "Dragão Verde", hp: 1600, xp: 800, armor: 18, maxHit: 230, attackMs: 2000, stepMs: 380, aggroRange: 9, gold: [40, 130], chestChance: 0.12, crystalChance: 0.014, crystalDiamonds: 2, respawnMs: 45_000, special: { name: "Baforada", kind: "wave", element: "fire", range: 4, power: 200, cooldownMs: 7000 } },
+  dragonIce: { kind: "dragonIce", name: "Dragão de Gelo", hp: 1900, xp: 950, armor: 20, maxHit: 240, attackMs: 2100, stepMs: 400, aggroRange: 9, gold: [45, 145], chestChance: 0.13, crystalChance: 0.016, crystalDiamonds: 2, respawnMs: 50_000, special: { name: "Nevasca", kind: "blast", element: "ice", range: 5, radius: 1, power: 210, cooldownMs: 8000 } },
+  dragonRed: { kind: "dragonRed", name: "Dragão Vermelho", hp: 2400, xp: 1200, armor: 24, maxHit: 270, attackMs: 2200, stepMs: 400, aggroRange: 10, gold: [60, 180], chestChance: 0.15, crystalChance: 0.02, crystalDiamonds: 2, respawnMs: 55_000, special: { name: "Chamas do Dragão", kind: "wave", element: "fire", range: 5, power: 260, cooldownMs: 6500 } },
+  dragonLord: { kind: "dragonLord", name: "Senhor dos Dragões", hp: 30000, xp: 25000, armor: 36, maxHit: 450, attackMs: 2300, stepMs: 400, aggroRange: 13, gold: [1500, 3500], chestChance: 1, crystalChance: 1, crystalDiamonds: 14, respawnMs: 720_000, boss: true, special: { name: "Fúria do Senhor dos Dragões", kind: "wave", element: "fire", range: 7, power: 380, cooldownMs: 5000 } },
+
+  // Abismo Demoníaco (nível 85 a 120): demônios e bestas
+  hellfire: { kind: "hellfire", name: "Demônio Infernal", hp: 2600, xp: 1400, armor: 26, maxHit: 280, attackMs: 2100, stepMs: 380, aggroRange: 10, gold: [70, 200], chestChance: 0.15, crystalChance: 0.02, crystalDiamonds: 2, respawnMs: 55_000, special: { name: "Bola de Fogo Infernal", kind: "blast", element: "fire", range: 6, radius: 2, power: 240, cooldownMs: 7000 } },
+  shadowBeast: { kind: "shadowBeast", name: "Besta das Trevas", hp: 2300, xp: 1350, armor: 22, maxHit: 300, attackMs: 1700, stepMs: 300, aggroRange: 11, gold: [65, 190], chestChance: 0.14, crystalChance: 0.02, crystalDiamonds: 2, respawnMs: 50_000, special: { name: "Explosão Sombria", kind: "blast", element: "death", range: 4, radius: 1, power: 230, cooldownMs: 6000 } },
+  behemoth: { kind: "behemoth", name: "Behemoth", hp: 3000, xp: 1500, armor: 30, maxHit: 320, attackMs: 2400, stepMs: 440, aggroRange: 8, gold: [80, 220], chestChance: 0.16, crystalChance: 0.022, crystalDiamonds: 3, respawnMs: 60_000, special: { name: "Pisão", kind: "area", element: "earth", range: 2, power: 250, cooldownMs: 9000 } },
+  archdemon: { kind: "archdemon", name: "Arquidemônio", hp: 45000, xp: 40000, armor: 42, maxHit: 520, attackMs: 2200, stepMs: 400, aggroRange: 13, gold: [2500, 5000], chestChance: 1, crystalChance: 1, crystalDiamonds: 20, respawnMs: 900_000, boss: true, special: { name: "Tempestade do Abismo", kind: "area", element: "energy", range: 4, power: 420, cooldownMs: 6000 } },
 };

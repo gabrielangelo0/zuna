@@ -401,6 +401,14 @@ export const MONSTER_LEVEL: Record<MonsterKind, number> = {
   imp: 60,
   blueDemon: 66,
   dragon: 85,
+  dragonGreen: 72,
+  dragonIce: 76,
+  dragonRed: 82,
+  dragonLord: 100,
+  hellfire: 88,
+  shadowBeast: 92,
+  behemoth: 96,
+  archdemon: 115,
 };
 
 /** Um monstro derruba itens de até 20 níveis abaixo do dele (e só um pouco acima). */

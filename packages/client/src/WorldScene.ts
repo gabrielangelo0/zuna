@@ -7,6 +7,7 @@ import {
   setGearCatalog,
   type GearCatalogEvent,
   type ShotEvent,
+  type MonsterSpellEvent,
   type InventoryEvent,
   ClientMsg,
   Ground,
@@ -320,6 +321,7 @@ export class WorldScene extends Phaser.Scene {
     });
     room.onMessage(ServerMsg.Purchase, (event: PurchaseEvent) => this.onPurchase(event));
     room.onMessage(ServerMsg.Inventory, (event: InventoryEvent) => this.inventory.setInventory(event));
+    room.onMessage(ServerMsg.MonsterSpell, (event: MonsterSpellEvent) => this.onMonsterSpell(event));
     room.onMessage(ServerMsg.Shot, (event: ShotEvent) => {
       const now = this.time.now;
       const from = this.actors.get(event.attacker);
@@ -1022,6 +1024,26 @@ export class WorldScene extends Phaser.Scene {
       this.cameras.main.shake(250, 0.008);
       this.hud.showDeath(event.xpLost);
     }
+  }
+
+  /** Baforada ou explosão de monstro: as mesmas explosões dos poderes, nas casas atingidas. */
+  private onMonsterSpell(event: MonsterSpellEvent) {
+    const now = this.time.now;
+    const caster = this.actors.get(event.caster);
+    caster?.play("attack", now);
+    const from = caster ? caster.position(now) : tileToScreen(event.x, event.y);
+    const target = tileToScreen(event.x, event.y);
+    const points: { x: number; y: number }[] = [];
+    for (let i = 0; i + 1 < event.tiles.length; i += 2) points.push(tileToScreen(event.tiles[i]!, event.tiles[i + 1]!));
+    // Treme a tela de quem está dentro da área.
+    const local = this.actors.get(this.localId);
+    const me = local ? { x: local.tileX, y: local.tileY } : null;
+    let hitsMe = false;
+    for (let i = 0; me && i + 1 < event.tiles.length; i += 2) if (event.tiles[i] === me.x && event.tiles[i + 1] === me.y) hitsMe = true;
+    if (event.kind === "wave") this.fx.wave(from, points, event.element);
+    else if (event.kind === "blast") this.fx.tileBursts(points, target, event.element, { speed: 1.1, jitter: 60 });
+    else this.fx.tileBursts(points, from, event.element, { speed: 0.9, jitter: 80 });
+    if (hitsMe) this.cameras.main.shake(220, 0.007);
   }
 
   private onSpellEffect(event: SpellEffectEvent) {

@@ -18,7 +18,7 @@ import { createWorld, listWorlds, saveEvent, saveGroundItem, savePortal } from "
 // servidor desfazer.
 
 const WORLDS_KEY = "conteudo";
-const WORLDS_VERSION = "mundos-v1";
+const WORLDS_VERSION = "mundos-v2";
 const EVENTS_KEY = "eventos";
 const EVENTS_VERSION = "eventos-v1";
 
@@ -41,6 +41,8 @@ const REALMS: readonly Realm[] = [
   { slug: "montanhas-geladas", name: "Montanhas Geladas", style: "neve", size: 136, seed: 72253, minLevel: 35, hub: { x: 4, y: 2 } },
   { slug: "cripta-esquecida", name: "Cripta Esquecida", style: "cripta", size: 120, seed: 81131, minLevel: 45, hub: { x: -2, y: 4 } },
   { slug: "vulcao-rubro", name: "Vulcão Rubro", style: "vulcao", size: 144, seed: 90407, minLevel: 60, hub: { x: 2, y: 4 } },
+  { slug: "covil-dos-dragoes", name: "Covil dos Dragões", style: "covil", size: 136, seed: 101233, minLevel: 70, hub: { x: -2, y: -4 } },
+  { slug: "abismo-demoniaco", name: "Abismo Demoníaco", style: "abismo", size: 136, seed: 113579, minLevel: 85, hub: { x: 2, y: -4 } },
 ];
 
 /** Tesouros por mundo: baús escondidos longe da praça, que voltam a cada 10 minutos. */
