@@ -239,8 +239,9 @@ export function pack(items: PackItem[], maxWidth: number, padding = 2): Packed {
     width = Math.max(width, x);
   }
   const height = y + rowHeight + padding;
-  // Potências de dois se comportam melhor em GPUs antigas.
-  return { width: nextPowerOfTwo(width), height: nextPowerOfTwo(height), positions };
+  // Largura em potência de dois (as linhas encaixam certinho); a altura só arredonda para um
+  // múltiplo de 128. Dobrar a altura desperdiçava metade do atlas nos sprites grandes.
+  return { width: nextPowerOfTwo(width), height: Math.ceil(height / 128) * 128, positions };
 }
 
 function nextPowerOfTwo(value: number): number {

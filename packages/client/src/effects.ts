@@ -282,6 +282,30 @@ export function createFxTextures(scene: Phaser.Scene) {
     ctx.fillRect(0, 0, 256, 256);
   });
 
+  // Redemoinho do portal: braços de espiral saindo de um núcleo aceso. Gira dentro do arco.
+  canvasTexture(scene, "fx_vortex", 256, 256, (ctx) => {
+    const c = 128;
+    const haze = ctx.createRadialGradient(c, c, 4, c, c, 122);
+    haze.addColorStop(0, "rgba(255,255,255,0.95)");
+    haze.addColorStop(0.3, "rgba(255,255,255,0.42)");
+    haze.addColorStop(0.75, "rgba(255,255,255,0.14)");
+    haze.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = haze;
+    ctx.fillRect(0, 0, 256, 256);
+    for (let arm = 0; arm < 5; arm++) {
+      const offset = (arm / 5) * Math.PI * 2;
+      for (let i = 0; i < 110; i++) {
+        const t = i / 110;
+        const angle = offset + t * Math.PI * 2.3;
+        const radius = 10 + t * 108;
+        ctx.beginPath();
+        ctx.arc(c + Math.cos(angle) * radius, c + Math.sin(angle) * radius, 1.6 + (1 - t) * 8, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,255,255,${0.42 * (1 - t) ** 1.4})`;
+        ctx.fill();
+      }
+    }
+  });
+
   // Pedrinha para os destroços do Tremor.
   canvasTexture(scene, "fx_rock", 12, 12, (ctx) => {
     ctx.beginPath();

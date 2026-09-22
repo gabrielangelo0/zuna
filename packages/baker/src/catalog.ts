@@ -127,6 +127,18 @@ function flying(attack: string): Anims {
   };
 }
 
+/** Dragão modelado em dragon.ts: os clipes têm os nomes que escrevemos lá. */
+function dragonAnims(boss = false): Anims {
+  // O chefe é um sprite bem maior: leva menos quadros para o atlas caber.
+  return {
+    idle: { clip: "Idle", frames: 6, loop: true },
+    walk: { clip: "Walk", frames: 6, loop: true, speed: 1.2 },
+    attack: { clip: "Attack", frames: 5, loop: false },
+    hit: { clip: "HitReact", frames: 3, loop: false },
+    death: { clip: "Death", frames: boss ? 3 : 4, loop: false },
+  };
+}
+
 function animal(attack: string): Anims {
   return {
     idle: { clip: "Idle", frames: 12, loop: true },
@@ -382,50 +394,55 @@ export const MONSTER_SPRITES: EntrySpec[] = [
   { id: "monster_blueDemon", file: `${MONSTERS}/Blue_Demon.glb`, height: 112, cellScale: 1.15, anims: bigMonster("Weapon") },
   {
     id: "monster_dragon",
-    file: `${MONSTERS}/Dragon_Evolved.glb`,
-    height: 120,
-    lift: 30,
-    cellScale: 1.3,
-    headExtra: 20,
-    anims: flying("Headbutt"),
+    file: "builtin:dragon",
+    height: 112,
+    cellScale: 1.08,
+    footprint: 0.78,
+    headExtra: 14,
+    recolor: { Dragon_Main: 0xb8471f, Dragon_Belly: 0xe6b355, Dragon_Membrane: 0x76290f, Dragon_Horn: 0x2f2723, Dragon_Eye: 0xffd24a },
+    anims: dragonAnims(),
   },
 
   // Covil dos Dragões
   {
     id: "monster_dragonGreen",
-    file: `${MONSTERS}/Dragon.glb`,
-    height: 60,
-    lift: 24,
-    recolor: { Dragon_Main: 0x3f8a3a, Dragon_Secondary: 0xd8c070, Dragon_Horn: 0xe8e0c8 },
-    anims: flying("Headbutt"),
+    file: "builtin:dragon",
+    height: 104,
+    cellScale: 1.08,
+    footprint: 0.78,
+    headExtra: 14,
+    recolor: { Dragon_Main: 0x3f7f34, Dragon_Belly: 0xcbc06e, Dragon_Membrane: 0x2b5824, Dragon_Horn: 0xe8e0c8, Dragon_Eye: 0xf4e05a },
+    anims: dragonAnims(),
   },
   {
     id: "monster_dragonIce",
-    file: `${MONSTERS}/Dragon.glb`,
-    height: 64,
-    lift: 26,
-    recolor: { Dragon_Main: 0x9fd6ee, Dragon_Secondary: 0xeaf6ff, Dragon_Horn: 0x4a6fa0 },
-    anims: flying("Headbutt"),
+    file: "builtin:dragon",
+    height: 106,
+    cellScale: 1.08,
+    footprint: 0.78,
+    headExtra: 14,
+    recolor: { Dragon_Main: 0x7ec2e8, Dragon_Belly: 0xe4f4ff, Dragon_Membrane: 0x4d90c2, Dragon_Horn: 0x33587e, Dragon_Eye: 0xdff6ff },
+    anims: dragonAnims(),
   },
   {
     id: "monster_dragonRed",
-    file: `${MONSTERS}/Dragon_Evolved.glb`,
-    height: 128,
-    lift: 30,
-    cellScale: 1.3,
-    headExtra: 16,
-    recolor: { Dragon_Main: 0xb3261e, Dragon_Secondary: 0x3a1a14, Dragon_Horn: 0xe8d8b0 },
-    anims: flying("Headbutt"),
+    file: "builtin:dragon",
+    height: 116,
+    cellScale: 1.08,
+    footprint: 0.78,
+    headExtra: 14,
+    recolor: { Dragon_Main: 0xa8231b, Dragon_Belly: 0xd9a24a, Dragon_Membrane: 0x5e1512, Dragon_Horn: 0xf0e2c4, Dragon_Eye: 0xffcf4a },
+    anims: dragonAnims(),
   },
   {
     id: "monster_dragonLord",
-    file: `${MONSTERS}/Dragon_Evolved.glb`,
-    height: 134,
-    lift: 32,
-    cellScale: 1.3,
-    headExtra: 22,
-    recolor: { Dragon_Main: 0x2a2438, Dragon_Secondary: 0xc8322a, Dragon_Horn: 0xe8c060 },
-    anims: flying("Headbutt"),
+    file: "builtin:dragon",
+    height: 126,
+    cellScale: 1.08,
+    footprint: 0.78,
+    headExtra: 14,
+    recolor: { Dragon_Main: 0x241f30, Dragon_Belly: 0x8d6a2a, Dragon_Membrane: 0xa81f1a, Dragon_Horn: 0xe8c060, Dragon_Eye: 0xff5a2a },
+    anims: dragonAnims(true),
   },
 
   // Abismo Demoníaco
@@ -601,6 +618,13 @@ export const PROP_SPRITES: EntrySpec[] = [
     footprint: 0.3,
     flat: { Leaves_Pine: 0xdfeef6 },
     recolor: { Bark_NormalTree: 0x9a8a80 },
+    anims: {},
+  },
+  {
+    id: "object_portal",
+    file: "builtin:portalArch",
+    height: 104,
+    cellScale: 1.05,
     anims: {},
   },
   {

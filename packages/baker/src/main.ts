@@ -317,7 +317,7 @@ async function saveSheet(
     frames.map((frame) => ({ key: frame.key, w: bounds.get(frame.key)!.w, h: bounds.get(frame.key)!.h })),
     ATLAS_MAX_WIDTH,
   );
-  if (packed.height > 4096) throw new Error(`${spec.id}: atlas grande demais (${packed.width}×${packed.height}).`);
+  if (packed.height > 6144) throw new Error(`${spec.id}: atlas grande demais (${packed.width}×${packed.height}).`);
 
   const atlas = createRgba(packed.width, packed.height);
   const idsAtlas = tintable ? createRgba(packed.width, packed.height) : null;

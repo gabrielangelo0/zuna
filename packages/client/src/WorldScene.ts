@@ -78,6 +78,10 @@ import {
 // Profundidade: chão < decalques (flores, marcadores) < cenário e personagens (ordenados por Y) < nomes < textos.
 const DEPTH_GROUND = -1_000_000;
 const DEPTH_DECAL = -900_000;
+/** Portal: altura do meio do vão e tamanho do redemoinho lá dentro, em pixels. */
+const PORTAL_EYE = 50;
+const PORTAL_EYE_W = 52;
+const PORTAL_EYE_H = 68;
 const DEPTH_FLOATING = 950_000;
 
 /** Motivos de saída que o servidor manda junto com o fechamento da conexão. */
@@ -521,59 +525,112 @@ export class WorldScene extends Phaser.Scene {
 
     this.drawGround();
     void this.drawObjects(token);
-    this.drawPortals();
+    void this.drawPortals(token);
   }
 
-  /** Portais: círculo mágico girando no chão, brilho, faíscas subindo e o nome por cima. */
-  private drawPortals() {
+  /** Portais: arco de pedra com um redemoinho girando dentro, círculo mágico no chão e o nome por cima. */
+  private async drawPortals(token: number) {
+    const arch = this.portals.length > 0 ? await this.spriteTextures.acquire("object_portal").catch(() => undefined) : undefined;
+    // O mundo pode ter mudado enquanto o arco carregava.
+    if (token !== this.drawToken) return;
     for (const portal of this.portals) {
       const screen = tileToScreen(portal.x, portal.y);
       // Portal com nível mínimo é dourado; os livres são roxos.
-      const tint = portal.minLevel > 0 ? 0xffc857 : 0xb07dff;
+      const locked = portal.minLevel > 0;
+      const tint = locked ? 0xffc857 : 0xb07dff;
+      const deep = locked ? 0xff7a2a : 0x5f3cff;
+      // Meio do vão do arco, onde mora o redemoinho.
+      const heart = { x: screen.x, y: screen.y - PORTAL_EYE };
 
       const rune = this.add
         .image(screen.x, screen.y, "fx_rune")
         .setTint(tint)
         .setBlendMode(Phaser.BlendModes.ADD)
         .setDepth(DEPTH_DECAL + 1)
-        .setScale(58 / 256, 29 / 256)
-        .setAlpha(0.9);
+        .setScale(86 / 256, 42 / 256)
+        .setAlpha(0.3);
       const spin = { angle: 0 };
       this.tweens.add({
         targets: spin,
         angle: Math.PI * 2,
-        duration: 6000,
+        duration: 9000,
         repeat: -1,
         onUpdate: () => rune.setRotation(spin.angle),
       });
+      this.portalLayer.push(rune);
 
-      const glow = this.add
-        .image(screen.x, screen.y - 6, "fx_glow")
+      // Dois redemoinhos girando em sentidos contrários: o de fora escuro, o de dentro aceso.
+      for (const [size, alpha, duration, color] of [
+        [1, 0.5, 7000, deep],
+        [0.7, 0.72, -4600, tint],
+      ] as const) {
+        const swirl = this.add
+          .image(heart.x, heart.y, "fx_vortex")
+          .setTint(color)
+          .setBlendMode(Phaser.BlendModes.ADD)
+          .setDisplaySize(PORTAL_EYE_W * size, PORTAL_EYE_H * size)
+          .setAlpha(alpha)
+          .setDepth(screen.y + 0.3);
+        const turn = { angle: 0 };
+        this.tweens.add({
+          targets: turn,
+          angle: Math.sign(duration) * Math.PI * 2,
+          duration: Math.abs(duration),
+          repeat: -1,
+          onUpdate: () => swirl.setRotation(turn.angle),
+        });
+        this.portalLayer.push(swirl);
+      }
+
+      const floor = this.add
+        .image(screen.x, screen.y + 2, "fx_glow")
         .setTint(tint)
         .setBlendMode(Phaser.BlendModes.ADD)
         .setDepth(DEPTH_DECAL + 2)
-        .setScale(1.3, 0.8)
-        .setAlpha(0.55);
-      this.tweens.add({ targets: glow, alpha: 0.25, scaleX: 1.6, duration: 1100, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
+        .setScale(1.5, 0.5)
+        .setAlpha(0.4);
+      this.tweens.add({ targets: floor, alpha: 0.18, duration: 1400, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
+      this.portalLayer.push(floor);
 
-      const sparks = this.add.particles(screen.x, screen.y, "fx_glow", {
-        x: { min: -18, max: 18 },
-        y: { min: -6, max: 6 },
-        speedY: { min: -60, max: -25 },
-        lifespan: { min: 700, max: 1200 },
-        scale: { start: 0.14, end: 0 },
-        alpha: { start: 0.9, end: 0 },
+      const glow = this.add
+        .image(heart.x, heart.y, "fx_glow")
+        .setTint(0xffffff)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setDepth(screen.y + 0.4)
+        .setScale(0.55, 0.7)
+        .setAlpha(0.45);
+      this.tweens.add({ targets: glow, alpha: 0.18, scale: 0.8, duration: 1400, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
+      this.portalLayer.push(glow);
+
+      if (arch) {
+        const { meta } = arch;
+        this.portalLayer.push(
+          this.add
+            .image(screen.x, screen.y, arch.key, frameKey("idle", "S", 0))
+            .setOrigin(meta.anchorX / meta.cellW, meta.anchorY / meta.cellH)
+            .setDepth(screen.y),
+        );
+      }
+
+      // Faíscas subindo pelo vão e sumindo no alto do arco.
+      const sparks = this.add.particles(heart.x, heart.y + 16, "fx_glow", {
+        x: { min: -11, max: 11 },
+        y: { min: -8, max: 8 },
+        speedY: { min: -46, max: -16 },
+        lifespan: { min: 800, max: 1400 },
+        scale: { start: 0.13, end: 0 },
+        alpha: { start: 0.85, end: 0 },
         tint: [tint, 0xffffff],
         blendMode: Phaser.BlendModes.ADD,
-        frequency: 110,
+        frequency: 130,
       });
-      sparks.setDepth(screen.y + 1);
-      this.portalLayer.push(rune, glow, sparks);
+      sparks.setDepth(screen.y + 0.5);
+      this.portalLayer.push(sparks);
 
       const title = portal.name || "Portal";
       const label = portal.minLevel > 0 ? `${title}\nnível ${portal.minLevel}` : title;
       const text = this.add
-        .text(screen.x, screen.y - 30, label, {
+        .text(screen.x, screen.y - 86, label, {
           fontFamily: GAME_FONT,
           fontSize: "12px",
           fontStyle: "bold",

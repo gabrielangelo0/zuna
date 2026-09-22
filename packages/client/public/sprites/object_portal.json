@@ -1,0 +1,1 @@
+{"id":"object_portal","image":"object_portal.webp","cellW":232,"cellH":232,"anchorX":116,"anchorY":186,"headHeight":112,"tintable":false,"tintGain":1.25,"anims":{"idle":{"frames":1,"fps":0,"loop":false}},"frames":{"idle/S/0":{"x":2,"y":2,"w":107,"h":116,"dx":65,"dy":77}},"width":128,"height":128}

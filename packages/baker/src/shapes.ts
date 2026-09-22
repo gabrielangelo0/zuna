@@ -1,13 +1,21 @@
 import * as THREE from "three";
 import type { GLTF } from "three/addons/loaders/GLTFLoader.js";
+import { dragonScene } from "./dragon.ts";
 
 // Peças modeladas aqui, quando nenhum pacote CC0 tem o que o jogo precisa.
 // Entram no baker como "builtin:<nome>" no lugar do arquivo.
 
+interface Built {
+  scene: THREE.Group;
+  animations: THREE.AnimationClip[];
+}
+
 export function builtinModel(name: string): GLTF {
   const build = BUILTIN[name];
   if (!build) throw new Error(`modelo interno desconhecido: ${name}`);
-  return { scene: build(), animations: [] } as unknown as GLTF;
+  const result = build();
+  const built: Built = result instanceof THREE.Group ? { scene: result, animations: [] } : result;
+  return built as unknown as GLTF;
 }
 
 /** O Cristal de Zuna: a gema do logo saindo de umas pedras. */
@@ -55,6 +63,100 @@ function crystal(): THREE.Group {
     rock.scale.y = 0.55;
     rock.rotation.y = x * 7;
     group.add(rock);
+  }
+  return group;
+}
+
+/**
+ * Portal: arco de pedra lavrada com runas acesas e o vão escuro no meio.
+ * O redemoinho colorido é desenhado pelo cliente por cima do vão.
+ */
+function portalArch(): THREE.Group {
+  const group = new THREE.Group();
+  const stone = new THREE.MeshStandardMaterial({ name: "portal_stone", color: 0x6b6e86, roughness: 1, metalness: 0, flatShading: true });
+  const dark = new THREE.MeshStandardMaterial({ name: "portal_dark", color: 0x4a4c60, roughness: 1, metalness: 0, flatShading: true });
+  const rune = new THREE.MeshStandardMaterial({
+    name: "portal_rune",
+    color: 0xa9e8ff,
+    roughness: 0.4,
+    metalness: 0,
+    flatShading: true,
+    emissive: 0x5fc8ff,
+    emissiveIntensity: 1.1,
+  });
+  const voidness = new THREE.MeshStandardMaterial({ name: "portal_void", color: 0x150e22, roughness: 1, metalness: 0, side: THREE.DoubleSide });
+
+  const RADIUS = 0.68;
+  const SPRING = 1.86;
+  const block = (w: number, h: number, d: number) => new THREE.BoxGeometry(w, h, d);
+
+  // O vão: um disco escuro encostado no fundo do arco, para o portal não ficar vazado.
+  const gap = new THREE.Mesh(new THREE.CircleGeometry(RADIUS - 0.04, 20), voidness);
+  gap.scale.set(1, 1.55, 1);
+  gap.position.set(0, 1.12, -0.14);
+  group.add(gap);
+  const gapFloor = new THREE.Mesh(block(1.3, 0.52, 0.26), voidness);
+  gapFloor.position.set(0, 0.26, -0.14);
+  group.add(gapFloor);
+
+  for (const side of [-1, 1]) {
+    const x = side * RADIUS;
+    // Pedestal em dois degraus.
+    const base = new THREE.Mesh(block(0.56, 0.16, 0.56), dark);
+    base.position.set(x, 0.08, 0);
+    group.add(base);
+    const plinth = new THREE.Mesh(block(0.48, 0.14, 0.48), stone);
+    plinth.position.set(x, 0.23, 0);
+    group.add(plinth);
+    // Coluna de blocos, cada um um pouco torto: parece assentado à mão.
+    for (let i = 0; i < 5; i++) {
+      const y = 0.3 + i * 0.31;
+      const piece = new THREE.Mesh(block(0.38 - i * 0.012, 0.29, 0.38 - i * 0.012), i % 2 ? dark : stone);
+      piece.position.set(x, y + 0.155, 0);
+      piece.rotation.y = (i % 2 ? 1 : -1) * 0.04;
+      group.add(piece);
+    }
+    // Capitel de onde o arco nasce.
+    const capital = new THREE.Mesh(block(0.46, 0.14, 0.46), stone);
+    capital.position.set(x, SPRING - 0.07, 0);
+    group.add(capital);
+    // Runas acesas na face da frente.
+    for (const y of [0.72, 1.18, 1.64]) {
+      const mark = new THREE.Mesh(block(0.14, 0.12, 0.03), rune);
+      mark.position.set(x, y, 0.19);
+      group.add(mark);
+    }
+    // Entulho no pé.
+    const rubble = new THREE.Mesh(new THREE.IcosahedronGeometry(0.13, 0), dark);
+    rubble.position.set(x + side * 0.34, 0.06, 0.24);
+    rubble.scale.y = 0.6;
+    rubble.rotation.y = side;
+    group.add(rubble);
+  }
+
+  // Arco: aduelas seguindo o meio círculo, e a pedra-chave no alto com uma gema.
+  const voussoirs = 9;
+  for (let i = 0; i < voussoirs; i++) {
+    const angle = Math.PI * (0.04 + (0.92 * i) / (voussoirs - 1));
+    const top = Math.abs(angle - Math.PI / 2) < 0.2;
+    const piece = new THREE.Mesh(block(0.27, 0.32, 0.42), i % 2 ? stone : dark);
+    piece.position.set(Math.cos(angle) * RADIUS, SPRING + Math.sin(angle) * RADIUS, 0);
+    piece.rotation.z = angle - Math.PI / 2;
+    group.add(piece);
+    if (top) {
+      const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.11, 0), rune);
+      gem.scale.set(1, 1.3, 0.55);
+      gem.position.set(0, SPRING + RADIUS + 0.06, 0.16);
+      group.add(gem);
+    }
+  }
+  // Fio de runas correndo pela borda de dentro do arco.
+  for (let i = 0; i < 7; i++) {
+    const angle = Math.PI * (0.1 + (0.8 * i) / 6);
+    const mark = new THREE.Mesh(block(0.09, 0.05, 0.03), rune);
+    mark.position.set(Math.cos(angle) * (RADIUS - 0.19), SPRING + Math.sin(angle) * (RADIUS - 0.19), 0.2);
+    mark.rotation.z = angle - Math.PI / 2;
+    group.add(mark);
   }
   return group;
 }
@@ -215,7 +317,9 @@ function backpack(): THREE.Group {
   return group;
 }
 
-const BUILTIN: Record<string, () => THREE.Group> = {
+const BUILTIN: Record<string, () => THREE.Group | Built> = {
+  dragon: dragonScene,
+  portalArch,
   crystal,
   backpack,
   amulet,
