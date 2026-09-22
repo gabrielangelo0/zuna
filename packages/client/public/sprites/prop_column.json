@@ -1,0 +1,1 @@
+{"id":"prop_column","image":"prop_column.webp","cellW":200,"cellH":200,"anchorX":100,"anchorY":160,"headHeight":100,"tintable":false,"tintGain":1.25,"anims":{"idle":{"frames":2,"fps":0,"loop":false}},"frames":{"idle/S/0":{"x":2,"y":2,"w":51,"h":108,"dx":82,"dy":62},"idle/S/1":{"x":55,"y":2,"w":51,"h":108,"dx":82,"dy":62}},"width":128,"height":128}

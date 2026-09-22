@@ -82,6 +82,8 @@ import {
 const DEPTH_GROUND = -1_000_000;
 const DEPTH_DECAL = -900_000;
 /** Portal: altura do meio do vão e tamanho do redemoinho lá dentro, em pixels. */
+/** Altura da bacia do braseiro no sprite, em pixels. */
+const BRAZIER_FLAME = 46;
 const PORTAL_EYE = 50;
 const PORTAL_EYE_W = 52;
 const PORTAL_EYE_H = 68;
@@ -107,6 +109,7 @@ const GROUND_FRAME: Record<Exclude<Ground, typeof Ground.Water | typeof Ground.L
   [Ground.Cave]: "cave",
   [Ground.Ash]: "ash",
   [Ground.Mud]: "mud",
+  [Ground.Marble]: "marble",
 };
 
 /** Líquidos: cada um com ondas, beira e espuma próprias. A lava anda na metade da velocidade. */
@@ -132,7 +135,7 @@ const SHORE_CORNERS: readonly { dx: number; dy: number; part: string; sides: [nu
 ];
 
 /** Sprite de cenário para cada objeto do mapa. As flores ficam rentes ao chão, por baixo de tudo. */
-const OBJECT_PROPS: Partial<Record<Obj, { id: string; decal?: boolean; flip?: boolean }>> = {
+const OBJECT_PROPS: Partial<Record<Obj, { id: string; decal?: boolean; flip?: boolean; fire?: boolean }>> = {
   [Obj.Tree]: { id: "prop_tree", flip: true },
   [Obj.Pine]: { id: "prop_pine", flip: true },
   [Obj.Rock]: { id: "prop_rock", flip: true },
@@ -148,6 +151,10 @@ const OBJECT_PROPS: Partial<Record<Obj, { id: string; decal?: boolean; flip?: bo
   [Obj.Lily]: { id: "prop_lily", decal: true, flip: true },
   [Obj.Fern]: { id: "prop_fern", decal: true, flip: true },
   [Obj.Barrel]: { id: "prop_barrel", flip: true },
+  [Obj.Column]: { id: "prop_column" },
+  [Obj.Altar]: { id: "prop_altar" },
+  [Obj.Brazier]: { id: "prop_brazier", fire: true },
+  [Obj.Mosaic]: { id: "prop_mosaic", decal: true },
 };
 
 /** Monstros do mundo inicial, baixados antes de o jogador entrar. */
@@ -767,8 +774,36 @@ export class WorldScene extends Phaser.Scene {
             .setFlipX(prop.flip === true && (hash & 1) === 1)
             .setDepth(prop.decal ? DEPTH_DECAL : screen.y),
         );
+        if (prop.fire) this.lightBrazier(screen.x, screen.y);
       }
     }
+  }
+
+  /** Chama viva na bacia do braseiro: brasa, língua de fogo e uma fagulha subindo. */
+  private lightBrazier(x: number, y: number) {
+    const bowl = y - BRAZIER_FLAME;
+    const glow = this.add
+      .image(x, bowl + 2, "fx_glow")
+      .setTint(0xff8a2a)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(y + 0.2)
+      .setScale(0.85, 0.7)
+      .setAlpha(0.6);
+    this.tweens.add({ targets: glow, alpha: 0.35, scale: 0.72, duration: 700, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
+
+    const flame = this.add.particles(x, bowl, "fx_glow", {
+      x: { min: -5, max: 5 },
+      y: { min: -2, max: 3 },
+      speedY: { min: -38, max: -16 },
+      lifespan: { min: 380, max: 680 },
+      scale: { start: 0.3, end: 0 },
+      alpha: { start: 0.9, end: 0 },
+      tint: [0xffd27a, 0xff8a2a, 0xff5a1f],
+      blendMode: Phaser.BlendModes.ADD,
+      frequency: 55,
+    });
+    flame.setDepth(y + 0.3);
+    this.sceneryLayer.push(glow, flame);
   }
 
   /** Quadro atual de um líquido. A lava conta devagar: um quadro a cada dois da água. */

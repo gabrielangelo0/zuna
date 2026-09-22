@@ -621,6 +621,31 @@ export const PROP_SPRITES: EntrySpec[] = [
     anims: {},
   },
   {
+    id: "prop_column",
+    file: "builtin:templeColumn",
+    height: 92,
+    rotations: [0, 90],
+    anims: {},
+  },
+  {
+    id: "prop_altar",
+    file: "builtin:templeAltar",
+    height: 76,
+    anims: {},
+  },
+  {
+    id: "prop_brazier",
+    file: "builtin:templeBrazier",
+    height: 54,
+    anims: {},
+  },
+  {
+    id: "prop_mosaic",
+    file: "builtin:templeMosaic",
+    height: 6,
+    anims: {},
+  },
+  {
     id: "object_portal",
     file: "builtin:portalArch",
     height: 104,

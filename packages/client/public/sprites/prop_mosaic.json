@@ -1,0 +1,1 @@
+{"id":"prop_mosaic","image":"prop_mosaic.webp","cellW":164,"cellH":164,"anchorX":82,"anchorY":131,"headHeight":14,"tintable":false,"tintGain":1.25,"anims":{"idle":{"frames":1,"fps":0,"loop":false}},"frames":{"idle/S/0":{"x":2,"y":2,"w":76,"h":41,"dx":44,"dy":109}},"width":128,"height":128}

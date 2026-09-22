@@ -1,0 +1,1 @@
+{"id":"prop_altar","image":"prop_altar.webp","cellW":170,"cellH":170,"anchorX":85,"anchorY":136,"headHeight":84,"tintable":false,"tintGain":1.25,"anims":{"idle":{"frames":1,"fps":0,"loop":false}},"frames":{"idle/S/0":{"x":2,"y":2,"w":66,"h":88,"dx":54,"dy":59}},"width":128,"height":128}

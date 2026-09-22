@@ -107,6 +107,7 @@ export const GROUND_PAINTS: readonly Paint[] = [
   { id: Ground.Cave, name: "Cripta", color: "#34323c" },
   { id: Ground.Ash, name: "Cinza", color: "#4a4040" },
   { id: Ground.Mud, name: "Lama", color: "#4f4a2c" },
+  { id: Ground.Marble, name: "Mármore", color: "#ded8c8" },
 ];
 
 export const OBJECT_PAINTS: readonly Paint[] = [
@@ -126,6 +127,10 @@ export const OBJECT_PAINTS: readonly Paint[] = [
   { id: Obj.Lily, name: "Vitória-régia", color: "#3f8a4a" },
   { id: Obj.Fern, name: "Samambaia", color: "#3f7a36" },
   { id: Obj.Barrel, name: "Barril", color: "#8a6a3a" },
+  { id: Obj.Column, name: "Coluna do templo", color: "#d9d3c2" },
+  { id: Obj.Altar, name: "Altar", color: "#2fdc84" },
+  { id: Obj.Brazier, name: "Braseiro", color: "#d3a948" },
+  { id: Obj.Mosaic, name: "Mosaico", color: "#c9b06a" },
 ];
 
 /** Maior id de chão e de cenário: o painel recusa o que passar disso. */

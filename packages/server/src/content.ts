@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import {
+  chebyshev,
   generateMap,
   inSafeZone,
   isWalkable,
@@ -12,7 +13,7 @@ import {
 import { db } from "./db/index.ts";
 import { serverMeta, worlds } from "./db/schema.ts";
 import { saveQuest } from "./quests.ts";
-import { createWorld, listWorlds, saveEvent, saveGroundItem, savePortal } from "./worldRepository.ts";
+import { createWorld, listWorlds, loadPortals, saveEvent, saveGroundItem, savePortal } from "./worldRepository.ts";
 
 // Conteúdo que vem pronto com o jogo: seis mundos temáticos ligados à praça de Zuna
 // e eventos que usam esses mundos. Cada pacote roda uma vez só (marcado em server_meta).
@@ -25,6 +26,8 @@ const EVENTS_KEY = "eventos";
 const EVENTS_VERSION = "eventos-v1";
 const QUESTS_KEY = "missoes";
 const QUESTS_VERSION = "missoes-v1";
+const TEMPLE_KEY = "templo";
+const TEMPLE_VERSION = "templo-v1";
 
 interface Realm {
   slug: string;
@@ -81,6 +84,7 @@ export async function ensureContent() {
   await ensureRealms();
   await ensureEvents();
   await ensureQuests();
+  await movePortalsOffTemple();
 }
 
 /** Uma caçada e um desafio de chefe em cada mundo. O painel muda tudo depois. */
@@ -195,7 +199,7 @@ async function ensureRealms() {
     // Ida: na praça de Zuna, em volta do templo. Volta: logo abaixo do centro do mundo novo.
     const gate = walkableNear(hubMap, hub.spawnX + realm.hub.x, hub.spawnY + realm.hub.y);
     const arrival = walkableNear(map, center, center - 2);
-    const back = walkableNear(map, center, center + 3);
+    const back = walkableNear(map, center, center + 5);
     await savePortal({
       worldId: hub.id,
       x: gate.x,
@@ -240,6 +244,24 @@ async function ensureRealms() {
 
   await markDone(WORLDS_KEY, WORLDS_VERSION);
   console.log("Conteúdo: mundos temáticos criados.");
+}
+
+/**
+ * O templo ocupa três casas em volta do centro. Os portais de volta dos mundos antigos
+ * foram plantados a três casas do centro e ficavam em cima dele: aqui saem para fora.
+ */
+async function movePortalsOffTemple() {
+  if ((await metaValue(TEMPLE_KEY)) === TEMPLE_VERSION) return;
+  for (const world of await listWorlds()) {
+    const map = generateMap(shapeOf(world));
+    for (const portal of await loadPortals(world.id)) {
+      if (chebyshev(portal.x, portal.y, world.spawnX, world.spawnY) > 3) continue;
+      const spot = walkableNear(map, world.spawnX, world.spawnY + 5);
+      await savePortal({ ...portal, x: spot.x, y: spot.y });
+    }
+  }
+  await markDone(TEMPLE_KEY, TEMPLE_VERSION);
+  console.log("Conteúdo: portais afastados do templo.");
 }
 
 /** Eventos que aproveitam os mundos novos. */

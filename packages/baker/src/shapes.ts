@@ -161,6 +161,182 @@ function portalArch(): THREE.Group {
   return group;
 }
 
+// ---------------------------------------------------------------- templo
+
+/** Mármore claro, granito escuro e ouro: a paleta do templo de Zuna. */
+function templeStone() {
+  return {
+    pale: new THREE.MeshStandardMaterial({ name: "temple_marble", color: 0xd9d3c2, roughness: 0.75, metalness: 0, flatShading: true }),
+    dark: new THREE.MeshStandardMaterial({ name: "temple_granite", color: 0x6d7189, roughness: 0.95, metalness: 0, flatShading: true }),
+    gold: new THREE.MeshStandardMaterial({ name: "temple_gold", color: 0xd3a948, roughness: 0.45, metalness: 0, flatShading: true }),
+  };
+}
+
+function templeGlow(color: number, strength = 1): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({
+    name: "temple_glow",
+    color,
+    roughness: 0.3,
+    metalness: 0,
+    flatShading: true,
+    emissive: new THREE.Color(color),
+    emissiveIntensity: strength,
+  });
+}
+
+/** Coluna de mármore: base em degraus, fuste canelado, anel de ouro e capitel. */
+function templeColumn(): THREE.Group {
+  const group = new THREE.Group();
+  const { pale, dark, gold } = templeStone();
+
+  const step = (size: number, height: number, y: number, material: THREE.Material) => {
+    const block = new THREE.Mesh(new THREE.BoxGeometry(size, height, size), material);
+    block.position.y = y;
+    group.add(block);
+    return block;
+  };
+  step(0.72, 0.14, 0.07, dark);
+  step(0.6, 0.12, 0.2, pale);
+
+  const SHAFT = 1.55;
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.23, SHAFT, 12), pale);
+  shaft.position.y = 0.26 + SHAFT / 2;
+  group.add(shaft);
+  // Caneluras: barras finas em volta do fuste, que é o que dá o ar de coluna lavrada.
+  for (let i = 0; i < 12; i++) {
+    const angle = (i / 12) * Math.PI * 2;
+    const flute = new THREE.Mesh(new THREE.BoxGeometry(0.035, SHAFT * 0.92, 0.035), dark);
+    flute.position.set(Math.cos(angle) * 0.2, 0.26 + SHAFT / 2, Math.sin(angle) * 0.2);
+    flute.rotation.y = -angle;
+    group.add(flute);
+  }
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.21, 0.035, 6, 14), gold);
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 0.26 + SHAFT - 0.12;
+  group.add(ring);
+
+  // Capitel: sino e ábaco.
+  const bell = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.2, 0.2, 12), pale);
+  bell.position.y = 0.26 + SHAFT + 0.1;
+  group.add(bell);
+  step(0.5, 0.14, 0.26 + SHAFT + 0.27, pale);
+  step(0.42, 0.08, 0.26 + SHAFT + 0.38, gold);
+  return group;
+}
+
+/** Altar do templo: bloco lavrado, runas acesas e o Cristal de Zuna flutuando em cima. */
+function templeAltar(): THREE.Group {
+  const group = new THREE.Group();
+  const { pale, dark, gold } = templeStone();
+  const rune = templeGlow(0x3ce88f, 0.9);
+
+  const base = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.18, 1.0), dark);
+  base.position.y = 0.09;
+  group.add(base);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.62, 0.78), pale);
+  body.position.y = 0.5;
+  group.add(body);
+  // Frisos de ouro e runas na face da frente.
+  for (const y of [0.24, 0.76]) {
+    const band = new THREE.Mesh(new THREE.BoxGeometry(1.24, 0.05, 0.82), gold);
+    band.position.y = y;
+    group.add(band);
+  }
+  for (const x of [-0.34, 0, 0.34]) {
+    const mark = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.2, 0.03), rune);
+    mark.position.set(x, 0.5, 0.4);
+    group.add(mark);
+  }
+  const top = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.14, 0.9), pale);
+  top.position.y = 0.88;
+  group.add(top);
+
+  // Pedestal e o cristal por cima, um pouco no ar.
+  const pedestal = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 0.2, 8), gold);
+  pedestal.position.y = 1.05;
+  group.add(pedestal);
+  const gem = crystal();
+  gem.scale.setScalar(1.35);
+  gem.position.y = 1.32;
+  group.add(gem);
+  // Halo achatado sob o cristal, como se ele derramasse luz no altar.
+  const halo = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.02, 14), templeGlow(0x2fdc84, 0.7));
+  halo.position.y = 1.18;
+  group.add(halo);
+  return group;
+}
+
+/** Mosaico do piso: losango de mármore com anéis de ouro e a estrela do Cristal no meio. */
+function templeMosaic(): THREE.Group {
+  const group = new THREE.Group();
+  const { pale, dark, gold } = templeStone();
+  const gem = templeGlow(0x2fdc84, 1.1);
+
+  // As peças são finas e ficam quase rentes ao chão, uma acima da outra para não brigarem.
+  const disc = (radius: number, height: number, y: number, material: THREE.Material, sides = 24) => {
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, height, sides), material);
+    mesh.position.y = y;
+    group.add(mesh);
+    return mesh;
+  };
+  disc(0.7, 0.03, 0.015, pale, 4).rotation.y = Math.PI / 4;
+  disc(0.62, 0.03, 0.035, gold);
+  disc(0.56, 0.02, 0.05, dark);
+  disc(0.24, 0.02, 0.06, gold);
+  disc(0.19, 0.02, 0.07, dark);
+
+  // Estrela de oito pontas no centro.
+  for (let i = 0; i < 8; i++) {
+    const angle = (i / 8) * Math.PI * 2;
+    const ray = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.02, 0.42), gem);
+    ray.position.set(Math.cos(angle) * 0.21, 0.075, Math.sin(angle) * 0.21);
+    ray.rotation.y = -angle;
+    group.add(ray);
+  }
+  const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.11, 0), gem);
+  core.scale.set(1, 0.3, 1);
+  core.position.y = 0.085;
+  core.rotation.y = Math.PI / 4;
+  group.add(core);
+  return group;
+}
+
+/** Braseiro: tripé de ferro, bacia de ouro e brasas acesas (o fogo é do cliente). */
+function templeBrazier(): THREE.Group {
+  const group = new THREE.Group();
+  const { dark, gold } = templeStone();
+  const iron = new THREE.MeshStandardMaterial({ name: "temple_iron", color: 0x3a3a46, roughness: 0.9, metalness: 0, flatShading: true });
+
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.34, 0.12, 10), dark);
+  base.position.y = 0.06;
+  group.add(base);
+  for (let i = 0; i < 3; i++) {
+    const angle = (i / 3) * Math.PI * 2 + 0.4;
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.06, 0.62, 6), iron);
+    leg.position.set(Math.cos(angle) * 0.15, 0.4, Math.sin(angle) * 0.15);
+    leg.rotation.set(Math.sin(angle) * 0.22, 0, -Math.cos(angle) * 0.22);
+    group.add(leg);
+  }
+  const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.2, 0.26, 12), gold);
+  bowl.position.y = 0.82;
+  group.add(bowl);
+  const lip = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.04, 6, 16), gold);
+  lip.rotation.x = Math.PI / 2;
+  lip.position.y = 0.95;
+  group.add(lip);
+  // Brasas: pedrinhas acesas dentro da bacia.
+  const ember = templeGlow(0xff8a2a, 1.4);
+  for (let i = 0; i < 7; i++) {
+    const angle = (i / 7) * Math.PI * 2;
+    const radius = i === 0 ? 0 : 0.13 + (i % 3) * 0.05;
+    const coal = new THREE.Mesh(new THREE.IcosahedronGeometry(0.075, 0), ember);
+    coal.position.set(Math.cos(angle) * radius, 0.94 + (i % 2) * 0.03, Math.sin(angle) * radius);
+    coal.scale.y = 0.6;
+    group.add(coal);
+  }
+  return group;
+}
+
 /** Material de metal estilizado (fosco, como o resto da arte). */
 function metal(name: string, color: number): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({ name, color, roughness: 0.55, metalness: 0, flatShading: true });
@@ -320,6 +496,10 @@ function backpack(): THREE.Group {
 const BUILTIN: Record<string, () => THREE.Group | Built> = {
   dragon: dragonScene,
   portalArch,
+  templeColumn,
+  templeAltar,
+  templeBrazier,
+  templeMosaic,
   crystal,
   backpack,
   amulet,

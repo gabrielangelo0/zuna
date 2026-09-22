@@ -10,7 +10,7 @@ import { createWaterTextures } from "./water.ts";
 export const TILE_CELL_W = TILE_W + 2;
 export const TILE_CELL_H = TILE_H + 2;
 
-export const GROUND_FRAMES = { grass: 4, grassDark: 3, dirt: 3, sand: 3, stone: 3, snow: 3, cave: 3, ash: 3, mud: 3 } as const;
+export const GROUND_FRAMES = { grass: 4, grassDark: 3, dirt: 3, sand: 3, stone: 3, snow: 3, cave: 3, ash: 3, mud: 3, marble: 3 } as const;
 export type GroundFrameName = keyof typeof GROUND_FRAMES;
 
 function pick<T>(items: readonly T[]): T {
@@ -53,6 +53,7 @@ const GROUND_STYLES: Record<GroundFrameName, GroundStyle> = {
   cave: { base: 0x3c3a46, detail: [0x322f3b, 0x46434f, 0x2b2932], count: 4, kind: "brick" },
   ash: { base: 0x4e4444, detail: [0x3f3636, 0x5d5353, 0x7a3a24], count: 16, kind: "pebble" },
   mud: { base: 0x5c5432, detail: [0x4b4428, 0x6b6139, 0x413b22], count: 16, kind: "pebble" },
+  marble: { base: 0xe4dece, detail: [0xefe9da, 0xd8d1be, 0xf6f2e8], count: 4, kind: "brick" },
 };
 
 function paintGround(ctx: Ctx, ox: number, style: GroundStyle) {

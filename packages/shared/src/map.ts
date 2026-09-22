@@ -16,6 +16,8 @@ export const Ground = {
   /** Cinza vulcânica. */
   Ash: 9,
   Mud: 10,
+  /** Mármore polido: o piso do templo. */
+  Marble: 11,
 } as const;
 export type Ground = (typeof Ground)[keyof typeof Ground];
 
@@ -37,6 +39,12 @@ export const Obj = {
   Lily: 13,
   Fern: 14,
   Barrel: 15,
+  /** Peças do templo da praça. */
+  Column: 16,
+  Altar: 17,
+  Brazier: 18,
+  /** Mosaico do piso do templo (não atrapalha a passagem). */
+  Mosaic: 19,
 } as const;
 export type Obj = (typeof Obj)[keyof typeof Obj];
 
@@ -52,6 +60,9 @@ const BLOCKING_OBJECTS: ReadonlySet<number> = new Set([
   Obj.Crystal,
   Obj.LavaRock,
   Obj.Barrel,
+  Obj.Column,
+  Obj.Altar,
+  Obj.Brazier,
 ]);
 
 /** Chão onde ninguém pisa. */
@@ -182,7 +193,7 @@ function clearPlaza(map: GameMap, shape: MapShape) {
     }
   }
 
-  // Colunas nos cantos da praça.
+  // Bandeiras nos cantos da praça.
   const c = Math.max(1, townRadius - 1);
   for (const [px, py] of [[-c, -c], [c, -c], [-c, c], [c, c]]) {
     const x = spawnX + px;
@@ -190,6 +201,39 @@ function clearPlaza(map: GameMap, shape: MapShape) {
     if (x < 0 || y < 0 || x >= map.width || y >= map.height) continue;
     map.objects[y * map.width + x] = Obj.Pillar;
   }
+
+  templeAt(map, shape);
+}
+
+/**
+ * O templo no meio da praça: piso de mármore, degrau de granito em volta, quatro colunas
+ * nos cantos, o altar do Cristal ao norte e dois braseiros na entrada. O centro (onde o
+ * jogador nasce) e as quatro saídas ficam livres.
+ */
+function templeAt(map: GameMap, shape: MapShape) {
+  const { spawnX, spawnY, townRadius } = shape;
+  if (townRadius < 4) return;
+  const put = (dx: number, dy: number, ground: Ground, object?: Obj) => {
+    const x = spawnX + dx;
+    const y = spawnY + dy;
+    if (x < 0 || y < 0 || x >= map.width || y >= map.height) return;
+    const i = y * map.width + x;
+    map.ground[i] = ground;
+    if (object !== undefined) map.objects[i] = object;
+  };
+
+  for (let dy = -3; dy <= 3; dy++) {
+    for (let dx = -3; dx <= 3; dx++) {
+      const edge = Math.max(Math.abs(dx), Math.abs(dy)) === 3;
+      put(dx, dy, edge ? Ground.Stone : Ground.Marble, Obj.None);
+    }
+  }
+  for (const [dx, dy] of [[-2, -2], [2, -2], [-2, 2], [2, 2]]) put(dx, dy, Ground.Marble, Obj.Column);
+  put(0, -2, Ground.Marble, Obj.Altar);
+  // Os braseiros ficam na entrada, no degrau: dentro do templo eles tapariam o mosaico.
+  // Na tela isométrica o par simétrico é (a, b) e (b, a) — é isso que deixa um de cada lado.
+  for (const [dx, dy] of [[-2, 3], [3, -2]]) put(dx, dy, Ground.Stone, Obj.Brazier);
+  put(0, 0, Ground.Marble, Obj.Mosaic);
 }
 
 /** Cerca na borda, para ninguém andar até o fim do mundo. */
