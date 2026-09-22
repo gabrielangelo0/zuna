@@ -8,26 +8,39 @@ export interface DiamondPack {
   diamonds: number;
   /** Bônus em % sobre o pacote básico, só para mostrar na vitrine. */
   bonusPercent: number;
-  /** Destaque na vitrine. */
-  tag?: string;
+  /** Destaque na vitrine ("Mais vendido"). Vazio = sem destaque. */
+  tag: string;
+  /** Fora da loja: some da vitrine, mas os pedidos antigos continuam valendo. */
+  enabled: boolean;
 }
 
+/** Pacotes de fábrica: entram no banco no primeiro arranque; depois quem manda é o painel. */
 export const DIAMOND_PACKS: readonly DiamondPack[] = [
-  { id: "d50", priceCents: 490, diamonds: 50, bonusPercent: 0 },
-  { id: "d105", priceCents: 990, diamonds: 105, bonusPercent: 5 },
-  { id: "d275", priceCents: 2490, diamonds: 275, bonusPercent: 10, tag: "Mais vendido" },
-  { id: "d575", priceCents: 4990, diamonds: 575, bonusPercent: 15 },
-  { id: "d1200", priceCents: 9990, diamonds: 1200, bonusPercent: 20 },
-  { id: "d3100", priceCents: 24990, diamonds: 3100, bonusPercent: 24 },
-  { id: "d6500", priceCents: 49990, diamonds: 6500, bonusPercent: 30, tag: "Melhor valor" },
+  { id: "d50", priceCents: 490, diamonds: 50, bonusPercent: 0, tag: "", enabled: true },
+  { id: "d105", priceCents: 990, diamonds: 105, bonusPercent: 5, tag: "", enabled: true },
+  { id: "d275", priceCents: 2490, diamonds: 275, bonusPercent: 10, tag: "Mais vendido", enabled: true },
+  { id: "d575", priceCents: 4990, diamonds: 575, bonusPercent: 15, tag: "", enabled: true },
+  { id: "d1200", priceCents: 9990, diamonds: 1200, bonusPercent: 20, tag: "", enabled: true },
+  { id: "d3100", priceCents: 24990, diamonds: 3100, bonusPercent: 24, tag: "", enabled: true },
+  { id: "d6500", priceCents: 49990, diamonds: 6500, bonusPercent: 30, tag: "Melhor valor", enabled: true },
 ];
 
-/** A primeira recarga da conta, de qualquer valor, vale diamantes em dobro. */
-export const FIRST_PURCHASE_MULTIPLIER = 2;
-
-export function diamondPack(id: string): DiamondPack | undefined {
-  return DIAMOND_PACKS.find((pack) => pack.id === id);
+/** Configuração da loja de diamantes, mudada pelo painel. */
+export interface PaymentSettings {
+  /** Loja aberta para os jogadores (com a chave da Asaas configurada). */
+  open: boolean;
+  /** A primeira recarga da conta vale tantas vezes os diamantes (1 = sem oferta). */
+  firstMultiplier: number;
 }
+
+export const DEFAULT_PAYMENT_SETTINGS: PaymentSettings = { open: true, firstMultiplier: 2 };
+
+/** Limites do painel. */
+export const PACK_MAX_PRICE_CENTS = 500_000;
+export const PACK_MIN_PRICE_CENTS = 100;
+export const PACK_MAX_DIAMONDS = 1_000_000;
+export const PACK_MAX_MULTIPLIER = 5;
+export const PACK_LIMIT = 20;
 
 export type PaymentMethod = "pix" | "card";
 
@@ -77,13 +90,15 @@ export function validatePayerName(name: string): string | null {
 // ---------------------------------------------------------------- API do jogador
 
 export interface PaymentShopResponse {
-  /** Falso quando o servidor ainda não tem a chave da Asaas configurada. */
+  /** Falso quando o servidor ainda não tem a chave da Asaas ou o painel fechou a loja. */
   enabled: boolean;
   /** Pagamentos de teste (sandbox): nada é cobrado de verdade. */
   sandbox: boolean;
   packs: DiamondPack[];
-  /** A próxima compra ainda vale em dobro. */
+  /** A próxima compra ainda ganha a oferta de primeira recarga. */
   firstPurchase: boolean;
+  /** Quantas vezes a primeira recarga multiplica os diamantes (1 = sem oferta). */
+  firstMultiplier: number;
   /** A conta já tem nome e CPF cadastrados no pagamento: não precisa pedir de novo. */
   hasPayer: boolean;
   diamonds: number;
@@ -108,6 +123,8 @@ export interface PaymentPix {
 export interface PaymentOrderView {
   id: number;
   pack: string;
+  /** Diamantes do pacote na hora do pedido (sem a oferta de primeira recarga). */
+  diamonds: number;
   method: PaymentMethod;
   priceCents: number;
   status: PaymentStatus;
@@ -133,6 +150,7 @@ export interface AdminPaymentRow {
   accountId: number;
   username: string;
   pack: string;
+  diamonds: number;
   method: PaymentMethod;
   priceCents: number;
   status: PaymentStatus;
@@ -156,4 +174,29 @@ export interface AdminPaymentsResponse {
   sandbox: boolean;
   /** O webhook tem token configurado. */
   webhook: boolean;
+}
+
+export interface AdminPackRow {
+  pack: DiamondPack;
+  /** Pedidos pagos deste pacote e quanto renderam. */
+  sold: number;
+  revenueCents: number;
+}
+
+export interface AdminPacksResponse {
+  packs: AdminPackRow[];
+  settings: PaymentSettings;
+}
+
+/** Criar (id vazio), mudar, mover ou apagar um pacote. */
+export interface AdminPackRequest {
+  id: string;
+  priceCents?: number;
+  diamonds?: number;
+  bonusPercent?: number;
+  tag?: string;
+  enabled?: boolean;
+  /** -1 sobe, 1 desce. */
+  move?: number;
+  remove?: boolean;
 }

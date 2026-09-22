@@ -110,6 +110,11 @@ export function getPixQrCode(id: string): Promise<AsaasPix> {
   return request<AsaasPix>("GET", `/payments/${encodeURIComponent(id)}/pixQrCode`);
 }
 
+/** Devolve o valor todo ao pagador. A Asaas manda o aviso de estorno depois, pelo webhook. */
+export function refundPayment(id: string, description: string): Promise<AsaasPayment> {
+  return request<AsaasPayment>("POST", `/payments/${encodeURIComponent(id)}/refund`, { description });
+}
+
 /** O que o status da Asaas significa para o jogo. */
 export function settlementOf(payment: AsaasPayment): "paid" | "refunded" | "canceled" | "pending" {
   if (payment.deleted) return "canceled";

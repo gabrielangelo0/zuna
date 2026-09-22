@@ -1,6 +1,4 @@
 import {
-  FIRST_PURCHASE_MULTIPLIER,
-  diamondPack,
   formatBRL,
   formatCpf,
   onlyDigits,
@@ -34,6 +32,16 @@ function make<K extends keyof HTMLElementTagNameMap>(tag: K, className = "", tex
   if (className) node.className = className;
   if (text) node.textContent = text;
   return node;
+}
+
+/** "×2", "×1,5". */
+function times(multiplier: number): string {
+  return `×${multiplier.toLocaleString("pt-BR")}`;
+}
+
+/** Diamantes que o pacote rende agora, com a oferta de primeira recarga quando ela vale. */
+function packTotal(diamonds: number, shop: PaymentShopResponse | null): number {
+  return shop?.firstPurchase ? Math.round(diamonds * shop.firstMultiplier) : diamonds;
 }
 
 function button(label: string, className: string, onClick: () => void): HTMLButtonElement {
@@ -149,7 +157,17 @@ export class DiamondShop {
     if (shop.sandbox) box.append(make("p", "shop-sandbox", "Modo de teste: nenhum valor é cobrado de verdade."));
     if (shop.firstPurchase) {
       const banner = make("div", "shop-first");
-      banner.append(make("strong", "", "Primeira recarga em dobro!"), make("span", "", "Qualquer pacote vale o dobro de diamantes na sua primeira compra."));
+      const double = shop.firstMultiplier === 2;
+      banner.append(
+        make("strong", "", double ? "Primeira recarga em dobro!" : `Primeira recarga ${times(shop.firstMultiplier)}!`),
+        make(
+          "span",
+          "",
+          double
+            ? "Qualquer pacote vale o dobro de diamantes na sua primeira compra."
+            : `Qualquer pacote vale ${times(shop.firstMultiplier)} diamantes na sua primeira compra.`,
+        ),
+      );
       box.append(banner);
     }
     const grid = make("div", "shop-packs");
@@ -160,16 +178,16 @@ export class DiamondShop {
 
   private packCard(pack: DiamondPack, index: number, first: boolean): HTMLElement {
     const card = make("article", "shop-pack");
-    card.style.setProperty("--gem-size", `${30 + index * 5}px`);
+    card.style.setProperty("--gem-size", `${30 + Math.min(index, 6) * 5}px`);
     if (pack.tag) card.append(make("span", "shop-tag", pack.tag));
     const gems = make("div", "shop-gems", "💎".repeat(Math.min(3, 1 + Math.floor(index / 2))));
     const amount = make("div", "shop-amount");
-    const total = first ? pack.diamonds * FIRST_PURCHASE_MULTIPLIER : pack.diamonds;
+    const total = packTotal(pack.diamonds, this.shop);
     amount.append(make("strong", "", formatNumber(total)));
     if (first) amount.append(make("s", "", formatNumber(pack.diamonds)));
     const extras = make("div", "shop-extras");
     if (pack.bonusPercent > 0) extras.append(make("span", "shop-bonus", `+${pack.bonusPercent}% bônus`));
-    if (first) extras.append(make("span", "shop-bonus double", "×2"));
+    if (first) extras.append(make("span", "shop-bonus double", times(this.shop?.firstMultiplier ?? 1)));
     const buy = button(formatBRL(pack.priceCents), "primary small", () => this.go({ kind: "checkout", pack, method: "pix" }));
     card.append(gems, amount, extras, buy);
     return card;
@@ -184,7 +202,7 @@ export class DiamondShop {
     const submit = make("button", "primary");
 
     const summary = make("div", "shop-summary");
-    const total = shop?.firstPurchase ? pack.diamonds * FIRST_PURCHASE_MULTIPLIER : pack.diamonds;
+    const total = packTotal(pack.diamonds, shop);
     summary.append(
       make("span", "shop-summary-gems", `💎 ${formatNumber(total)} diamantes`),
       make("strong", "shop-summary-price", formatBRL(pack.priceCents)),
@@ -302,8 +320,7 @@ export class DiamondShop {
 
   private renderWaiting(order: PaymentOrderView): HTMLElement {
     const box = make("div", "shop-waiting");
-    const pack = diamondPack(order.pack);
-    box.append(make("p", "shop-waiting-title", `${formatBRL(order.priceCents)} · 💎 ${formatNumber(pack?.diamonds ?? 0)}${this.shop?.firstPurchase ? " ×2" : ""}`));
+    box.append(make("p", "shop-waiting-title", `${formatBRL(order.priceCents)} · 💎 ${formatNumber(packTotal(order.diamonds, this.shop))}`));
 
     if (order.method === "pix" && order.pix) {
       const qr = make("img", "shop-qr");

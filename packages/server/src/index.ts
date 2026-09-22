@@ -8,6 +8,7 @@ import { apiRouter } from "./api.ts";
 import { connectDatabase, disconnectDatabase } from "./db/index.ts";
 import { ensureAdmins } from "./adminRepository.ts";
 import { ensureContent } from "./content.ts";
+import { ensurePaymentSeed } from "./paymentCatalog.ts";
 import { startPaymentReconciler } from "./payments.ts";
 import { ensureWorldSeed, listItemOverrides } from "./worldRepository.ts";
 import { WorldRoom, waitForPendingWrites } from "./WorldRoom.ts";
@@ -34,6 +35,7 @@ await connectDatabase();
 // tudo o que o painel mudou (mapas, eventos, preços da loja) já sai do banco.
 await ensureWorldSeed();
 await ensureContent();
+await ensurePaymentSeed();
 applyCatalogOverrides(await listItemOverrides());
 
 // ADMIN_USERS=gabriel,outro marca essas contas como administradoras ao subir o servidor.

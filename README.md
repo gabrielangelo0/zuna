@@ -87,13 +87,18 @@ A praça de Zuna tem seis portais, cada um para um mundo temático maior que a c
 
 ## Compra de diamantes (Asaas)
 
-- Tecla **L**, o botão "Comprar diamantes" da HUD ou o **+** do guarda-roupa abrem a loja. Os 7 pacotes estão em `packages/shared/src/payments.ts` (R$ 4,90 = 50 até R$ 499,90 = 6.500). A **primeira recarga da conta vale em dobro**.
+- Tecla **L**, o botão "Comprar diamantes" da HUD ou o **+** do guarda-roupa abrem a loja. Os pacotes ficam no banco (`diamond_packs`): o primeiro arranque grava os 7 de fábrica de `packages/shared/src/payments.ts` (R$ 4,90 = 50 até R$ 499,90 = 6.500) e depois quem manda é o painel. A **primeira recarga da conta vale em dobro** (o multiplicador também é do painel).
 - **Pix:** o QR Code e o copia e cola aparecem dentro do jogo. **Cartão:** abre a página segura da Asaas (o jogo nunca vê o número do cartão).
 - Na primeira compra o jogador informa nome e CPF (a Asaas exige para o Pix). O CPF vai só para a Asaas; o jogo guarda apenas o id do cliente (`accounts.payer_id`).
 - O diamante só entra quando a Asaas confirma. A confirmação chega pelo webhook, pela tela de pagamento (que pergunta a cada 3 s) ou pela conferência automática a cada 90 s. Qualquer um deles credita **uma vez só** (`payment_orders.status` passa de `pending` para `paid` numa única atualização), e o jogador online vê o saldo mudar na hora.
 - Estorno ou chargeback tira os diamantes de volta (o saldo não fica negativo). `accounts.spent_cents` soma tudo o que a conta já pagou e nunca desce, então o dobro da primeira recarga não se repete.
 - Sem `ASAAS_API_KEY`, em desenvolvimento, os pedidos são de mentira e a tela mostra "Simular pagamento (teste)". Em produção sem chave, a loja aparece como "abre em breve".
-- O painel tem a aba **Vendas**: receita de hoje, 30 dias e total, pagantes, ticket médio, estornos e todos os pedidos, com um botão para conferir o pedido na Asaas na hora.
+- O painel tem a aba **Vendas**:
+  - receita de hoje, 30 dias e total, pagantes, ticket médio e estornos;
+  - **pacotes**: criar, editar (preço, diamantes, selo de bônus, destaque), mudar a ordem, tirar da loja e apagar, com vendidos e arrecadado de cada um;
+  - **oferta de primeira recarga** (multiplicador de 1 a 5; 1 desliga) e **abrir ou fechar a loja**;
+  - **pedidos**: conferir na Asaas na hora e **estornar** (a Asaas devolve o dinheiro e os diamantes saem da conta).
+- Mudar ou apagar um pacote não mexe em pedidos já feitos: cada pedido guarda o preço e os diamantes da hora da compra.
 
 **Para ligar em produção:**
 

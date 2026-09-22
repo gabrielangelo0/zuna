@@ -321,3 +321,16 @@ export const paymentOrders = pgTable(
     index("payment_orders_status_idx").on(table.status, table.createdAt),
   ],
 );
+
+/** Pacotes de diamantes à venda. Nascem da lista de fábrica e depois são editados no painel. */
+export const diamondPacks = pgTable("diamond_packs", {
+  id: text("id").primaryKey(),
+  priceCents: integer("price_cents").notNull(),
+  diamonds: integer("diamonds").notNull(),
+  bonusPercent: smallint("bonus_percent").notNull().default(0),
+  tag: text("tag").notNull().default(""),
+  enabled: boolean("enabled").notNull().default(true),
+  /** Ordem na vitrine. */
+  sort: smallint("sort").notNull().default(0),
+  createdAt: createdAt(),
+});
