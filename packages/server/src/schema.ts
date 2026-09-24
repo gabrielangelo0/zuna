@@ -67,14 +67,18 @@ export const LootState = schema(
 );
 export type LootState = SchemaType<typeof LootState>;
 
+// Jogadores, monstros e drops vão só para quem está perto: cada cliente tem a sua StateView
+// e o servidor decide, a cada VIEW_SYNC_MS, o que cabe na janela dele. `online` fica de fora do
+// filtro porque a HUD mostra o total do mundo, não o que dá para ver da tela.
 export const WorldState = schema(
   {
-    players: t.map(PlayerState),
-    monsters: t.map(MonsterState),
-    loot: t.map(LootState),
+    players: t.map(PlayerState).view(),
+    monsters: t.map(MonsterState).view(),
+    loot: t.map(LootState).view(),
     eventName: t.string(),
     eventEndsAt: t.float64(),
     xpMultiplier: t.float32(),
+    online: t.uint16(),
   },
   "World",
 );

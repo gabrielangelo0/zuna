@@ -25,6 +25,20 @@ export const PLAYER_ATTACK_MS = 1400;
 /** Distância em que um monstro desiste de perseguir. */
 export const CHASE_LOSE_RANGE = 12;
 
+/**
+ * Janela de visão, em tiles, nos eixos da tela isométrica: `u` mede (x − y) e `v` mede (x + y).
+ * O cliente pede a janela do tamanho da tela dele; o servidor limita a estes extremos para
+ * ninguém pedir o mapa inteiro nem ficar com um buraco em volta.
+ */
+export const VIEW_U_MIN = 14;
+export const VIEW_U_MAX = 64;
+export const VIEW_V_MIN = 16;
+export const VIEW_V_MAX = 72;
+/** Folga além da borda da tela, para o monstro já estar em cena quando aparece. */
+export const VIEW_MARGIN = 6;
+/** De quanto em quanto tempo o servidor recalcula o que cada jogador enxerga. */
+export const VIEW_SYNC_MS = 150;
+
 /** Fração do XP total perdida ao morrer. Nunca desce de nível. */
 export const DEATH_XP_LOSS = 0.1;
 export const CORPSE_MS = 10_000;

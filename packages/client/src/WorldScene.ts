@@ -13,6 +13,9 @@ import {
   type MilestonesEvent,
   type InventoryEvent,
   ClientMsg,
+  TILE_H,
+  TILE_W,
+  type ViewMessage,
   Ground,
   LOOT,
   MONSTERS,
@@ -63,6 +66,7 @@ import { LootLayer } from "./loot.ts";
 import { Minimap } from "./minimap.ts";
 import { Ranking } from "./ranking.ts";
 import { KeyboardInput } from "./keyboard.ts";
+import { ChunkGrid } from "./chunks.ts";
 import { SpriteTextures, loadSheet } from "./sprites.ts";
 import { GROUND_FRAMES, TILE_CELL_H, TILE_CELL_W, createTextures, type GroundFrameName } from "./textures.ts";
 import { DiamondShop } from "./shop.ts";
@@ -88,6 +92,19 @@ const PORTAL_EYE = 50;
 const PORTAL_EYE_W = 52;
 const PORTAL_EYE_H = 68;
 const DEPTH_FLOATING = 950_000;
+
+/** Altura do sprite mais alto do cenário, em pixels: o bloco entra em cena antes da borda por causa dele. */
+const TALLEST_PROP = 160;
+
+/** O que um bloco do mundo tem montado. Vazio até a primeira vez que ele aparece na tela. */
+interface ChunkParts {
+  built: boolean;
+  layers: Phaser.GameObjects.Blitter[];
+  scenery: Phaser.GameObjects.GameObject[];
+  flames: Phaser.GameObjects.Particles.ParticleEmitter[];
+  water: { bob: Phaser.GameObjects.Bob; prefix: string; slow: boolean }[];
+  foam: { bob: Phaser.GameObjects.Bob; part: string; slow: boolean }[];
+}
 
 /** Motivos de saída que o servidor manda junto com o fechamento da conexão. */
 const CLOSE_REASON: Record<number, string> = {
@@ -218,8 +235,11 @@ export class WorldScene extends Phaser.Scene {
   private lootLayer!: LootLayer;
   private minimap!: Minimap;
   /** Chão, água e espuma: três camadas de losangos, refeitas quando o mundo muda. */
-  private groundLayers: Phaser.GameObjects.Blitter[] = [];
-  private sceneryLayer: Phaser.GameObjects.GameObject[] = [];
+  /** Blocos do mundo e o que cada um tem montado. */
+  private grid: ChunkGrid | null = null;
+  private chunks: ChunkParts[] = [];
+  /** Distância entre as profundidades de duas camadas de chão, para os blocos não se misturarem. */
+  private chunkSpan = 1;
   private portalLayer: Phaser.GameObjects.GameObject[] = [];
   private portals: PortalDef[] = [];
   /** Troca a cada redesenho: o desenho antigo, se ainda estiver carregando, é descartado. */
@@ -229,8 +249,9 @@ export class WorldScene extends Phaser.Scene {
   private nextMinimapAt = 0;
   private corpses: Actor[] = [];
   /** Cada tile de líquido guarda o começo do nome do quadro; a animação só troca o número do fim. */
-  private readonly waterBobs: { bob: Phaser.GameObjects.Bob; prefix: string; slow: boolean }[] = [];
-  private readonly foamBobs: { bob: Phaser.GameObjects.Bob; part: string; slow: boolean }[] = [];
+  /** Última janela de visão avisada ao servidor, para não repetir a mensagem a cada quadro. */
+  private sentView = { u: 0, v: 0 };
+
   private waterFrame = 0;
   private foamFrame = 0;
   private readonly cameraAnchor = { x: 0, y: 0 };
@@ -274,7 +295,9 @@ export class WorldScene extends Phaser.Scene {
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => this.onPointerDown(pointer));
     this.input.on("wheel", (_pointer: unknown, _objects: unknown, _dx: number, dy: number) => {
       camera.setZoom(Phaser.Math.Clamp(camera.zoom * (dy > 0 ? 0.9 : 1.1), 0.6, 1.6));
+      this.sendView();
     });
+    this.scale.on("resize", () => this.sendView());
     this.time.addEvent({ delay: 170, loop: true, callback: () => this.animateWater() });
     this.time.addEvent({ delay: 260, loop: true, callback: () => this.animateFoam() });
   }
@@ -283,7 +306,7 @@ export class WorldScene extends Phaser.Scene {
     this.room = room;
     this.shop.setToken(token);
     this.localId = room.sessionId;
-    const state = room.state as { players: { size: number }; eventName: string; eventEndsAt: number };
+    const state = room.state as { players: { size: number }; eventName: string; eventEndsAt: number; online: number };
     const callbacks = Callbacks.get(room as Room<any, any>);
 
     callbacks.onAdd("players", (value, key) => {
@@ -292,13 +315,11 @@ export class WorldScene extends Phaser.Scene {
       this.entities.set(id, { data: player, isPlayer: true });
       this.refreshEntity(id);
       callbacks.onChange(player, () => this.refreshEntity(id));
-      this.hud.setOnline(state.players.size);
     });
     callbacks.onRemove("players", (_value, key) => {
       const id = String(key);
       this.entities.delete(id);
       this.removeActor(id);
-      this.hud.setOnline(state.players.size);
     });
     callbacks.onAdd("monsters", (value, key) => {
       const monster = value as MonsterData;
@@ -322,6 +343,9 @@ export class WorldScene extends Phaser.Scene {
     const updateEvent = () => this.hud.setEvent(state.eventName, state.eventEndsAt);
     callbacks.listen("eventName", updateEvent);
     callbacks.listen("eventEndsAt", updateEvent);
+    // O mapa de jogadores agora só traz quem está por perto: o total vem à parte.
+    callbacks.listen("online", () => this.hud.setOnline(state.online));
+    this.sendView();
 
     room.onMessage(ServerMsg.Hit, (event: HitEvent) => this.onHit(event));
     room.onMessage(ServerMsg.Xp, (event: XpEvent) => this.onXp(event));
@@ -462,6 +486,8 @@ export class WorldScene extends Phaser.Scene {
 
     this.updateTarget();
     this.updateMinimap(time);
+    // Depois de mover a câmera: monta o que entrou na tela e tira o que saiu.
+    this.grid?.update(this.cameras.main, (chunk) => this.showChunk(chunk), (chunk) => this.hideChunk(chunk));
   }
 
   /** O mapa grande é o mesmo minimapa, só que maior e com mais zoom. */
@@ -535,20 +561,25 @@ export class WorldScene extends Phaser.Scene {
     return tileToScreen(world?.spawnX ?? this.worldMap.width / 2, world?.spawnY ?? this.worldMap.height / 2);
   }
 
-  /** Redesenha chão, cenário e portais do mundo atual. */
+  /**
+   * Prepara o mundo atual. O chão e o cenário não são desenhados aqui: cada bloco se monta
+   * na primeira vez que entra na tela, e o laço de atualização cuida de quem entra e quem sai.
+   */
   private drawWorld() {
     const token = ++this.drawToken;
-    for (const layer of this.groundLayers) layer.destroy();
-    this.groundLayers = [];
-    this.foamBobs.length = 0;
-    for (const item of this.sceneryLayer) item.destroy();
-    this.sceneryLayer = [];
+    for (const parts of this.chunks) {
+      for (const layer of parts.layers) layer.destroy();
+      for (const item of parts.scenery) item.destroy();
+    }
     for (const item of this.portalLayer) item.destroy();
     this.portalLayer = [];
-    this.waterBobs.length = 0;
 
-    this.drawGround();
-    void this.drawObjects(token);
+    const { width, height } = this.worldMap;
+    this.grid = new ChunkGrid(width, height, TALLEST_PROP);
+    // Cada camada de chão ocupa uma faixa de profundidade própria, larga o bastante para
+    // caber a ordem de todos os blocos sem uma camada invadir a outra.
+    this.chunkSpan = (this.grid.cols + this.grid.rows) * this.grid.cols + this.grid.cols;
+    this.chunks = this.grid.boxes.map(() => ({ built: false, layers: [], scenery: [], flames: [], water: [], foam: [] }));
     void this.drawPortals(token);
   }
 
@@ -670,6 +701,20 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Conta quantos tiles cabem na tela e avisa o servidor, que manda só o que couber ali.
+   * A tela é um losango: a largura mede no eixo (x − y) e a altura no eixo (x + y).
+   */
+  private sendView() {
+    if (!this.room) return;
+    const camera = this.cameras.main;
+    const u = Math.ceil(camera.width / camera.zoom / TILE_W);
+    const v = Math.ceil(camera.height / camera.zoom / TILE_H);
+    if (u === this.sentView.u && v === this.sentView.v) return;
+    this.sentView = { u, v };
+    this.room.send(ClientMsg.View, { u, v } satisfies ViewMessage);
+  }
+
   /** Só entra em cena o que está no mesmo mundo do jogador. */
   private refreshEntity(id: string) {
     const entry = this.entities.get(id);
@@ -693,36 +738,57 @@ export class WorldScene extends Phaser.Scene {
 
   // ------------------------------------------------------------ mapa
 
-  private drawGround() {
+  /**
+   * Monta o chão e o cenário de um bloco. Só acontece na primeira vez que o bloco aparece
+   * na tela: mundo grande tem 81 blocos e o jogador normalmente visita poucos.
+   */
+  private buildChunk(index: number) {
+    const parts = this.chunks[index];
+    if (!parts || parts.built) return;
+    parts.built = true;
+    this.buildChunkGround(index, parts);
+    void this.buildChunkScenery(index, parts, this.drawToken);
+  }
+
+  private buildChunkGround(index: number, parts: ChunkParts) {
+    const grid = this.grid!;
+    const box = grid.boxes[index];
     const { width, height, ground } = this.worldMap;
-    // O líquido fica por baixo, a beira clareia por cima dele, a borda da terra cobre
-    // o losango vizinho e a espuma (ou a crosta da lava) vem por cima de tudo.
-    const land = this.add.blitter(0, 0, "ground").setDepth(DEPTH_GROUND);
-    this.groundLayers = [land];
-    const layers = new Map(
-      LIQUIDS.map(({ ground: type, liquid, slow }) => {
-        const layer = {
-          slow,
-          waves: this.add.blitter(0, 0, liquid.key).setDepth(DEPTH_GROUND - 2),
-          shallow: this.add.blitter(0, 0, `${liquid.key}_shallow`).setDepth(DEPTH_GROUND - 1),
-          foam: this.add.blitter(0, 0, `${liquid.key}_foam`).setDepth(DEPTH_GROUND + 1),
-        };
-        this.groundLayers.push(layer.waves, layer.shallow, layer.foam);
-        return [type as number, layer];
-      }),
-    );
+    const span = this.chunkSpan;
+    // Ordem de desenho entre blocos, igual à de tile a tile: primeiro a diagonal, depois o x.
+    const col = index % grid.cols;
+    const row = (index - col) / grid.cols;
+    const order = (col + row) * grid.cols + col;
+    const depthOf = (layer: number) => DEPTH_GROUND + layer * span + order;
+
+    const land = this.add.blitter(0, 0, "ground").setDepth(depthOf(2));
+    parts.layers.push(land);
+    const layers = new Map<number, { slow: boolean; waves: Phaser.GameObjects.Blitter; shallow: Phaser.GameObjects.Blitter; foam: Phaser.GameObjects.Blitter }>();
+    const liquidLayer = (type: Ground, liquid: Liquid, slow: boolean) => {
+      let layer = layers.get(type);
+      if (layer) return layer;
+      layer = {
+        slow,
+        waves: this.add.blitter(0, 0, liquid.key).setDepth(depthOf(0)),
+        shallow: this.add.blitter(0, 0, `${liquid.key}_shallow`).setDepth(depthOf(1)),
+        foam: this.add.blitter(0, 0, `${liquid.key}_foam`).setDepth(depthOf(3)),
+      };
+      layers.set(type, layer);
+      parts.layers.push(layer.waves, layer.shallow, layer.foam);
+      return layer;
+    };
 
     // Por diagonais (x + y) para os losangos de baixo sobreporem os de cima.
-    for (let sum = 0; sum <= width + height - 2; sum++) {
-      for (let x = Math.max(0, sum - height + 1); x <= Math.min(sum, width - 1); x++) {
+    for (let sum = box.x0 + box.y0; sum <= box.x1 + box.y1; sum++) {
+      for (let x = Math.max(box.x0, sum - box.y1); x <= Math.min(box.x1, sum - box.y0); x++) {
         const y = sum - x;
         const type = ground[y * width + x] as Ground;
         const screen = tileToScreen(x, y);
         const left = screen.x - TILE_CELL_W / 2;
         const top = screen.y - TILE_CELL_H / 2;
 
-        const layer = layers.get(type);
-        if (!layer) {
+        const liquid = LIQUIDS.find((entry) => entry.ground === type);
+        if (!liquid) {
           const frame = GROUND_FRAME[type as keyof typeof GROUND_FRAME];
           land.create(left, top, `${frame}_${tileHash(x, y) % GROUND_FRAMES[frame]}`);
           continue;
@@ -731,9 +797,9 @@ export class WorldScene extends Phaser.Scene {
         // Para um líquido, "terra" é tudo o que não for ele mesmo (lava encostada na água também tem beira).
         const isLand = (tx: number, ty: number) =>
           tx >= 0 && ty >= 0 && tx < width && ty < height && ground[ty * width + tx] !== type;
-        const { waves, shallow, foam, slow } = layer;
+        const { waves, shallow, foam, slow } = liquidLayer(type, liquid.liquid, liquid.slow);
         const prefix = waterFramePrefix(x, y);
-        this.waterBobs.push({ bob: waves.create(left, top, `${prefix}${this.liquidFrame(slow)}`), prefix, slow });
+        parts.water.push({ bob: waves.create(left, top, `${prefix}${this.liquidFrame(slow)}`), prefix, slow });
 
         const touching = SHORE_EDGES.map((edge) => isLand(x + edge.dx, y + edge.dy));
         const corners = SHORE_CORNERS.filter(
@@ -742,7 +808,7 @@ export class WorldScene extends Phaser.Scene {
         const edges = SHORE_EDGES.filter((_, index) => touching[index]).map((edge) => edge.part);
         for (const part of [...edges, ...corners]) {
           const frame = foamFrameName(part, (slow ? this.foamFrame >> 1 : this.foamFrame) % FOAM_FRAMES);
-          this.foamBobs.push({ bob: foam.create(left, top, frame), part, slow });
+          parts.foam.push({ bob: foam.create(left, top, frame), part, slow });
         }
 
         // Água rasa: o lado que encosta na terra, e também o tile de trás, para o degradê continuar.
@@ -755,14 +821,25 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
-  private async drawObjects(token: number) {
-    const ids = [...new Set(Object.values(OBJECT_PROPS).map((prop) => prop!.id))];
-    const textures = new Map((await Promise.all(ids.map((id) => this.spriteTextures.acquire(id)))).map((t) => [t.meta.id, t]));
+  private async buildChunkScenery(index: number, parts: ChunkParts, token: number) {
+    const grid = this.grid!;
+    const box = grid.boxes[index];
+    const { width, objects } = this.worldMap;
+    const ids = new Set<string>();
+    for (let y = box.y0; y <= box.y1; y++) {
+      for (let x = box.x0; x <= box.x1; x++) {
+        const prop = OBJECT_PROPS[objects[y * width + x] as Obj];
+        if (prop) ids.add(prop.id);
+      }
+    }
+    if (ids.size === 0) return;
+    const loaded = await Promise.all([...ids].map((id) => this.spriteTextures.acquire(id)));
     // O mundo pode ter mudado enquanto os desenhos carregavam.
     if (token !== this.drawToken) return;
-    const { width, height, objects } = this.worldMap;
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
+    const textures = new Map(loaded.map((texture) => [texture.meta.id, texture]));
+
+    for (let y = box.y0; y <= box.y1; y++) {
+      for (let x = box.x0; x <= box.x1; x++) {
         const prop = OBJECT_PROPS[objects[y * width + x] as Obj];
         const texture = prop ? textures.get(prop.id) : undefined;
         if (!prop || !texture) continue;
@@ -770,20 +847,48 @@ export class WorldScene extends Phaser.Scene {
         const hash = tileHash(x, y);
         const variant = (hash >>> 3) % (meta.anims.idle?.frames ?? 1);
         const screen = tileToScreen(x, y);
-        this.sceneryLayer.push(
+        parts.scenery.push(
           this.add
             .image(screen.x, screen.y, texture.key, frameKey("idle", "S", variant))
             .setOrigin(meta.anchorX / meta.cellW, meta.anchorY / meta.cellH)
             .setFlipX(prop.flip === true && (hash & 1) === 1)
             .setDepth(prop.decal ? DEPTH_DECAL : screen.y),
         );
-        if (prop.fire) this.lightBrazier(screen.x, screen.y);
+        if (prop.fire) this.lightBrazier(screen.x, screen.y, parts);
       }
     }
+    // O bloco pode ter saído de cena enquanto os desenhos carregavam.
+    if (!this.grid!.isVisible(index)) this.hideChunk(index);
+  }
+
+  /** Põe o bloco em cena. As imagens voltam para a lista de exibição; os Blitters só reaparecem. */
+  private showChunk(index: number) {
+    const parts = this.chunks[index];
+    if (!parts) return;
+    if (!parts.built) {
+      this.buildChunk(index);
+      return;
+    }
+    for (const layer of parts.layers) layer.setVisible(true);
+    for (const item of parts.scenery) this.children.add(item);
+    for (const flame of parts.flames) flame.resume();
+  }
+
+  /**
+   * Tira o bloco de cena. As imagens de cenário saem da lista de exibição, e não só ficam
+   * invisíveis: a lista é reordenada inteira a cada quadro em que alguém anda, e manter
+   * milhares de objetos parados ali dentro custa essa ordenação de graça.
+   */
+  private hideChunk(index: number) {
+    const parts = this.chunks[index];
+    if (!parts || !parts.built) return;
+    for (const layer of parts.layers) layer.setVisible(false);
+    for (const item of parts.scenery) this.children.remove(item);
+    for (const flame of parts.flames) flame.pause();
   }
 
   /** Chama viva na bacia do braseiro: brasa, língua de fogo e uma fagulha subindo. */
-  private lightBrazier(x: number, y: number) {
+  private lightBrazier(x: number, y: number, parts: ChunkParts) {
     const bowl = y - BRAZIER_FLAME;
     const glow = this.add
       .image(x, bowl + 2, "fx_glow")
@@ -806,7 +911,8 @@ export class WorldScene extends Phaser.Scene {
       frequency: 55,
     });
     flame.setDepth(y + 0.3);
-    this.sceneryLayer.push(glow, flame);
+    parts.scenery.push(glow, flame);
+    parts.flames.push(flame);
   }
 
   /** Quadro atual de um líquido. A lava conta devagar: um quadro a cada dois da água. */
@@ -817,13 +923,27 @@ export class WorldScene extends Phaser.Scene {
   /** Todos os tiles andam juntos: é o que mantém as ondas emendadas de um losango ao outro. */
   private animateWater() {
     this.waterFrame = (this.waterFrame + 1) % (WATER_FRAMES * 2);
-    for (const { bob, prefix, slow } of this.waterBobs) bob.setFrame(`${prefix}${this.liquidFrame(slow)}`);
+    // Só os blocos na tela: o mundo do Vulcão tem 3.900 tiles de lava, e quase nenhum aparece.
+    this.forEachVisibleChunk((parts) => {
+      for (const { bob, prefix, slow } of parts.water) bob.setFrame(`${prefix}${this.liquidFrame(slow)}`);
+    });
   }
 
   private animateFoam() {
     this.foamFrame = (this.foamFrame + 1) % (FOAM_FRAMES * 2);
-    for (const { bob, part, slow } of this.foamBobs) {
-      bob.setFrame(foamFrameName(part, (slow ? this.foamFrame >> 1 : this.foamFrame) % FOAM_FRAMES));
+    this.forEachVisibleChunk((parts) => {
+      for (const { bob, part, slow } of parts.foam) {
+        bob.setFrame(foamFrameName(part, (slow ? this.foamFrame >> 1 : this.foamFrame) % FOAM_FRAMES));
+      }
+    });
+  }
+
+  private forEachVisibleChunk(run: (parts: ChunkParts) => void) {
+    const grid = this.grid;
+    if (!grid) return;
+    for (const index of grid.visibleChunks()) {
+      const parts = this.chunks[index];
+      if (parts?.built) run(parts);
     }
   }
 

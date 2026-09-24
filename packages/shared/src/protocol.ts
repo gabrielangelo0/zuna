@@ -156,7 +156,19 @@ export const ClientMsg = {
   CheckinClaim: "checkinClaim",
   /** Escolher a classe (a primeira é de graça; trocar custa diamantes). */
   Vocation: "vocation",
+  /** Tamanho da janela visível do jogador, para o servidor mandar só o que cabe nela. */
+  View: "view",
 } as const;
+
+/**
+ * Janela de visão do jogador, em tiles, nos eixos da tela isométrica: `u` é a largura
+ * (x − y) e `v` a altura (x + y). O cliente calcula pelo tamanho da tela e pelo zoom,
+ * e o servidor limita aos extremos de VIEW_U / VIEW_V.
+ */
+export interface ViewMessage {
+  u: number;
+  v: number;
+}
 
 /** Clique duplo: veste (ou tira) o item, ou usa a poção. */
 export interface ItemEquipMessage {

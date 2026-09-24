@@ -9,6 +9,7 @@ import {
   type CheckinEvent,
   type MilestonesEvent,
   type VocationMessage,
+  type ViewMessage,
   vocationById,
   vocationFamilies,
   vocationStats,
@@ -49,6 +50,7 @@ import {
   type OwnedItem,
   type PlayerStats,
   CHASE_LOSE_RANGE,
+  VIEW_SYNC_MS,
   CHAT_MAX_LEN,
   ClientMsg,
   DEATH_XP_LOSS,
@@ -157,8 +159,10 @@ import {
   type CharacterRow,
   type CharacterSnapshot,
 } from "./repository.ts";
+import { StateView } from "@colyseus/schema";
 import { LootState, MonsterState, PlayerState, WorldState } from "./schema.ts";
 import { generateSpawns } from "./spawns.ts";
+import { DEFAULT_VIEW, clampView, inView, type ViewWindow } from "./interest.ts";
 import { blueprintOf, getWorld, loadAllWorlds, loadWorldContent, type WorldContent } from "./worldRepository.ts";
 import {
   blockedForMonster,
@@ -245,6 +249,12 @@ interface PlayerSim {
   nextPotionAt: number;
   /** Andamento das missões deste personagem. */
   questProgress: QuestProgress[];
+  /** Tamanho da tela do jogador, em tiles: define o que o servidor manda para ele. */
+  view: ViewWindow;
+  /** Entidades que já estão na StateView dele, para mandar só a diferença. */
+  seen: Set<string>;
+  /** Próximo recálculo da visão. */
+  nextViewAt: number;
   path: Point[];
   moveDir: Point | null;
   nextStepAt: number;
@@ -318,6 +328,9 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
   private readonly worldBySlug = new Map<string, WorldSim>();
   private readonly players = new Map<string, PlayerSim>();
   private readonly monsters = new Map<string, MonsterSim>();
+  /** Reaproveitados a cada tick para não alocar conjunto novo 40 vezes por segundo. */
+  private readonly povoados = new Set<WorldSim>();
+  private readonly visivel = new Set<string>();
   private nextLootId = 1;
   private nextLootSweepAt = 0;
   private scheduled: Scheduled[] = [];
@@ -360,6 +373,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     this.onMessage(ClientMsg.Vocation, (client, message: VocationMessage) => void this.handleVocation(client, message));
     this.onMessage(ClientMsg.ItemSell, (client, message: ItemSellMessage) => this.handleItemSell(client, message));
     this.onMessage(ClientMsg.ItemBuy, (client, message: ItemBuyMessage) => this.handleItemBuy(client, message));
+    this.onMessage(ClientMsg.View, (client, message: ViewMessage) => this.handleView(client, message));
 
     this.setPatchRate(TICK_MS);
     this.setSimulationInterval(() => this.tick(), TICK_MS);
@@ -543,6 +557,8 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     }
     s.x = spot.x;
     s.y = spot.y;
+    // Pulou para longe: refaz a visão agora, senão o mundo novo aparece vazio por um instante.
+    player.nextViewAt = 0;
     occupyPlayer(sim, s.x, s.y, 1);
     s.target = "";
     player.path = [];
@@ -630,7 +646,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       s.xp = Math.max(s.xp, xpForLevel(patch.level));
       player.shortcuts = sanitizeShortcuts(player.shortcuts, s.level, vocationFamilies(player.vocation));
       this.sendProfile(player);
-      this.broadcast(ServerMsg.LevelUp, { id: player.id, level: s.level } satisfies LevelUpEvent);
+      this.sendNear(player.world.def.slug, s.x, s.y, ServerMsg.LevelUp, { id: player.id, level: s.level } satisfies LevelUpEvent);
     }
     this.sendChat(player.client, "system", "Um administrador ajustou seu personagem.");
   }
@@ -874,6 +890,9 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       bagFullWarnAt: 0,
       nextPotionAt: 0,
       questProgress: questProgress,
+      view: DEFAULT_VIEW,
+      seen: new Set(),
+      nextViewAt: 0,
       path: [],
       moveDir: null,
       nextStepAt: 0,
@@ -887,6 +906,12 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     };
     this.players.set(client.sessionId, player);
     this.state.players.set(client.sessionId, state);
+    // Sem StateView o cliente não receberia nada: o estado todo é filtrado por visão.
+    const view = new StateView();
+    view.add(state);
+    client.view = view;
+    player.seen.add(client.sessionId);
+    this.state.online = this.players.size;
     occupyPlayer(sim, spot.x, spot.y, 1);
 
     this.settleBag(player);
@@ -906,6 +931,9 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     const player = this.players.get(client.sessionId);
     if (!player) return;
     this.removePlayer(player);
+    client.view?.dispose();
+    client.view = undefined;
+    this.state.online = this.players.size;
     this.broadcastChat("system", `${player.state.name} saiu do mundo.`);
     await this.persist(player);
   }
@@ -1177,7 +1205,9 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     s.mana -= spell.mana;
     player.spellReadyAt.set(spell.id, now + spell.cooldownMs);
     const shown = spell.kind === "target" || spell.kind === "leech" || spell.kind === "heal" ? undefined : tiles.flatMap((tile) => [tile.x, tile.y]);
-    this.broadcast(ServerMsg.SpellEffect, { caster: player.id, spell: spell.id, x: at.x, y: at.y, tiles: shown } satisfies SpellEffectEvent);
+    this.sendNear(sim.def.slug, at.x, at.y, ServerMsg.SpellEffect, {
+      caster: player.id, spell: spell.id, x: at.x, y: at.y, tiles: shown,
+    } satisfies SpellEffectEvent);
 
     if (spell.kind === "heal") {
       const magic = vocationStats(player.vocation).magicFactor;
@@ -1441,7 +1471,14 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     const now = Date.now();
     this.runScheduled(now);
     for (const player of this.players.values()) this.updatePlayer(player, now);
-    for (const monster of this.monsters.values()) this.updateMonster(monster, now);
+    // Monstro de mundo vazio não pensa: não há ninguém lá para ver, e são centenas deles.
+    this.povoados.clear();
+    for (const player of this.players.values()) this.povoados.add(player.world);
+    for (const monster of this.monsters.values()) {
+      if (this.povoados.has(monster.world)) this.updateMonster(monster, now);
+    }
+    this.syncViews(now);
+    if (this.state.online !== this.players.size) this.state.online = this.players.size;
     if (now >= this.nextRegenAt) {
       this.nextRegenAt = now + 1000;
       this.regenerate();
@@ -1463,6 +1500,83 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     const due = this.scheduled.filter((task) => task.at <= now);
     this.scheduled = this.scheduled.filter((task) => task.at > now);
     for (const task of due) task.run();
+  }
+
+  // ------------------------------------------------------------ o que cada um enxerga
+
+  /**
+   * Refaz de tempos em tempos a lista do que cabe na tela de cada jogador. É isto que segura
+   * o tamanho do estado: antes os 742 monstros dos nove mundos iam para todo mundo, 40 vezes
+   * por segundo, e o cliente escondia os de fora depois de já ter decodificado todos.
+   */
+  private syncViews(now: number) {
+    for (const player of this.players.values()) {
+      if (now < player.nextViewAt) continue;
+      player.nextViewAt = now + VIEW_SYNC_MS;
+      this.syncView(player);
+    }
+  }
+
+  private syncView(player: PlayerSim) {
+    const view = player.client.view;
+    if (!view) return;
+    const { x, y } = player.state;
+    const sim = player.world;
+    const window = player.view;
+    const visivel = this.visivel;
+    visivel.clear();
+
+    // O próprio personagem e o alvo dele nunca somem, mesmo se a perseguição passar da borda.
+    visivel.add(player.id);
+    if (player.state.target) visivel.add(player.state.target);
+    for (const other of this.players.values()) {
+      if (other.world === sim && inView(window, x, y, other.state.x, other.state.y)) visivel.add(other.id);
+    }
+    // monsterAt já é o índice de monstros vivos daquele mundo, tile a tile.
+    for (const id of sim.monsterAt.values()) {
+      const monster = this.monsters.get(id);
+      if (monster && inView(window, x, y, monster.state.x, monster.state.y)) visivel.add(id);
+    }
+    for (const [id, loot] of this.state.loot) {
+      if (loot.world === sim.def.slug && inView(window, x, y, loot.x, loot.y)) visivel.add(id);
+    }
+
+    for (const id of visivel) {
+      if (player.seen.has(id)) continue;
+      const entity = this.viewEntity(id);
+      if (!entity) continue;
+      view.add(entity);
+      player.seen.add(id);
+    }
+    for (const id of player.seen) {
+      if (visivel.has(id)) continue;
+      const entity = this.viewEntity(id);
+      if (entity) view.remove(entity);
+      player.seen.delete(id);
+    }
+  }
+
+  /** O estado de uma entidade, seja jogador, monstro ou drop. */
+  private viewEntity(id: string): PlayerState | MonsterState | LootState | undefined {
+    return this.state.players.get(id) ?? this.state.monsters.get(id) ?? this.state.loot.get(id);
+  }
+
+  /** Manda um evento só para quem tem aquele ponto na tela. */
+  private sendNear(world: string, x: number, y: number, type: string, message: unknown) {
+    for (const player of this.players.values()) {
+      if (player.world.def.slug !== world) continue;
+      if (!inView(player.view, player.state.x, player.state.y, x, y)) continue;
+      player.client.send(type, message);
+    }
+  }
+
+  /** O cliente contou o tamanho da tela dele, em tiles. */
+  private handleView(client: Client, message: ViewMessage) {
+    const player = this.players.get(client.sessionId);
+    if (!player) return;
+    player.view = clampView(message?.u, message?.v);
+    // A janela mudou de tamanho: refaz já, senão fica um vazio na borda até o próximo ciclo.
+    player.nextViewAt = 0;
   }
 
   /** Bônus do mascote e da montaria. A velocidade da montaria só vale montado. */
@@ -1517,7 +1631,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       this.face(s, target.state);
       // Besta: dispara de longe e gasta uma flecha.
       if (range > 1) {
-        this.broadcast(ServerMsg.Shot, { attacker: player.id, target: target.id } satisfies ShotEvent);
+        this.sendNear(sim.def.slug, s.x, s.y, ServerMsg.Shot, { attacker: player.id, target: target.id } satisfies ShotEvent);
         this.spendAmmo(player);
       }
       this.damageMonster(target, player, roll - target.def.armor, crit);
@@ -1725,7 +1839,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
           : square(s, special.range, true);
     const sim = monster.world;
     const inside = new Set(tiles.map((tile) => tileKey(sim, tile.x, tile.y)));
-    this.broadcast(ServerMsg.MonsterSpell, {
+    this.sendNear(sim.def.slug, t.x, t.y, ServerMsg.MonsterSpell, {
       caster: monster.id,
       element: special.element,
       kind: special.kind,
@@ -1788,7 +1902,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     const { def, state: s } = monster;
     const sim = monster.world;
     this.removeMonster(monster.id);
-    this.broadcast(ServerMsg.MonsterDeath, { id: monster.id, kind: def.kind, x: s.x, y: s.y } satisfies MonsterDeathEvent);
+    this.sendNear(sim.def.slug, s.x, s.y, ServerMsg.MonsterDeath, { id: monster.id, kind: def.kind, x: s.x, y: s.y } satisfies MonsterDeathEvent);
 
     const totalDamage = [...monster.damageBy.values()].reduce((sum, value) => sum + value, 0);
     let topDamager: PlayerSim | undefined;
@@ -1838,7 +1952,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     // A taxa do painel vale para tudo o que dá XP: monstro, missão, presente e baú.
     const gained = Math.max(1, Math.round(amount * xpRate()));
     s.xp += gained;
-    this.broadcast(ServerMsg.Xp, { id: player.id, amount: gained } satisfies XpEvent);
+    this.sendNear(player.world.def.slug, s.x, s.y, ServerMsg.Xp, { id: player.id, amount: gained } satisfies XpEvent);
 
     const newLevel = levelForXp(s.xp);
     if (newLevel <= s.level) return;
@@ -1849,7 +1963,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     s.maxMana = stats.maxMana;
     s.hp = stats.maxHp;
     s.mana = stats.maxMana;
-    this.broadcast(ServerMsg.LevelUp, { id: player.id, level: newLevel } satisfies LevelUpEvent);
+    this.sendNear(player.world.def.slug, s.x, s.y, ServerMsg.LevelUp, { id: player.id, level: newLevel } satisfies LevelUpEvent);
     this.sendChat(player.client, "system", `Você avançou do nível ${oldLevel} para o nível ${newLevel}.`);
     for (let level = oldLevel + 1; level <= newLevel; level++) {
       for (const spell of spellsUnlockedAt(level, vocationFamilies(player.vocation))) {
@@ -1875,7 +1989,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     const xpLost = Math.max(0, Math.min(Math.round(s.xp * DEATH_XP_LOSS), s.xp - levelFloor));
     s.xp -= xpLost;
 
-    this.broadcast(ServerMsg.PlayerDeath, { id: player.id, x: s.x, y: s.y, xpLost } satisfies PlayerDeathEvent);
+    this.sendNear(player.world.def.slug, s.x, s.y, ServerMsg.PlayerDeath, { id: player.id, x: s.x, y: s.y, xpLost } satisfies PlayerDeathEvent);
     this.sendChat(
       player.client,
       "system",
@@ -2016,7 +2130,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       }).catch(() => undefined);
     }
 
-    this.broadcast(ServerMsg.Loot, {
+    this.sendNear(loot.world, loot.x, loot.y, ServerMsg.Loot, {
       id: player.id,
       kind: loot.kind as LootEvent["kind"],
       gold: loot.gold,
@@ -2036,7 +2150,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     const item = gearItem(loot.item);
     if (!item) return;
     const count = Math.max(1, loot.count);
-    this.broadcast(ServerMsg.Loot, {
+    this.sendNear(loot.world, loot.x, loot.y, ServerMsg.Loot, {
       id: player.id,
       kind: "item",
       item: item.id,
@@ -2891,7 +3005,10 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
   }
 
   private broadcastHit(target: string, attacker: string, amount: number, kind: HitKind) {
-    this.broadcast(ServerMsg.Hit, { target, attacker, amount, kind } satisfies HitEvent);
+    const event = { target, attacker, amount, kind } satisfies HitEvent;
+    // O número do dano nasce em cima de quem apanhou; quem não enxerga o lugar não precisa dele.
+    const at = this.viewEntity(target) ?? this.viewEntity(attacker);
+    if (at) this.sendNear(at.world, at.x, at.y, ServerMsg.Hit, event);
   }
 
   private sendProfile(player: PlayerSim) {
