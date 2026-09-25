@@ -1,0 +1,76 @@
+name: Publicar na VPS
+
+# Todo push no main publica. Também dá para disparar à mão pela aba Actions,
+# que é o caminho para repetir um deploy sem inventar um commit vazio.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Dois deploys ao mesmo tempo na mesma máquina dariam briga de npm e de systemd.
+# O segundo espera o primeiro terminar em vez de ser cancelado: cancelar deixaria
+# a VPS parada no meio de um npm ci.
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    steps:
+      # Enquanto os segredos não existirem, o workflow avisa e passa em verde em vez de
+      # pintar de vermelho todo push por um deploy que ninguém configurou ainda.
+      - name: Conferir se os segredos estão no lugar
+        id: conf
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_DIR: ${{ secrets.VPS_DIR }}
+        run: |
+          if [ -z "$VPS_HOST" ] || [ -z "$VPS_USER" ] || [ -z "$VPS_DIR" ]; then
+            echo "pronto=nao" >> "$GITHUB_OUTPUT"
+            echo "::warning::Deploy automático ainda não configurado: faltam os segredos VPS_HOST, VPS_USER, VPS_DIR, VPS_SERVICE, VPS_SSH_KEY e VPS_KNOWN_HOSTS. Nada foi publicado."
+          else
+            echo "pronto=sim" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Preparar a chave de acesso
+        if: steps.conf.outputs.pronto == 'sim'
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          # A impressão digital do servidor vem de um segredo, e não de um aceite cego:
+          # sem isso, qualquer um no caminho poderia se passar pela VPS.
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Rodar o deploy na VPS
+        if: steps.conf.outputs.pronto == 'sim'
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_DIR: ${{ secrets.VPS_DIR }}
+          VPS_SERVICE: ${{ secrets.VPS_SERVICE }}
+        run: |
+          # O script que roda é o que já está na VPS (o git pull acontece dentro dele).
+          # Quando tools/deploy.sh mudar, o deploy seguinte é que passa a usar a versão nova.
+          ssh -i ~/.ssh/deploy -p "${VPS_PORT:-22}" "$VPS_USER@$VPS_HOST" \
+            "ZUNA_DIR='$VPS_DIR' ZUNA_SERVICE='$VPS_SERVICE' bash '$VPS_DIR/tools/deploy.sh'"
+
+      - name: Conferir que o site respondeu
+        if: steps.conf.outputs.pronto == 'sim'
+        run: |
+          for _ in $(seq 1 20); do
+            if curl -fsS -m 10 https://zuna.devfly.net/ >/dev/null; then
+              echo "Site no ar."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "O site não respondeu depois do deploy." >&2
+          exit 1
