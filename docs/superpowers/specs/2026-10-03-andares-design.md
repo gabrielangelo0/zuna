@@ -152,8 +152,9 @@ outro lugar, e nada no `kind` obriga a isso.
 
 ## 6. Migração
 
-`npx drizzle-kit generate` produz `packages/server/drizzle/0016_*.sql` com `worlds.depth`,
-`worlds.pvp` e `portals.kind`. Aplicado no arranque, no PGlite do desenvolvimento e no Postgres
+`npx drizzle-kit generate` produz a próxima migração da sequência com `worlds.depth`,
+`worlds.pvp` e `portals.kind`. O número sai da ferramenta conforme a ordem em que os specs
+forem implementados, não deste documento. Aplicado no arranque, no PGlite do desenvolvimento e no Postgres
 da produção. Os três têm padrão, então os mundos e portais que já existem continuam valendo.
 
 ## 7. Arquivos

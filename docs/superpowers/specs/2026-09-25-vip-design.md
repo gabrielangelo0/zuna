@@ -97,7 +97,8 @@ O painel conta quanto o VIP arrecadou sem nenhuma tabela nova.
 
 ### 2.6 Migração
 
-`npx drizzle-kit generate` produz `packages/server/drizzle/0016_*.sql`. O arranque aplica
+`npx drizzle-kit generate` produz a próxima migração da sequência — o número sai da
+ferramenta conforme a ordem em que os specs forem implementados, não deste documento. O arranque aplica
 sozinho, no PGlite do desenvolvimento e no Postgres da produção
 ([db/index.ts](../../../packages/server/src/db/index.ts)).
 
