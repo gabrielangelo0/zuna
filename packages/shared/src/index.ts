@@ -23,3 +23,4 @@ export * from "./vocations.ts";
 export * from "./items.ts";
 export * from "./pvp.ts";
 export * from "./vip.ts";
+export * from "./arena.ts";
