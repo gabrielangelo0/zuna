@@ -43,6 +43,8 @@ export interface LiveRoom {
   sendPvpRules(): void;
   /** O painel mexeu nos degraus ou passes do VIP. */
   sendVipList(): void;
+  /** O painel mexeu nas arenas: quem está com a tela aberta recebe a lista nova. */
+  sendArenaList(): void;
 }
 
 export interface LiveCharacterPatch {
@@ -221,4 +223,8 @@ export function pushPvp() {
 
 export function pushVip() {
   for (const room of rooms) room.sendVipList();
+}
+
+export function pushArena() {
+  for (const room of rooms) room.sendArenaList();
 }
