@@ -136,6 +136,7 @@
             <div class="hud-row"><span>Diamantes</span><strong id="hud-diamonds" class="diamonds">0</strong></div>
             <div class="hud-row"><span>Online</span><strong id="hud-online">0</strong></div>
             <div class="hud-event" id="hud-event" hidden></div>
+            <div class="hud-pvp" id="hud-pvp" hidden></div>
             <div class="hud-actions">
               <button id="hud-wardrobe" type="button"><kbd>O</kbd> Visual</button>
               <button id="hud-mount" type="button"><kbd>M</kbd> <span id="hud-mount-label">Montar</span></button>
@@ -144,6 +145,7 @@
               <button id="hud-inventory" type="button"><kbd>I</kbd> Itens</button>
               <button id="hud-quests" type="button"><kbd>J</kbd> Missões<b id="hud-quests-badge" hidden></b></button>
               <button id="hud-checkin" type="button"><kbd>C</kbd> Presente<b id="hud-checkin-badge" hidden>!</b></button>
+              <button id="hud-vip" type="button"><kbd>V</kbd> VIP<b id="hud-vip-badge" hidden>!</b></button>
               <button id="hud-shop" class="shop-button" type="button"><kbd>L</kbd> 💎 Comprar diamantes</button>
             </div>
           </div>
@@ -273,6 +275,16 @@
         <p class="checkin-hint">Entre todo dia para abrir o presente. Faltou um dia, o ciclo volta ao começo.</p>
         <div id="checkin-body"></div>
         <div id="checkin-foot"></div>
+      </section>
+
+      <section id="vip" class="card kit-panel" hidden>
+        <header class="panel-header">
+          <h2>VIP</h2>
+          <button id="vip-close" class="icon" type="button" aria-label="Fechar">✕</button>
+        </header>
+        <p class="checkin-hint">O passe vale por prazo e é pago em diamantes. Subir de degrau aproveita o que sobra do atual.</p>
+        <div id="vip-body"></div>
+        <div id="vip-foot"></div>
       </section>
 
       <section id="inventory" class="card kit-panel" hidden>

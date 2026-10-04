@@ -21,6 +21,9 @@ export class Hud {
   private readonly root = element("#hud");
   private readonly name = element("#hud-name");
   private readonly eventLine = element("#hud-event");
+  private readonly pvpLine = element("#hud-pvp");
+  private pvpTimer = 0;
+  private pvpOpen = false;
   private readonly level = element("#hud-level");
   private readonly xpFill = element("#hud-xp");
   private readonly xpText = element("#hud-xp-text");
@@ -39,6 +42,8 @@ export class Hud {
   private readonly questsBadge = element("#hud-quests-badge");
   private readonly vocationLabel = element("#hud-vocation");
   private readonly checkinButton = element<HTMLButtonElement>("#hud-checkin");
+  private readonly vipButton = element<HTMLButtonElement>("#hud-vip");
+  private readonly vipBadge = element("#hud-vip-badge");
   private readonly checkinBadge = element("#hud-checkin-badge");
   private readonly rankingButton = element<HTMLButtonElement>("#hud-ranking");
   private readonly powersButton = element<HTMLButtonElement>("#hud-powers");
@@ -239,6 +244,24 @@ export class Hud {
     this.checkinBadge.hidden = !ready;
   }
 
+  /** Baú VIP esperando: o aviso no botão é o que traz o jogador de volta todo dia. */
+  setVipReady(ready: boolean) {
+    this.vipBadge.hidden = !ready;
+  }
+
+  /** Pinta o botão com a cor do degrau: o VIP se vê a si mesmo na HUD. */
+  setVipTier(color: string) {
+    this.vipButton.classList.toggle("is-vip", color !== "");
+    this.vipButton.style.setProperty("--vip-cor", color || "#8fa0bd");
+  }
+
+  onVip(handler: () => void) {
+    this.vipButton.addEventListener("click", () => {
+      handler();
+      this.vipButton.blur();
+    });
+  }
+
   onShop(handler: () => void) {
     this.shopButton.addEventListener("click", () => {
       handler();
@@ -304,6 +327,45 @@ export class Hud {
 
   setDiamonds(value: number) {
     this.diamonds.textContent = formatNumber(value);
+  }
+
+  /**
+   * Zona de PvP e marca de agressor. A faixa entra animada ao atravessar a porta: o jogador
+   * precisa perceber que o lugar mudou de regra sem ter que ler o chat.
+   */
+  setPvp(info: { enabled: boolean; openHere: boolean; markedUntil: number; minLevel: number; dropSlots: number }) {
+    window.clearInterval(this.pvpTimer);
+    const perigo = info.enabled && info.openHere;
+    if (!perigo && info.markedUntil <= Date.now()) {
+      if (this.pvpOpen) {
+        this.pvpOpen = false;
+        // Sai deslizando em vez de sumir: a saída da zona também é informação.
+        this.pvpLine.classList.remove("show");
+        window.setTimeout(() => {
+          if (!this.pvpOpen) this.pvpLine.hidden = true;
+        }, 260);
+      }
+      return;
+    }
+    const pintar = () => {
+      const restante = info.markedUntil - Date.now();
+      if (restante > 0) {
+        const minutos = Math.floor(restante / 60_000);
+        const segundos = Math.floor((restante % 60_000) / 1000);
+        this.pvpLine.textContent = `☠ Marcado · ${minutos}:${String(segundos).padStart(2, "0")}`;
+        this.pvpLine.classList.add("marked");
+        return;
+      }
+      this.pvpLine.classList.remove("marked");
+      this.pvpLine.textContent = `⚔ Zona de PvP · caem ${info.dropSlots} item(ns) da mochila`;
+      if (restante <= 0 && info.markedUntil > 0) window.clearInterval(this.pvpTimer);
+    };
+    pintar();
+    this.pvpLine.hidden = false;
+    // Um quadro de atraso para a transição pegar o estado inicial.
+    window.requestAnimationFrame(() => this.pvpLine.classList.add("show"));
+    this.pvpOpen = true;
+    if (info.markedUntil > Date.now()) this.pvpTimer = window.setInterval(pintar, 1000);
   }
 
   setOnline(count: number) {

@@ -3329,3 +3329,177 @@ button.vocation-card:hover {
   color: var(--muted);
   font-weight: 600;
 }
+
+/* ---------------------------------------------------------------- VIP e PvP */
+
+/* Faixa da HUD: entra deslizando ao atravessar a porta da zona, para o jogador
+   perceber que o lugar mudou de regra sem precisar ler o chat. */
+.hud-pvp {
+  margin-top: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid #7a2a22;
+  background: linear-gradient(180deg, #43100c, #2a0b08);
+  color: #ffb4a8;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  text-shadow: 0 1px 2px #000;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 0.24s ease, transform 0.24s ease;
+}
+
+.hud-pvp.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Marcado: pulsa, porque é um prazo correndo contra o jogador. */
+.hud-pvp.marked {
+  border-color: #b3372a;
+  background: linear-gradient(180deg, #6d140d, #3a0c08);
+  color: #ffd9d2;
+  animation: pvp-marked 1.1s ease-in-out infinite;
+}
+
+@keyframes pvp-marked {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(224, 72, 61, 0); }
+  50% { box-shadow: 0 0 10px 1px rgba(224, 72, 61, 0.55); }
+}
+
+.vip-status {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--vip-cor, #e8b13a) 45%, transparent);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--vip-cor, #e8b13a) 16%, transparent), transparent 70%);
+}
+
+.vip-status-name {
+  color: var(--vip-cor, #eaf1ff);
+  font-size: 16px;
+}
+
+.vip-status-days {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.vip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 10px;
+}
+
+.vip-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--vip-cor, #e8b13a) 35%, transparent);
+  background: linear-gradient(170deg, color-mix(in srgb, var(--vip-cor, #e8b13a) 10%, transparent), rgba(10, 14, 26, 0.6));
+}
+
+.vip-card h3 {
+  margin: 0;
+  color: var(--vip-cor, #eaf1ff);
+}
+
+/* O degrau que o jogador tem fica aceso, para ele achar o próprio num relance. */
+.vip-card.mine {
+  border-color: var(--vip-cor, #e8b13a);
+  box-shadow: 0 0 14px -4px var(--vip-cor, #e8b13a);
+}
+
+.vip-card-desc {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.vip-perks {
+  margin: 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+}
+
+.vip-buy {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  margin-top: 4px;
+  border-color: color-mix(in srgb, var(--vip-cor, #e8b13a) 60%, transparent);
+  transition: transform 0.12s ease, box-shadow 0.18s ease;
+}
+
+.vip-buy:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px -6px var(--vip-cor, #e8b13a);
+}
+
+/* Segundo clique: muda de cara para ninguém comprar sem ver o que sai da conta. */
+.vip-buy.confirming {
+  background: color-mix(in srgb, var(--vip-cor, #e8b13a) 26%, transparent);
+  border-color: var(--vip-cor, #e8b13a);
+  animation: vip-confirm 0.9s ease-in-out infinite;
+}
+
+@keyframes vip-confirm {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--vip-cor, #e8b13a) 0%, transparent); }
+  50% { box-shadow: 0 0 12px 1px color-mix(in srgb, var(--vip-cor, #e8b13a) 55%, transparent); }
+}
+
+.vip-per-day {
+  opacity: 0.7;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.vip-tag {
+  position: absolute;
+  top: -8px;
+  right: 8px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--vip-cor, #e8b13a);
+  color: #10131c;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.vip-chest-note {
+  display: block;
+  margin-top: 4px;
+  opacity: 0.75;
+  font-size: 11px;
+}
+
+/* Baú abrindo: tremida curta e clarão. O prêmio chega pelo chat; isto é o gesto. */
+.vip-chest-open {
+  animation: vip-chest 0.5s ease-out;
+}
+
+@keyframes vip-chest {
+  0% { transform: none; filter: none; }
+  25% { transform: translateX(-3px) rotate(-1.5deg); }
+  45% { transform: translateX(3px) rotate(1.5deg); filter: brightness(1.8); }
+  65% { transform: translateX(-2px); filter: brightness(2.4); }
+  100% { transform: none; filter: none; }
+}
+
+/* Botão do VIP na HUD: acende na cor do degrau de quem é assinante. */
+#hud-vip.is-vip {
+  border-color: var(--vip-cor, #e8b13a);
+  color: var(--vip-cor, #e8b13a);
+  box-shadow: inset 0 0 12px -6px var(--vip-cor, #e8b13a);
+}

@@ -29,6 +29,7 @@ void loadLayerIndex();
 // que é o mesmo que o servidor gera pela semente.
 try {
   const response = await apiRequest<WorldsResponse>("/api/worlds");
+  if (response.vipTiers?.length) scene.setVipTiers(response.vipTiers);
   scene.setWorlds(response.worlds);
   applyCatalogOverrides(response.catalog);
   if (response.gear?.length) setGearCatalog(response.gear);

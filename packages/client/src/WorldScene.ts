@@ -10,6 +10,10 @@ import {
   type MonsterSpellEvent,
   type QuestsEvent,
   type CheckinEvent,
+  type VipEvent,
+  type VipTier,
+  type PvpInfoEvent,
+  type VipBuyMessage,
   type MilestonesEvent,
   type InventoryEvent,
   ClientMsg,
@@ -53,7 +57,7 @@ import {
   type WorldPatchEvent,
   type XpEvent,
 } from "@zuna/shared";
-import { Actor } from "./actors.ts";
+import { Actor, DEPTH_OVERLAY } from "./actors.ts";
 import { GAME_FONT } from "./canvas.ts";
 import { element } from "./dom.ts";
 import { SpellFx, createFxTextures } from "./effects.ts";
@@ -61,6 +65,7 @@ import { Hud } from "./hud.ts";
 import { Inventory } from "./inventory.ts";
 import { QuestLog } from "./questLog.ts";
 import { Checkin } from "./checkin.ts";
+import { VipPanel } from "./vip.ts";
 import { screenToTile, tileToScreen } from "./iso.ts";
 import { Grimoire } from "./grimoire.ts";
 import { LootLayer } from "./loot.ts";
@@ -215,6 +220,10 @@ export class WorldScene extends Phaser.Scene {
   private readonly questLog = new QuestLog({
     claim: (id) => this.room?.send(ClientMsg.QuestClaim, { id }),
     summon: (id) => this.room?.send(ClientMsg.QuestBoss, { id }),
+  });
+  private readonly vip = new VipPanel({
+    buy: (pass) => this.room?.send(ClientMsg.VipBuy, { pass } satisfies VipBuyMessage),
+    claim: () => this.room?.send(ClientMsg.VipClaim, {}),
   });
   private readonly checkin = new Checkin({
     claim: () => this.room?.send(ClientMsg.CheckinClaim, {}),
@@ -379,6 +388,15 @@ export class WorldScene extends Phaser.Scene {
       this.hud.setQuestsReady(this.questLog.readyCount);
     });
     room.onMessage(ServerMsg.Milestones, (event: MilestonesEvent) => this.questLog.setMilestones(event));
+    room.onMessage(ServerMsg.Vip, (event: VipEvent) => {
+      setVipTiers(event.tiers);
+      this.vip.setData(event);
+      this.hud.setVipReady(event.chestReady);
+      this.hud.setVipTier(event.tiers.find((tier) => tier.id === event.tier)?.color ?? "");
+      // Os degraus podem ter mudado no painel: quem está na tela repinta com a cor nova.
+      for (const actor of this.actors.values()) this.syncActor(actor);
+    });
+    room.onMessage(ServerMsg.Pvp, (event: PvpInfoEvent) => this.hud.setPvp(event));
     room.onMessage(ServerMsg.Checkin, (event: CheckinEvent) => {
       this.checkin.setCheckin(event);
       this.hud.setCheckinReady(this.checkin.ready);
@@ -422,6 +440,7 @@ export class WorldScene extends Phaser.Scene {
     this.hud.onInventory(() => this.toggleInventory());
     this.hud.onQuests(() => this.questLog.toggle());
     this.hud.onCheckin(() => this.checkin.toggle());
+    this.hud.onVip(() => this.vip.toggle());
     // Clique no orbe (ou Q/E) toma a melhor poção que o nível permite.
     element(".orb-hp").addEventListener("click", () => room.send(ClientMsg.QuickPotion, { kind: "hp" }));
     element(".orb-mana").addEventListener("click", () => room.send(ClientMsg.QuickPotion, { kind: "mana" }));
@@ -437,6 +456,7 @@ export class WorldScene extends Phaser.Scene {
       targetNearest: () => this.targetNearest(),
       escape: () => {
         if (this.checkin.isOpen) this.checkin.close();
+        if (this.vip.isOpen) this.vip.close();
         else if (this.questLog.isOpen) this.questLog.close();
         else if (this.shop.isOpen) this.shop.close();
         else if (this.grimoire.isOpen) this.grimoire.close();
@@ -459,6 +479,7 @@ export class WorldScene extends Phaser.Scene {
       toggleInventory: () => this.toggleInventory(),
       toggleQuests: () => this.questLog.toggle(),
       toggleCheckin: () => this.checkin.toggle(),
+      toggleVip: () => this.vip.toggle(),
       potion: (kind) => room.send(ClientMsg.QuickPotion, { kind }),
     });
   }
@@ -524,6 +545,11 @@ export class WorldScene extends Phaser.Scene {
   // ------------------------------------------------------------ mundos
 
   /** Mapas que o servidor mandou antes de entrar. O primeiro é o mundo onde todo mundo nasce. */
+  /** Degraus de VIP vindos junto com os mundos: a cor vale antes mesmo de abrir a tela. */
+  setVipTiers(list: readonly VipTier[]) {
+    setVipTiers(list);
+  }
+
   setWorlds(list: WorldBlueprint[]) {
     this.blueprints.clear();
     for (const blueprint of list) this.blueprints.set(blueprint.world.slug, blueprint);
@@ -1161,8 +1187,18 @@ export class WorldScene extends Phaser.Scene {
       this.floatingText(x, top, String(event.amount), isLocal ? "#ff5a4f" : "#ffe27a", 17);
     }
     target.hurt(now);
-    this.burst(x, middle, { tints: [0xff4d4d, 0xb91c1c, 0xffd1a1], count: 8, speed: 130 });
-    if (isLocal) this.cameras.main.shake(90, 0.003);
+    // Golpe de jogador dói diferente de golpe de monstro: faísca mais clara e, em quem apanhou,
+    // um clarão vermelho curto. Sem isso, levar PvP pela primeira vez passa despercebido.
+    const dePvP = event.attacker !== event.target && !this.monsterIds.has(event.attacker) && this.actors.has(event.attacker);
+    this.burst(x, middle, {
+      tints: dePvP ? [0xff7a5a, 0xffd1a1, 0xffffff] : [0xff4d4d, 0xb91c1c, 0xffd1a1],
+      count: dePvP ? 14 : 8,
+      speed: dePvP ? 190 : 130,
+    });
+    if (isLocal) {
+      this.cameras.main.shake(dePvP ? 140 : 90, dePvP ? 0.006 : 0.003);
+      if (dePvP) this.cameras.main.flash(130, 120, 20, 16, false);
+    }
   }
 
   private onXp(event: XpEvent) {
@@ -1281,11 +1317,57 @@ export class WorldScene extends Phaser.Scene {
 
   private onPlayerDeath(event: PlayerDeathEvent) {
     const { x, y } = tileToScreen(event.x, event.y);
-    this.burst(x, y - 40, { tints: [0xff3b3b, 0x7f1d1d, 0xffffff], count: 30, speed: 220 });
+    const porJogador = event.killer !== "";
+    this.burst(x, y - 40, {
+      tints: porJogador ? [0xff6a2c, 0xffd54a, 0xffffff] : [0xff3b3b, 0x7f1d1d, 0xffffff],
+      count: porJogador ? 44 : 30,
+      speed: porJogador ? 300 : 220,
+    });
+    if (porJogador) this.dropArc(x, y, event.dropped);
     if (event.id === this.localId) {
-      this.cameras.main.shake(250, 0.008);
+      this.cameras.main.shake(porJogador ? 340 : 250, porJogador ? 0.011 : 0.008);
+      if (porJogador) this.cameras.main.flash(220, 150, 30, 20, false);
       this.hud.showDeath(event.xpLost);
     }
+  }
+
+  /**
+   * Os itens saindo da mochila de quem morreu, em arco até o chão. É o momento que dá peso à
+   * queda de item: sem ele, o jogador só descobre o que perdeu abrindo a mochila depois.
+   */
+  private dropArc(x: number, y: number, dropped: readonly string[]) {
+    dropped.forEach((id, index) => {
+      const nome = gearItem(id)?.name ?? id;
+      const lado = index % 2 === 0 ? 1 : -1;
+      const alvoX = x + lado * (26 + index * 9);
+      const faisca = this.add
+        .image(x, y - 34, "fx_glow")
+        .setTint(0xffd54a)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setScale(0.5)
+        .setDepth(DEPTH_OVERLAY);
+      // Sobe e cai: o arco é o que faz parecer que o item saiu de dentro da mochila.
+      this.tweens.add({
+        targets: faisca,
+        x: alvoX,
+        duration: 620,
+        delay: index * 90,
+        ease: "Sine.easeOut",
+        onComplete: () => faisca.destroy(),
+      });
+      this.tweens.add({
+        targets: faisca,
+        y: [y - 34, y - 72, y - 4],
+        duration: 620,
+        delay: index * 90,
+        ease: "Quad.easeIn",
+        onUpdate: () => faisca.setScale(0.5 - faisca.alpha * 0.1),
+      });
+      this.tweens.add({ targets: faisca, alpha: 0.2, duration: 620, delay: index * 90 });
+      this.time.delayedCall(index * 90 + 120, () => {
+        this.floatingText(alvoX, y - 50, nome, "#ffd54a", 12, 40, 1500);
+      });
+    });
   }
 
   /** Baforada ou explosão de monstro: as mesmas explosões dos poderes, nas casas atingidas. */
