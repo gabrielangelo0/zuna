@@ -84,6 +84,9 @@ export const characters = pgTable(
     mounted: boolean("mounted").notNull().default(false),
     /** Mundo onde o personagem estava ao sair (0 = o mundo padrão). */
     worldId: integer("world_id").notNull().default(0),
+    /** Marca de agressor em PvP. Fica no banco e não só na memória: sem isso, o agressor
+     *  desconecta e volta limpo, e a marca vira enfeite. */
+    markedUntil: timestamp("marked_until", { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
@@ -390,6 +393,9 @@ export const characterItems = pgTable(
     count: integer("count").notNull().default(1),
     /** Posição na grade da mochila (-1 = equipado ou ainda sem lugar). */
     position: integer("position").notNull().default(-1),
+    /** Veio de compra com diamante: nunca cai ao morrer em PvP. É o que separa o equipamento
+     *  farmado (que dá a tensão) do equipamento pago (que não pode virar estorno). */
+    bound: boolean("bound").notNull().default(false),
     createdAt: createdAt(),
   },
   (table) => [index("character_items_character_idx").on(table.characterId), index("character_items_item_idx").on(table.itemId)],
@@ -510,6 +516,29 @@ export const characterMilestones = pgTable(
 // ---------------------------------------------------------------- classes
 
 /** As classes do jogo, montadas no painel. */
+/**
+ * Mortes em PvP. Não é enfeite: com queda de item vai haver disputa ("me mataram em zona
+ * segura", "perdi um item que comprei", "aquele cara só mata novato"), e sem registro a
+ * resposta é adivinhação.
+ */
+export const pvpKills = pgTable(
+  "pvp_kills",
+  {
+    id: serial("id").primaryKey(),
+    killerId: integer("killer_id").notNull(),
+    victimId: integer("victim_id").notNull(),
+    killerName: text("killer_name").notNull().default(""),
+    victimName: text("victim_name").notNull().default(""),
+    worldId: integer("world_id").notNull().default(0),
+    /** O matador estava marcado na hora do golpe. */
+    markedKiller: boolean("marked_killer").notNull().default(false),
+    /** Ids dos itens que caíram, separados por vírgula (como o `looks` do personagem). */
+    droppedItems: text("dropped_items").notNull().default(""),
+    createdAt: createdAt(),
+  },
+  (table) => [index("pvp_kills_victim_idx").on(table.victimId), index("pvp_kills_at_idx").on(table.createdAt)],
+);
+
 export const vocations = pgTable("vocations", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),

@@ -141,6 +141,8 @@ export interface CharacterSnapshot {
   pet: string;
   mount: string;
   mounted: boolean;
+  /** Marca de agressor em PvP (0 = sem marca). Persiste para o agressor não limpá-la saindo. */
+  markedUntil: number;
 }
 
 export async function saveCharacter(snapshot: CharacterSnapshot) {
@@ -164,6 +166,7 @@ export async function saveCharacter(snapshot: CharacterSnapshot) {
       colorPrimary: appearance.primary,
       colorSecondary: appearance.secondary,
       colorDetail: appearance.detail,
+      markedUntil: snapshot.markedUntil > 0 ? new Date(snapshot.markedUntil) : null,
       pet: snapshot.pet,
       mount: snapshot.mount,
       mounted: snapshot.mounted,

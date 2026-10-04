@@ -27,8 +27,9 @@ export interface WorldSim {
   items: GroundItemDef[];
   /** Monstros por tile. */
   monsterAt: Map<number, string>;
-  /** Quantos jogadores em cada tile. */
-  playersAt: Map<number, number>;
+  /** Quem está em cada tile. Lista de ids, como o `lootAt`, e não contagem: jogadores se
+   *  atravessam, e magia de área precisa saber *quem* está ali, não quantos. */
+  playersAt: Map<number, string[]>;
   /** Drops no chão, por tile. */
   lootAt: Map<number, string[]>;
   /** Monstros vivos de cada ninho. */
@@ -91,14 +92,26 @@ export function blockedForMonster(sim: WorldSim, x: number, y: number, selfId?: 
   const key = tileKey(sim, x, y);
   const occupant = sim.monsterAt.get(key);
   if (occupant !== undefined && occupant !== selfId) return true;
-  return (sim.playersAt.get(key) ?? 0) > 0;
+  return (sim.playersAt.get(key)?.length ?? 0) > 0;
 }
 
-export function occupyPlayer(sim: WorldSim, x: number, y: number, delta: number) {
+export function occupyPlayer(sim: WorldSim, x: number, y: number, id: string, entra: boolean) {
   const key = tileKey(sim, x, y);
-  const count = (sim.playersAt.get(key) ?? 0) + delta;
-  if (count <= 0) sim.playersAt.delete(key);
-  else sim.playersAt.set(key, count);
+  const atuais = sim.playersAt.get(key);
+  if (!entra) {
+    if (!atuais) return;
+    const resto = atuais.filter((entry) => entry !== id);
+    if (resto.length === 0) sim.playersAt.delete(key);
+    else sim.playersAt.set(key, resto);
+    return;
+  }
+  if (!atuais) sim.playersAt.set(key, [id]);
+  else if (!atuais.includes(id)) atuais.push(id);
+}
+
+/** Quem está pisando neste tile. Vazio quando não há ninguém. */
+export function playersOn(sim: WorldSim, x: number, y: number): readonly string[] {
+  return sim.playersAt.get(tileKey(sim, x, y)) ?? [];
 }
 
 export function findFreeTile(sim: WorldSim, cx: number, cy: number, forMonster: boolean, maxRadius = 6): Point | null {

@@ -160,6 +160,19 @@ export const ClientMsg = {
   View: "view",
 } as const;
 
+/** Ajustes do PvP em vigor, para o cliente avisar e explicar antes de o jogador tentar. */
+export interface PvpInfoEvent {
+  enabled: boolean;
+  minLevel: number;
+  levelRatio: number;
+  dropSlots: number;
+  markMinutes: number;
+  /** O mundo onde o jogador está agora aceita combate entre jogadores. */
+  openHere: boolean;
+  /** A marca dele vence neste instante (0 = sem marca). */
+  markedUntil: number;
+}
+
 /**
  * Janela de visão do jogador, em tiles, nos eixos da tela isométrica: `u` é a largura
  * (x − y) e `v` a altura (x + y). O cliente calcula pelo tamanho da tela e pelo zoom,
@@ -258,6 +271,10 @@ export interface PlayerDeathEvent {
   x: number;
   y: number;
   xpLost: number;
+  /** Quem matou, quando foi outro jogador. Vazio na morte para monstro. */
+  killer: string;
+  /** Ids dos equipamentos que caíram da mochila (só em morte para jogador). */
+  dropped: string[];
 }
 
 export interface SpellEffectEvent {
@@ -360,4 +377,6 @@ export const ServerMsg = {
   Checkin: "checkin",
   /** Baús de marco: a lista e os que este personagem já pegou (só ele recebe). */
   Milestones: "milestones",
+  /** Regras do PvP e a marca do jogador (só ele recebe). */
+  Pvp: "pvp",
 } as const;

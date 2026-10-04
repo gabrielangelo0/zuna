@@ -10,6 +10,7 @@ import {
   type MilestonesEvent,
   type VocationMessage,
   type ViewMessage,
+  type PvpInfoEvent,
   vocationById,
   vocationFamilies,
   vocationStats,
@@ -120,12 +121,19 @@ import {
   type WorldBlueprint,
   type WorldPatchEvent,
   type XpEvent,
+  canAttack,
+  marksAttacker,
+  droppableItems,
+  hasProtection,
+  PROTECTION_ITEM,
+  type Fighter,
 } from "@zuna/shared";
 import { accountFromToken } from "./auth.ts";
 import { EventManager } from "./events.ts";
 import { allQuests, listQuestProgress, liveQuests, questById, saveQuestProgress } from "./quests.ts";
 import { checkinDaysAll, checkinSettings, checkinStateFor, claimCheckin } from "./checkin.ts";
 import { claimMilestones, levelRewardsAll, pendingMilestones, takenMilestones, xpRate } from "./progress.ts";
+import { pvpSettings, recordPvpKill } from "./pvp.ts";
 import { chargeDiamonds, saveCharacterVocation, vocationChangeCost, vocationSettings } from "./vocations.ts";
 import {
   addCharacterItem,
@@ -173,6 +181,7 @@ import {
   indexPortals,
   inSafe,
   occupyPlayer,
+  playersOn,
   portalAt,
   tileKey,
   walkable,
@@ -266,6 +275,10 @@ interface PlayerSim {
   mutedUntil: number;
   /** Portais só levam de novo depois deste instante (evita ir e voltar sem parar). */
   nextPortalAt: number;
+  /** Marca de agressor em PvP vence neste instante (0 = sem marca). */
+  markedUntil: number;
+  /** Quando cada outro jogador bateu neste aqui pela última vez: é o que define revide. */
+  attackedBy: Map<string, number>;
   /** Operações de banco deste personagem, em fila: nunca duas ao mesmo tempo. */
   queue: Promise<void>;
 }
@@ -293,6 +306,13 @@ export interface MonsterSim {
   /** Dano causado por cada jogador: a XP é dividida nessa proporção. */
   damageBy: Map<string, number>;
   onDeath?: () => void;
+}
+
+/** Alvo de um golpe: monstro ou jogador. O código de monstro não muda de forma por causa disto. */
+type Combatant = MonsterSim | PlayerSim;
+
+function isPlayerSim(target: Combatant): target is PlayerSim {
+  return "client" in target;
 }
 
 interface Scheduled {
@@ -547,7 +567,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       y: Math.min(Math.max(0, Math.round(y)), sim.map.height - 1),
     };
     const spot = findFreeTile(sim, at.x, at.y, false) ?? findFreeTile(sim, sim.def.spawnX, sim.def.spawnY, false) ?? at;
-    occupyPlayer(from, s.x, s.y, -1);
+    occupyPlayer(from, s.x, s.y, player.id, false);
     if (from !== sim) {
       for (const monster of this.monsters.values()) {
         if (monster.targetId === player.id) monster.targetId = null;
@@ -559,7 +579,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     s.y = spot.y;
     // Pulou para longe: refaz a visão agora, senão o mundo novo aparece vazio por um instante.
     player.nextViewAt = 0;
-    occupyPlayer(sim, s.x, s.y, 1);
+    occupyPlayer(sim, s.x, s.y, player.id, true);
     s.target = "";
     player.path = [];
     player.moveDir = null;
@@ -571,8 +591,9 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       y: s.y,
       name: sim.def.name,
     } satisfies TravelEvent);
-    // As missões dependem do mundo: a lista vai de novo a cada viagem.
+    // As missões e a regra de PvP dependem do mundo: as duas vão de novo a cada viagem.
     this.sendQuests(player);
+    this.sendPvp(player);
     void this.persist(player);
   }
 
@@ -870,6 +891,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       mount,
       mounted: mount !== "" && row.mounted,
       looks: looksOf(items),
+      marked: (row.markedUntil?.getTime() ?? 0) > Date.now(),
     });
 
     const player: PlayerSim = {
@@ -902,6 +924,8 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       chatReadyAt: 0,
       mutedUntil: 0,
       nextPortalAt: 0,
+      markedUntil: row.markedUntil ? row.markedUntil.getTime() : 0,
+      attackedBy: new Map(),
       queue: Promise.resolve(),
     };
     this.players.set(client.sessionId, player);
@@ -912,9 +936,10 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     client.view = view;
     player.seen.add(client.sessionId);
     this.state.online = this.players.size;
-    occupyPlayer(sim, spot.x, spot.y, 1);
+    occupyPlayer(sim, spot.x, spot.y, client.sessionId, true);
 
     this.settleBag(player);
+    this.sendPvp(player);
     this.sendQuests(player);
     void this.sendCheckin(player);
     void this.grantMilestones(player);
@@ -1098,11 +1123,12 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       pet: s.pet,
       mount: s.mount,
       mounted: s.mounted,
+      markedUntil: player.markedUntil,
     };
   }
 
   private removePlayer(player: PlayerSim) {
-    occupyPlayer(player.world, player.state.x, player.state.y, -1);
+    occupyPlayer(player.world, player.state.x, player.state.y, player.id, false);
     this.players.delete(player.id);
     this.state.players.delete(player.id);
     for (const monster of this.monsters.values()) {
@@ -1152,7 +1178,15 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     const player = this.players.get(client.sessionId);
     if (!player) return;
     const id = String(message?.id ?? "");
-    if (id && !this.monsters.has(id)) return;
+    if (id && !this.monsters.has(id)) {
+      const outro = this.players.get(id);
+      // Clique que não faz nada parece defeito: a recusa diz o motivo em vez de sumir.
+      const motivo = outro ? this.pvpRefusal(player, outro) : "Esse alvo não existe mais.";
+      if (motivo) {
+        this.sendChat(client, "system", motivo);
+        return;
+      }
+    }
     player.state.target = id;
     player.path = [];
     player.nextChaseAt = 0;
@@ -1177,11 +1211,15 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
 
     // Cada poder escolhe seus alvos antes de gastar mana: sem alvo, nada é cobrado.
     const sim = player.world;
-    const target = s.target ? this.monsters.get(s.target) : undefined;
+    const target = s.target ? this.combatant(s.target) : undefined;
     let at: Point = s;
     if (spell.kind === "target" || spell.kind === "leech" || spell.kind === "blast") {
       if (!target || target.world !== sim || chebyshev(s.x, s.y, target.state.x, target.state.y) > spell.range) {
         this.sendChat(client, "system", "Escolha um alvo dentro do alcance (Tab mira no mais próximo).");
+        return;
+      }
+      if (!this.canHit(player, target)) {
+        this.sendChat(client, "system", this.pvpRefusal(player, target as PlayerSim) ?? "Alvo protegido.");
         return;
       }
       at = { x: target.state.x, y: target.state.y };
@@ -1189,15 +1227,21 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     // O leque mira sozinho no alvo escolhido; sem alvo, sai para onde o personagem olha.
     if (spell.kind === "wave" && target && target.world === sim) this.face(s, target.state);
     const tiles = spellArea(spell, s, s.dir, at).filter((tile) => tile.x >= 0 && tile.y >= 0 && tile.x < sim.map.width && tile.y < sim.map.height);
-    let targets: MonsterSim[] = [];
+    const targets: Combatant[] = [];
     if (spell.kind !== "heal") {
       for (const tile of tiles) {
         const id = sim.monsterAt.get(tileKey(sim, tile.x, tile.y));
         const monster = id ? this.monsters.get(id) : undefined;
         if (monster) targets.push(monster);
+        // Jogadores também: o índice de ids por tile existe por causa disto. Quem a regra de
+        // PvP protege simplesmente não entra na lista — a magia passa por cima sem feri-lo.
+        for (const outroId of playersOn(sim, tile.x, tile.y)) {
+          const outro = this.players.get(outroId);
+          if (outro && outro !== player && this.canHit(player, outro)) targets.push(outro);
+        }
       }
       if (targets.length === 0) {
-        this.sendChat(client, "system", spell.kind === "wave" ? "Nenhum monstro na frente." : "Nenhum monstro ao seu redor.");
+        this.sendChat(client, "system", spell.kind === "wave" ? "Nada na sua frente." : "Nada ao seu redor.");
         return;
       }
     }
@@ -1221,11 +1265,12 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     const { maxDamage } = this.statsOf(player);
     const magic = vocationStats(player.vocation).magicFactor;
     let dealt = 0;
-    for (const monster of targets) {
+    for (const alvo of targets) {
       const crit = Math.random() < CRIT_CHANCE;
       const roll = Math.round(maxDamage * spell.power * magic * (0.85 + Math.random() * 0.3) * (crit ? CRIT_MULTIPLIER : 1));
-      dealt += Math.max(0, roll - monster.def.armor);
-      this.damageMonster(monster, player, roll - monster.def.armor, crit);
+      const armor = isPlayerSim(alvo) ? this.statsOf(alvo).armor : alvo.def.armor;
+      dealt += Math.max(0, roll - armor);
+      this.damage(alvo, player, roll - armor, crit);
     }
 
     if (spell.kind === "leech" && dealt > 0) {
@@ -1596,8 +1641,10 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
   private updatePlayer(player: PlayerSim, now: number) {
     const s = player.state;
     const sim = player.world;
-    const target = s.target ? this.monsters.get(s.target) : undefined;
-    if (s.target && (!target || target.world !== sim)) s.target = "";
+    const target = s.target ? this.combatant(s.target) : undefined;
+    // Larga o alvo que sumiu, mudou de mundo, ou que a regra de PvP deixou de permitir — o
+    // outro pode ter entrado na zona segura no meio da briga.
+    if (s.target && (!target || target.world !== sim || !this.canHit(player, target))) s.target = "";
 
     if (isReady(player.nextStepAt, now)) {
       if (player.moveDir) {
@@ -1634,7 +1681,9 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
         this.sendNear(sim.def.slug, s.x, s.y, ServerMsg.Shot, { attacker: player.id, target: target.id } satisfies ShotEvent);
         this.spendAmmo(player);
       }
-      this.damageMonster(target, player, roll - target.def.armor, crit);
+      // A armadura do alvo: monstro tem a da espécie, jogador tem a do que está vestindo.
+      const armor = isPlayerSim(target) ? this.statsOf(target).armor : target.def.armor;
+      this.damage(target, player, roll - armor, crit);
     }
 
     if (player.world.lootAt.size > 0) this.collectLoot(player, now);
@@ -1663,12 +1712,12 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     const dx = x - s.x;
     const dy = y - s.y;
     const duration = stepDuration(PLAYER_STEP_MS * this.bonusesOf(player).stepFactor, dx, dy);
-    occupyPlayer(sim, s.x, s.y, -1);
+    occupyPlayer(sim, s.x, s.y, player.id, false);
     s.x = x;
     s.y = y;
     s.dir = dirIndex(dx, dy);
     s.stepMs = duration;
-    occupyPlayer(sim, x, y, 1);
+    occupyPlayer(sim, x, y, player.id, true);
     player.nextStepAt = nextStepTime(player.nextStepAt, now, duration);
 
     const portal = portalAt(sim, x, y);
@@ -1878,6 +1927,81 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     if (player.state.hp <= 0) this.killPlayer(player, monster);
   }
 
+  /** Monstro ou jogador por id, para quem não precisa saber qual dos dois é. */
+  private combatant(id: string): Combatant | undefined {
+    return this.monsters.get(id) ?? this.players.get(id);
+  }
+
+  /** O que `canAttack` precisa saber de `a`, do ponto de vista de um confronto com `b`. */
+  private fighterOf(a: PlayerSim, b: PlayerSim): Fighter {
+    return {
+      level: a.state.level,
+      markedUntil: a.markedUntil,
+      inSafe: inSafe(a.world, a.state.x, a.state.y),
+      attackedAt: a.attackedBy.get(b.id) ?? 0,
+    };
+  }
+
+  /**
+   * Por que `a` não pode bater em `b`, ou null quando pode. Uma regra, um lugar: a mira, o
+   * auto-ataque e a magia de área perguntam aqui em vez de cada um inventar a sua versão.
+   */
+  private pvpRefusal(a: PlayerSim, b: PlayerSim): string | null {
+    if (a === b) return "Você não pode atacar a si mesmo.";
+    if (a.world !== b.world) return "Esse jogador não está neste mundo.";
+    if (a.world.def.pvp !== "open") return "Aqui não se ataca outro jogador.";
+    return canAttack(this.fighterOf(a, b), this.fighterOf(b, a), pvpSettings(), Date.now());
+  }
+
+  private canHit(attacker: PlayerSim, target: Combatant): boolean {
+    return isPlayerSim(target) ? this.pvpRefusal(attacker, target) === null : true;
+  }
+
+  /** Despacha o golpe para o lado certo. */
+  private damage(target: Combatant, attacker: PlayerSim, amount: number, crit = false) {
+    if (isPlayerSim(target)) this.damagePlayer(target, attacker, amount, crit);
+    else this.damageMonster(target, attacker, amount, crit);
+  }
+
+  /** Marca o agressor e avisa a vizinhança: a caveira é o que faz a punição existir socialmente. */
+  private markPlayer(player: PlayerSim, agora: number) {
+    const minutos = pvpSettings().markMinutes;
+    if (minutos <= 0) return;
+    const novo = agora + minutos * 60_000;
+    if (novo <= player.markedUntil) return;
+    const estreia = !player.state.marked;
+    player.markedUntil = novo;
+    player.state.marked = true;
+    if (estreia) {
+      this.sendChat(player.client, "system", `Você atacou alguém sem ser atacado e ficou marcado por ${minutos} minutos.`);
+    }
+    this.sendPvp(player);
+    void this.persist(player);
+  }
+
+  private damagePlayer(target: PlayerSim, attacker: PlayerSim, amount: number, crit = false) {
+    if (!this.players.has(target.id) || target === attacker) return;
+    if (this.pvpRefusal(attacker, target)) return;
+    const agora = Date.now();
+    const settings = pvpSettings();
+
+    // A marca nasce antes do dano: depois do golpe o alvo já consta como atacado, e aí todo
+    // ataque pareceria revide.
+    if (marksAttacker(this.fighterOf(attacker, target), this.fighterOf(target, attacker), settings, agora)) {
+      this.markPlayer(attacker, agora);
+    }
+    target.attackedBy.set(attacker.id, agora);
+
+    const s = target.state;
+    if (amount <= 0) {
+      this.broadcastHit(target.id, attacker.id, 0, "block");
+      return;
+    }
+    s.hp = Math.max(0, s.hp - amount);
+    this.broadcastHit(target.id, attacker.id, amount, crit ? "crit" : "damage");
+    if (s.hp <= 0) this.killPlayer(target, attacker);
+  }
+
   private damageMonster(monster: MonsterSim, attacker: PlayerSim, amount: number, crit = false) {
     if (!this.monsters.has(monster.id)) return;
     const s = monster.state;
@@ -1983,18 +2107,73 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     void this.persist(player);
   }
 
-  private killPlayer(player: PlayerSim, killer: MonsterSim) {
+  /**
+   * O que a vítima perde da mochila ao morrer para outro jogador. Devolve os ids que caíram.
+   *
+   * Só item solto: equipamento vestido não cai, e item comprado com diamante nunca cai. É o
+   * que impede a queda de item de virar pedido de estorno num jogo onde se paga por
+   * equipamento. O Amuleto de Proteção se consome e salva a mochila inteira.
+   */
+  private dropOnPvpDeath(player: PlayerSim, killer: PlayerSim): string[] {
+    const settings = pvpSettings();
+    const sim = player.world;
+    const s = player.state;
+    if (hasProtection(player.items)) {
+      const amuleto = player.items.find((item) => item.itemId === PROTECTION_ITEM && item.equipped === "amulet");
+      if (amuleto) {
+        this.consume(player, amuleto, 1);
+        this.sendChat(player.client, "event", "Seu Amuleto de Proteção se partiu e salvou tudo que você carregava.");
+      }
+      return [];
+    }
+
+    const caem = droppableItems(player.items, settings.dropSlots, player.markedUntil > Date.now());
+    const ids: string[] = [];
+    for (const item of caem) {
+      const drop = { kind: "item" as const, gold: 0, diamonds: 0, item: item.itemId, count: item.count };
+      // Cai com o matador como dono: o dropLoot já lhe dá primeira-mão antes de liberar geral.
+      if (!this.dropLoot(sim, drop, s.x, s.y, killer.id)) continue;
+      ids.push(item.itemId);
+      this.consume(player, item, item.count);
+    }
+    if (ids.length > 0) this.sendInventory(player);
+    return ids;
+  }
+
+  private killPlayer(player: PlayerSim, killer: Combatant) {
     const s = player.state;
     const levelFloor = xpForLevel(s.level);
     const xpLost = Math.max(0, Math.min(Math.round(s.xp * DEATH_XP_LOSS), s.xp - levelFloor));
     s.xp -= xpLost;
 
-    this.sendNear(player.world.def.slug, s.x, s.y, ServerMsg.PlayerDeath, { id: player.id, x: s.x, y: s.y, xpLost } satisfies PlayerDeathEvent);
-    this.sendChat(
-      player.client,
-      "system",
-      `Você foi morto por ${killer.def.name}${xpLost > 0 ? ` e perdeu ${xpLost} de experiência` : ""}.`,
-    );
+    const porJogador = isPlayerSim(killer);
+    const nomeDoMatador = porJogador ? killer.state.name : killer.def.name;
+    const caidos = porJogador ? this.dropOnPvpDeath(player, killer) : [];
+
+    this.sendNear(player.world.def.slug, s.x, s.y, ServerMsg.PlayerDeath, {
+      id: player.id,
+      x: s.x,
+      y: s.y,
+      xpLost,
+      killer: porJogador ? killer.id : "",
+      dropped: caidos,
+    } satisfies PlayerDeathEvent);
+    const perdeu = [xpLost > 0 ? `perdeu ${xpLost} de experiência` : "", caidos.length > 0 ? `deixou cair ${caidos.length} item(ns)` : ""]
+      .filter(Boolean)
+      .join(" e ");
+    this.sendChat(player.client, "system", `Você foi morto por ${nomeDoMatador}${perdeu ? ` e ${perdeu}` : ""}.`);
+    if (porJogador) {
+      this.sendChat(killer.client, "event", `Você derrotou ${s.name}.`);
+      void recordPvpKill({
+        killerId: killer.characterId,
+        victimId: player.characterId,
+        killerName: killer.state.name,
+        victimName: s.name,
+        worldId: player.world.def.id,
+        markedKiller: killer.markedUntil > Date.now(),
+        droppedItems: caidos,
+      }).catch(() => undefined);
+    }
 
     for (const monster of this.monsters.values()) {
       if (monster.targetId === player.id) monster.targetId = null;
@@ -2003,10 +2182,10 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     const sim = player.world;
     const home = { x: sim.def.spawnX, y: sim.def.spawnY };
     const spot = findFreeTile(sim, home.x, home.y, false) ?? home;
-    occupyPlayer(sim, s.x, s.y, -1);
+    occupyPlayer(sim, s.x, s.y, player.id, false);
     s.x = spot.x;
     s.y = spot.y;
-    occupyPlayer(sim, s.x, s.y, 1);
+    occupyPlayer(sim, s.x, s.y, player.id, true);
     player.nextPortalAt = Date.now() + 800;
     s.hp = s.maxHp;
     s.mana = s.maxMana;
@@ -2016,12 +2195,42 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
   }
 
   private regenerate() {
+    const agora = Date.now();
+    const janela = pvpSettings().retaliationMinutes * 60_000;
     for (const player of this.players.values()) {
       const s = player.state;
       const boost = inSafe(player.world, s.x, s.y) ? 3 : 1;
       s.hp = Math.min(s.maxHp, s.hp + boost * (1 + Math.floor(s.level / 5)));
       s.mana = Math.min(s.maxMana, s.mana + boost * (2 + Math.floor(s.level / 4)));
+
+      // A marca vence aqui, de segundo em segundo, em vez de custar uma conferência por tick.
+      if (player.markedUntil > 0 && player.markedUntil <= agora) {
+        player.markedUntil = 0;
+        s.marked = false;
+        this.sendChat(player.client, "event", "Sua marca de agressor passou.");
+        this.sendPvp(player);
+        void this.persist(player);
+      }
+      // E a janela de revide, para o mapa não crescer sem fim numa sessão longa.
+      if (player.attackedBy.size > 0) {
+        for (const [id, quando] of player.attackedBy) if (agora - quando > janela) player.attackedBy.delete(id);
+      }
     }
+  }
+
+  /** As regras do PvP e a marca dele, para a tela avisar antes de o jogador tentar. */
+  private sendPvp(player: PlayerSim) {
+    if (!this.players.has(player.id)) return;
+    const s = pvpSettings();
+    player.client.send(ServerMsg.Pvp, {
+      enabled: s.enabled,
+      minLevel: s.minLevel,
+      levelRatio: s.levelRatio,
+      dropSlots: s.dropSlots,
+      markMinutes: s.markMinutes,
+      openHere: player.world.def.pvp === "open",
+      markedUntil: player.markedUntil,
+    } satisfies PvpInfoEvent);
   }
 
   private adjacentMonsters(sim: WorldSim, center: Point): MonsterSim[] {

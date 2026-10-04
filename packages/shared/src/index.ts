@@ -21,3 +21,4 @@ export * from "./checkin.ts";
 export * from "./progress.ts";
 export * from "./vocations.ts";
 export * from "./items.ts";
+export * from "./pvp.ts";

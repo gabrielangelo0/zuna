@@ -158,13 +158,20 @@ export async function listCharacterItems(characterId: number): Promise<OwnedItem
     count: Math.max(1, row.count),
     equipped: (EQUIP_SLOTS.includes(row.equipped as EquipSlot) ? row.equipped : "") as EquipSlot | "",
     position: row.position,
+    bound: row.bound,
   }));
 }
 
-export async function addCharacterItem(characterId: number, itemId: string, count = 1, position = -1): Promise<number> {
+export async function addCharacterItem(
+  characterId: number,
+  itemId: string,
+  count = 1,
+  position = -1,
+  bound = false,
+): Promise<number> {
   const [row] = await db()
     .insert(characterItems)
-    .values({ characterId, itemId, count, position })
+    .values({ characterId, itemId, count, position, bound })
     .returning({ id: characterItems.id });
   return row!.id;
 }
@@ -204,7 +211,9 @@ export async function buyGearWithDiamonds(params: {
     if (!account) return { ok: false, message: "Diamantes insuficientes." };
     const [row] = await tx
       .insert(characterItems)
-      .values({ characterId: params.characterId, itemId: params.item.id, position: params.position })
+      // Vinculado: comprado com diamante não cai em PvP. É o que separa o equipamento farmado
+      // (que dá a tensão) do pago (que não pode virar pedido de estorno).
+      .values({ characterId: params.characterId, itemId: params.item.id, position: params.position, bound: true })
       .returning({ id: characterItems.id });
     await tx.insert(purchases).values({
       accountId: params.accountId,

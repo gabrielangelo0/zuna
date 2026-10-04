@@ -460,6 +460,8 @@ export interface OwnedItem {
   equipped: EquipSlot | "";
   /** Posição na grade da mochila (-1 quando equipado). */
   position: number;
+  /** Veio de compra com diamante: nunca cai ao morrer em PvP. */
+  bound?: boolean;
 }
 
 export interface InventoryEvent {

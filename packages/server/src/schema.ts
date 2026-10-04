@@ -29,6 +29,8 @@ export const PlayerState = schema(
     mounted: t.boolean(),
     /** Aparência do que está vestido (ícones em VISIBLE_SLOTS, separados por vírgula). */
     looks: t.string(),
+    /** Marcado como agressor em PvP: quem está perto vê a caveira em cima dele. */
+    marked: t.boolean(),
   },
   "Player",
 );
