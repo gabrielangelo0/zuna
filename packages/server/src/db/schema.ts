@@ -616,3 +616,143 @@ export const vocations = pgTable("vocations", {
   sort: smallint("sort").notNull().default(0),
   createdAt: createdAt(),
 });
+
+// ---------------------------------------------------------------- Arena
+
+/** Uma praça de arena. Nasce da lista de fábrica e depois é editada no painel. */
+export const arenas = pgTable("arenas", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description").notNull().default(""),
+  minLevel: integer("min_level").notNull().default(1),
+  /** 0 = sem teto. */
+  maxLevel: integer("max_level").notNull().default(0),
+  freeEntries: smallint("free_entries").notNull().default(5),
+  entryPrice: integer("entry_price").notNull().default(0),
+  rewardGold: bigint("reward_gold", { mode: "number" }).notNull().default(0),
+  rewardXp: doublePrecision("reward_xp").notNull().default(0),
+  enabled: boolean("enabled").notNull().default(true),
+  sort: smallint("sort").notNull().default(0),
+  createdAt: createdAt(),
+});
+
+/**
+ * Adversário de mentira, para a arena funcionar com um jogador só.
+ *
+ * Sem isto o primeiro jogador do servidor abre a arena, vê lista vazia, e o sistema está
+ * quebrado no dia do lançamento. Manequim não mexe na pontuação — ver `arena_standings`.
+ */
+export const arenaDummies = pgTable(
+  "arena_dummies",
+  {
+    id: serial("id").primaryKey(),
+    arena: text("arena").notNull(),
+    name: text("name").notNull(),
+    level: integer("level").notNull().default(1),
+    vocation: text("vocation").notNull().default(""),
+    /** Multiplica os atributos do nível: manequim de elite é 1,2. */
+    power: doublePrecision("power").notNull().default(1),
+    skin: smallint("skin").notNull().default(0),
+    hairColor: smallint("hair_color").notNull().default(0),
+    outfit: text("outfit").notNull().default("aventureiro"),
+    colorPrimary: smallint("color_primary").notNull().default(0),
+    colorSecondary: smallint("color_secondary").notNull().default(0),
+    colorDetail: smallint("color_detail").notNull().default(0),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: createdAt(),
+  },
+  (table) => [index("arena_dummies_arena_idx").on(table.arena)],
+);
+
+/**
+ * O retrato do personagem: é dele que a IA do adversário é feita.
+ *
+ * Guarda a **soma do equipamento**, e não a lista: a arena só precisa dos quatro números, e
+ * reler a mochila de cada candidato a adversário seria uma consulta por linha da lista.
+ */
+export const arenaSnapshots = pgTable(
+  "arena_snapshots",
+  {
+    characterId: integer("character_id")
+      .primaryKey()
+      .references(() => characters.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    level: integer("level").notNull().default(1),
+    vocation: text("vocation").notNull().default(""),
+    gearAttack: integer("gear_attack").notNull().default(0),
+    gearDefense: integer("gear_defense").notNull().default(0),
+    gearHp: integer("gear_hp").notNull().default(0),
+    gearMana: integer("gear_mana").notNull().default(0),
+    skin: smallint("skin").notNull().default(0),
+    hairColor: smallint("hair_color").notNull().default(0),
+    outfit: text("outfit").notNull().default("aventureiro"),
+    colorPrimary: smallint("color_primary").notNull().default(0),
+    colorSecondary: smallint("color_secondary").notNull().default(0),
+    colorDetail: smallint("color_detail").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("arena_snapshots_level_idx").on(table.level)],
+);
+
+/** Onde cada personagem está em cada arena, na temporada da semana. */
+export const arenaStandings = pgTable(
+  "arena_standings",
+  {
+    id: serial("id").primaryKey(),
+    characterId: integer("character_id")
+      .notNull()
+      .references(() => characters.id, { onDelete: "cascade" }),
+    arena: text("arena").notNull(),
+    /** Chave da semana ISO ("2026-W40"). */
+    season: text("season").notNull(),
+    rating: integer("rating").notNull().default(1000),
+    wins: integer("wins").notNull().default(0),
+    losses: integer("losses").notNull().default(0),
+    /** Dia das entradas gastas ("2026-10-04"): virou o dia, a conta zera. */
+    entryDay: text("entry_day").notNull().default(""),
+    entriesUsed: smallint("entries_used").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("arena_standings_board_idx").on(table.arena, table.season, table.rating),
+    index("arena_standings_who_idx").on(table.characterId, table.season),
+  ],
+);
+
+/** Degrau de recompensa do ranking semanal. Arena vazia ("") vale em todas. */
+export const arenaRewards = pgTable("arena_rewards", {
+  id: serial("id").primaryKey(),
+  arena: text("arena").notNull().default(""),
+  fromRank: integer("from_rank").notNull().default(1),
+  toRank: integer("to_rank").notNull().default(1),
+  gold: bigint("gold", { mode: "number" }).notNull().default(0),
+  diamonds: integer("diamonds").notNull().default(0),
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: createdAt(),
+});
+
+/**
+ * Registro das lutas. Guarda a **semente**, não os golpes: a semente mais os dois retratos são
+ * a luta inteira, e gravar 40 golpes por luta encheria a tabela sem dizer nada a mais.
+ */
+export const arenaFights = pgTable(
+  "arena_fights",
+  {
+    id: serial("id").primaryKey(),
+    arena: text("arena").notNull(),
+    season: text("season").notNull(),
+    challengerId: integer("challenger_id").notNull(),
+    challengerName: text("challenger_name").notNull().default(""),
+    /** 0 quando o adversário era manequim. */
+    opponentId: integer("opponent_id").notNull().default(0),
+    /** 0 quando o adversário era gente de verdade. */
+    dummyId: integer("dummy_id").notNull().default(0),
+    opponentName: text("opponent_name").notNull().default(""),
+    seed: integer("seed").notNull(),
+    /** O desafiante ganhou. */
+    won: boolean("won").notNull().default(false),
+    ratingDelta: integer("rating_delta").notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (table) => [index("arena_fights_who_idx").on(table.challengerId, table.createdAt)],
+);

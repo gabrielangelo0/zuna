@@ -582,3 +582,118 @@ export function clampArenaSettings(change: Partial<ArenaSettings>, atual: ArenaS
     offsetHours: Math.round(num(change.offsetHours ?? atual.offsetHours, atual.offsetHours, -14, 14)),
   };
 }
+
+// ---------------------------------------------------------------- o que vai para a tela
+
+/** Aparência de um lutador, para a tela desenhar o bonequinho. */
+export interface ArenaLook {
+  skin: number;
+  hairColor: number;
+  outfit: string;
+  colorPrimary: number;
+  colorSecondary: number;
+  colorDetail: number;
+}
+
+/** Um adversário na lista, ou o próprio jogador. */
+export interface ArenaOpponent {
+  /** Id do personagem, ou 0 quando é manequim. */
+  characterId: number;
+  /** Id do manequim, ou 0 quando é gente de verdade. */
+  dummyId: number;
+  name: string;
+  level: number;
+  vocation: string;
+  /** Número só para comparar na tela. */
+  power: number;
+  rating: number;
+  look: ArenaLook;
+}
+
+export interface ArenaBoardRow {
+  rank: number;
+  name: string;
+  rating: number;
+  wins: number;
+  losses: number;
+  /** É o próprio jogador (para a tela destacar a linha dele). */
+  mine: boolean;
+}
+
+/** O que o jogador vê ao abrir a arena. */
+export interface ArenaEvent {
+  enabled: boolean;
+  /** Só as arenas que o nível dele alcança. */
+  arenas: ArenaDef[];
+  /** A arena mostrada agora ("" = nenhuma cabe no nível dele). */
+  arena: string;
+  opponents: ArenaOpponent[];
+  me: ArenaOpponent | null;
+  rating: number;
+  wins: number;
+  losses: number;
+  entriesLeft: number;
+  entriesTotal: number;
+  /** Diamantes da entrada avulsa (0 = não vende). */
+  entryPrice: number;
+  season: string;
+  board: ArenaBoardRow[];
+  /** Nível que falta para a arena mais baixa (0 = já alcança alguma). */
+  nextLevel: number;
+}
+
+/** O resultado de uma luta, com a reprise inteira para a tela animar. */
+export interface ArenaFightEvent {
+  arena: string;
+  me: ArenaOpponent;
+  opponent: ArenaOpponent;
+  fight: ArenaFight;
+  won: boolean;
+  /** Era manequim: não mexe na pontuação. */
+  dummy: boolean;
+  ratingDelta: number;
+  rating: number;
+  gold: number;
+  xp: number;
+  entriesLeft: number;
+}
+
+/** Prêmio da temporada que acabou, entregue na primeira vez que o jogador volta. */
+export interface ArenaSeasonPrize {
+  season: string;
+  arena: string;
+  arenaName: string;
+  rank: number;
+  gold: number;
+  diamonds: number;
+}
+
+// ---------------------------------------------------------------- painel
+
+export interface AdminArenaResponse {
+  arenas: ArenaDef[];
+  dummies: ArenaDummy[];
+  rewards: ArenaReward[];
+  settings: ArenaSettings;
+  /** Temporada em curso. */
+  season: string;
+  /** Lutas e competidores da temporada em curso. */
+  fights: number;
+  players: number;
+  board: (ArenaBoardRow & { arena: string })[];
+}
+
+export interface AdminArenaRequest extends Partial<Omit<ArenaDef, "id">> {
+  id: string;
+  remove?: boolean;
+}
+
+export interface AdminArenaDummyRequest extends Partial<Omit<ArenaDummy, "id">> {
+  id: number;
+  remove?: boolean;
+}
+
+export interface AdminArenaRewardRequest extends Partial<Omit<ArenaReward, "id">> {
+  id: number;
+  remove?: boolean;
+}
