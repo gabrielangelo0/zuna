@@ -1035,8 +1035,11 @@ export class WorldScene extends Phaser.Scene {
     }
     const position = target.position(this.time.now);
     this.targetMarker.setVisible(true).setPosition(position.x, position.y);
-    const monster = target.data as MonsterData;
-    this.hud.setTarget({ name: MONSTERS[monster.kind].name, hp: monster.hp, maxHp: monster.maxHp });
+    // O alvo pode ser jogador desde o PvP: ler MONSTERS[kind] num jogador devolve undefined e
+    // derruba o update() inteiro a cada quadro.
+    const dados = target.data;
+    const nome = target.isPlayer ? (dados as PlayerData).name : (MONSTERS[(dados as MonsterData).kind]?.name ?? "?");
+    this.hud.setTarget({ name: nome, hp: dados.hp, maxHp: dados.maxHp });
   }
 
   // ------------------------------------------------------------ entrada
@@ -1068,11 +1071,17 @@ export class WorldScene extends Phaser.Scene {
     this.tweens.add({ targets: marker, alpha: 0, scale: 0.6, duration: 450, onComplete: () => marker.destroy() });
   }
 
-  /** Monstro sob o cursor, pelo desenho visível e com uma folga para facilitar o clique nos pequenos. */
+  /**
+   * Alvo sob o cursor, pelo desenho visível e com uma folga para facilitar o clique nos
+   * pequenos. Em zona de PvP os outros jogadores entram na conta — sem isso, só dava para
+   * atacar alguém pelo Tab, e clicar nele faria o personagem andar até lá sem bater.
+   */
   private monsterUnder(worldX: number, worldY: number): Actor | null {
     let best: Actor | null = null;
     let bestY = -Infinity;
-    for (const id of this.monsterIds) {
+    const aqui = this.blueprints.get(this.worldSlug)?.world;
+    const ids = aqui?.pvp === "open" ? [...this.monsterIds, ...this.playerTargets()] : this.monsterIds;
+    for (const id of ids) {
       const actor = this.actors.get(id);
       const bounds = actor && !actor.dead ? actor.bounds() : null;
       if (!actor || !bounds) continue;
@@ -1085,6 +1094,15 @@ export class WorldScene extends Phaser.Scene {
       }
     }
     return best;
+  }
+
+  /** Os outros jogadores na tela: candidatos a alvo em zona de PvP. */
+  private playerTargets(): string[] {
+    const outros: string[] = [];
+    for (const [id, actor] of this.actors) {
+      if (id !== this.localId && actor.isPlayer && !actor.dead) outros.push(id);
+    }
+    return outros;
   }
 
   private targetNearest() {
