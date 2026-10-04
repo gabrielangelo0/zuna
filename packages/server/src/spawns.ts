@@ -3,6 +3,7 @@ import {
   MONSTERS,
   chebyshev,
   inSafeZone,
+  reachableTiles,
   isWalkable,
   mulberry32,
   type GameMap,
@@ -103,28 +104,6 @@ function quadrantOf(dx: number, dy: number): Quadrant {
   return "west";
 }
 
-/** Tiles alcançáveis a pé a partir da praça, para não nascer monstro preso numa ilha. */
-function reachableTiles(map: GameMap, from: Point): Uint8Array {
-  const seen = new Uint8Array(map.width * map.height);
-  const start = from.y * map.width + from.x;
-  const queue = [start];
-  seen[start] = 1;
-  for (let head = 0; head < queue.length; head++) {
-    const index = queue[head];
-    const x = index % map.width;
-    const y = (index - x) / map.width;
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const nx = x + dx;
-      const ny = y + dy;
-      if (!isWalkable(map, nx, ny)) continue;
-      const next = ny * map.width + nx;
-      if (seen[next]) continue;
-      seen[next] = 1;
-      queue.push(next);
-    }
-  }
-  return seen;
-}
 
 /** Ninhos espalhados sozinhos pelo terreno, para os mundos marcados como automáticos. */
 export function generateSpawns(world: WorldDef, map: GameMap): SpawnPoint[] {

@@ -1,0 +1,7 @@
+{
+  "extends": "../../tsconfig.base.json",
+  // Os testes são arquivos de Node; o resto do pacote é isomórfico e roda no navegador também.
+  // Ligar os tipos de Node só aqui evita que alguém use `process` ou `console` no código do jogo.
+  "compilerOptions": { "types": ["node"] },
+  "include": ["src/**/*.test.ts"]
+}

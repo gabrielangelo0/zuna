@@ -1,5 +1,5 @@
 import { MAP_H, MAP_SEED, MAP_W, TEMPLE_X, TEMPLE_Y, TOWN_RADIUS } from "./constants.ts";
-import { chebyshev } from "./geometry.ts";
+import { chebyshev, type Point } from "./geometry.ts";
 import { mulberry32 } from "./rng.ts";
 
 export const Ground = {
@@ -132,6 +132,34 @@ export function isWalkable(map: GameMap, x: number, y: number): boolean {
   if (x < 0 || y < 0 || x >= map.width || y >= map.height) return false;
   const i = y * map.width + x;
   return !BLOCKING_GROUND.has(map.ground[i]) && !BLOCKING_OBJECTS.has(map.objects[i]);
+}
+
+/**
+ * Tiles alcançáveis a pé desde um ponto, em quatro direções. Serve para não nascer monstro
+ * preso numa ilha, e para o teste que garante que um mundo novo não tranca jogador num bolsão.
+ */
+export function reachableTiles(map: GameMap, from: Point): Uint8Array {
+  const seen = new Uint8Array(map.width * map.height);
+  // A versão antiga marcava a origem sem conferir, e devolvia 1 num tile de parede.
+  if (!isWalkable(map, from.x, from.y)) return seen;
+  const start = from.y * map.width + from.x;
+  const queue = [start];
+  seen[start] = 1;
+  for (let head = 0; head < queue.length; head++) {
+    const index = queue[head];
+    const x = index % map.width;
+    const y = (index - x) / map.width;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (!isWalkable(map, nx, ny)) continue;
+      const next = ny * map.width + nx;
+      if (seen[next]) continue;
+      seen[next] = 1;
+      queue.push(next);
+    }
+  }
+  return seen;
 }
 
 function hash2(ix: number, iy: number, seed: number): number {
