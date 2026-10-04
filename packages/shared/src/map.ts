@@ -86,6 +86,7 @@ export type MapStyle =
   | "deserto"
   | "neve"
   | "cripta"
+  | "esgoto"
   | "vulcao"
   | "covil"
   | "abismo";
@@ -97,6 +98,7 @@ export const MAP_STYLES: readonly { id: MapStyle; name: string; description: str
   { id: "deserto", name: "Deserto", description: "Dunas, oásis, rochas e ruínas de colunas." },
   { id: "neve", name: "Montanhas Geladas", description: "Neve, pinheiros brancos, lagos e cristais." },
   { id: "cripta", name: "Cripta", description: "Salões escuros, corredores de rocha e cristais." },
+  { id: "esgoto", name: "Esgoto", description: "Canais de água, passarelas de pedra, lama e cogumelos." },
   { id: "vulcao", name: "Vulcão", description: "Cinza, rios de lava e rochas queimadas." },
   { id: "covil", name: "Covil dos Dragões", description: "Cânions de rocha, poças de lava e cristais nas paredes." },
   { id: "abismo", name: "Abismo", description: "Pedra escura rachada de lava, cristais e árvores retorcidas." },
@@ -201,6 +203,7 @@ export function generateMap(shape: MapShape = DEFAULT_SHAPE): GameMap {
   else if (shape.style === "deserto") paintDesert(map, shape, rng);
   else if (shape.style === "neve") paintSnow(map, shape, rng);
   else if (shape.style === "cripta") paintCrypt(map, shape, rng);
+  else if (shape.style === "esgoto") paintSewer(map, shape, rng);
   else if (shape.style === "vulcao") paintVolcano(map, shape, rng);
   else if (shape.style === "covil") paintLair(map, shape, rng);
   else if (shape.style === "abismo") paintAbyss(map, shape, rng);
@@ -620,6 +623,42 @@ function paintCrypt(map: GameMap, shape: MapShape, rng: () => number) {
   clearings(painter, Math.round((map.width * map.height) / 600), null);
   carveRoads(painter, Ground.Cave);
   fence(map, Ground.Cave, Obj.Rock);
+  clearPlaza(map, shape);
+}
+
+/**
+ * Esgoto: canais de água em grade, passarelas de pedra nas margens, lama nos cantos sujos.
+ * Os canais levam travessia (`cruza`) de propósito: `clearings` não abre água (ele pula chão
+ * bloqueante) e só as quatro estradas atravessam, então uma grade sem travessia cortaria o
+ * mapa em bolsões e quem descesse ficaria preso entre dois canais.
+ */
+function paintSewer(map: GameMap, shape: MapShape, rng: () => number) {
+  const painter = { map, shape, rng };
+  const { seed } = shape;
+  each(map, (x, y, i) => {
+    map.ground[i] = Ground.Stone;
+    if (fromPlaza(shape, x, y) < shape.townRadius + 3) return;
+    // A grade anda com o ruído, senão o esgoto vira papel quadriculado.
+    const drift = fbm(x / 16, y / 16, seed + 5) * 4;
+    const canal = Math.abs(((x + drift) % 9) - 4.5) < 1.2 || Math.abs(((y + drift) % 9) - 4.5) < 1.2;
+    // 0,46 é medido, não escolhido: 0,58 dava 71% de alcançabilidade (bolsões) e 0,38 dava
+    // 99,9% abrindo tanta travessia que o canal desaparecia. Mexer aqui exige medir de novo.
+    const cruza = fbm(x / 4.5, y / 4.5, seed + 131) > 0.46;
+    if (canal && !cruza) {
+      map.ground[i] = Ground.Water;
+      return;
+    }
+    const grime = fbm(x / 6, y / 6, seed + 61);
+    if (grime > 0.6) map.ground[i] = Ground.Mud;
+    const r = rng();
+    // Tijolo e abóbada não existem na paleta: coluna e rocha fazem o papel de parede.
+    if (grime > 0.72 && r < 0.3) map.objects[i] = r < 0.18 ? Obj.Pillar : Obj.Rock;
+    else if (r < 0.03) map.objects[i] = Obj.Mushroom;
+    else if (r < 0.042) map.objects[i] = Obj.Barrel;
+  });
+  clearings(painter, Math.round((map.width * map.height) / 700), Ground.Stone);
+  carveRoads(painter, Ground.Stone);
+  fence(map, Ground.Stone, Obj.Rock);
   clearPlaza(map, shape);
 }
 

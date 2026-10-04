@@ -31,6 +31,9 @@ function coverage(style: MapStyle, seed: number, size = 96): number {
 
 const SEEDS = [1, 7, 99, 1234];
 
+/** Os extremos que o painel aceita (WORLD_MIN_SIZE e WORLD_MAX_SIZE) e o tamanho mais usado. */
+const SIZES = [32, 96, 160];
+
 test("a praça é caminhável em todos os estilos", () => {
   for (const { id } of MAP_STYLES) {
     for (const seed of SEEDS) {
@@ -42,23 +45,28 @@ test("a praça é caminhável em todos os estilos", () => {
 });
 
 /**
- * Linha de base medida em 2026-10-04, no tamanho 96 e com as sementes de SEEDS, com cinco
- * pontos de folga para o ruído de semente não gerar falha falsa. Baixar um destes é
- * regressão, não é ajuste — e note que `vulcao` e `abismo` já nascem abaixo de 80%, que é por
- * isso que o piso é medido e não cravado num número redondo.
+ * Linha de base medida em 2026-10-04: o pior caso de cada estilo entre os três tamanhos e as
+ * quatro sementes, menos cinco pontos de folga para o ruído de semente não gerar falha falsa.
+ * Baixar um destes é regressão, não é ajuste.
+ *
+ * Os números não são redondos de propósito. `abismo` alcança 69%, `vulcao` 76% e `covil` 78%:
+ * um limiar único de 80% para todos reprovaria três estilos que já estão em produção. Os 31%
+ * inalcançáveis do Abismo são defeito de verdade (chão que o jogador vê e não pisa), mas são
+ * anteriores a este teste e consertá-los é outro trabalho.
  */
 const PISO: Partial<Record<MapStyle, number>> = {
-  campina: 0.88,
-  floresta: 0.92,
+  campina: 0.86,
+  floresta: 0.9,
   pantano: 0.9,
   deserto: 0.94,
-  neve: 0.94,
+  neve: 0.93,
   cripta: 0.88,
+  esgoto: 0.82,
   vulcao: 0.7,
-  covil: 0.81,
-  abismo: 0.73,
-  caverna: 0.94,
-  ilha: 0.94,
+  covil: 0.72,
+  abismo: 0.64,
+  caverna: 0.93,
+  ilha: 0.92,
   vazio: 0.99,
 };
 
@@ -68,7 +76,8 @@ test("nenhum estilo prende o jogador num bolsão", () => {
     const piso = PISO[id];
     // Obriga todo estilo novo a declarar o piso dele, em vez de entrar sem ninguém medir.
     assert.ok(piso !== undefined, `${id}: falta a linha de base em PISO`);
-    const pior = Math.min(...SEEDS.map((seed) => coverage(id, seed)));
+    let pior = 1;
+    for (const size of SIZES) for (const seed of SEEDS) pior = Math.min(pior, coverage(id, seed, size));
     linhas.push(`${id.padEnd(10)} pior ${(pior * 100).toFixed(1)}%  piso ${(piso * 100).toFixed(0)}%`);
     assert.ok(pior >= piso, `${id}: ${(pior * 100).toFixed(1)}% abaixo do piso de ${(piso * 100).toFixed(0)}%`);
   }
