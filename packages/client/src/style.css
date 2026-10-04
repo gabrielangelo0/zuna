@@ -1138,6 +1138,19 @@ input:focus {
   background-image: url("/ui/minus.png");
 }
 
+/* Nome do mundo e o andar, lido como título do mapa. */
+#minimap-world {
+  position: absolute;
+  left: 2px;
+  top: -22px;
+  color: #eaf1ff;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  text-shadow: 0 1px 3px #000;
+  pointer-events: none;
+}
+
 #minimap-where {
   position: absolute;
   left: 2px;
@@ -2903,6 +2916,7 @@ input:focus {
     height: 28px;
   }
 
+  #minimap-world,
   #minimap-where {
     display: none;
   }

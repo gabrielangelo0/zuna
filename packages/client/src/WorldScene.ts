@@ -26,6 +26,7 @@ import {
   spellsUnlockedAt,
   applyCatalogOverrides,
   buildWorldMap,
+  floorLabel,
   catalogItem,
   chebyshev,
   frameKey,
@@ -395,7 +396,8 @@ export class WorldScene extends Phaser.Scene {
     });
     room.onMessage(ServerMsg.Travel, (event: TravelEvent) => {
       this.useWorld(event.world);
-      this.hud.showBanner(event.name);
+      const chegou = this.blueprints.get(event.world)?.world;
+      this.hud.showBanner(chegou ? floorLabel(chegou.name, chegou.depth) : event.name);
     });
     room.onMessage(ServerMsg.WorldPatch, (event: WorldPatchEvent) => this.applyWorldPatch(event.blueprint));
     room.onMessage(ServerMsg.Catalog, (event: CatalogEvent) => {
@@ -504,7 +506,11 @@ export class WorldScene extends Phaser.Scene {
 
     this.minimap.follow(local.tileX, local.tileY);
     const blips = this.lootLayer.blips();
-    for (const portal of this.portals) blips.push({ x: portal.x, y: portal.y, color: 0xb07dff, size: 2 });
+    for (const portal of this.portals) {
+      const desce = portal.kind === "stairsDown" || portal.kind === "ladderDown" || portal.kind === "hole";
+      const sobe = portal.kind === "stairsUp" || portal.kind === "ladderUp";
+      blips.push({ x: portal.x, y: portal.y, color: desce ? 0x5ef08f : sobe ? 0x6fc8ff : 0xb07dff, size: 2 });
+    }
     for (const [id, actor] of this.actors) {
       if (id === this.localId || actor.dead) continue;
       const monster = this.monsterIds.has(id);
@@ -531,6 +537,8 @@ export class WorldScene extends Phaser.Scene {
     this.worldSlug = slug;
     this.worldMap = buildWorldMap(blueprint);
     this.portals = blueprint.portals;
+    // Fica no minimapa, que é onde o jogador olha para saber onde está.
+    element("#minimap-world").textContent = floorLabel(blueprint.world.name, blueprint.world.depth);
     if (!this.scene.isActive()) return;
 
     this.drawWorld();
@@ -590,10 +598,15 @@ export class WorldScene extends Phaser.Scene {
     if (token !== this.drawToken) return;
     for (const portal of this.portals) {
       const screen = tileToScreen(portal.x, portal.y);
-      // Portal com nível mínimo é dourado; os livres são roxos.
+      // Nível mínimo é dourado, e fora disso a cor diz o sentido: descida esverdeada, subida
+      // azulada, buraco vermelho (de mão única), portal roxo como sempre. Sem sprite novo: o
+      // arco é o mesmo, só a cor muda. Arte de escada é trabalho de asset, à parte.
       const locked = portal.minLevel > 0;
-      const tint = locked ? 0xffc857 : 0xb07dff;
-      const deep = locked ? 0xff7a2a : 0x5f3cff;
+      const down = portal.kind === "stairsDown" || portal.kind === "ladderDown";
+      const up = portal.kind === "stairsUp" || portal.kind === "ladderUp";
+      const hole = portal.kind === "hole";
+      const tint = locked ? 0xffc857 : hole ? 0xe0483d : down ? 0x5ef08f : up ? 0x6fc8ff : 0xb07dff;
+      const deep = locked ? 0xff7a2a : hole ? 0x7a1f18 : down ? 0x1f7a45 : up ? 0x2a5f9e : 0x5f3cff;
       // Meio do vão do arco, onde mora o redemoinho.
       const heart = { x: screen.x, y: screen.y - PORTAL_EYE };
 

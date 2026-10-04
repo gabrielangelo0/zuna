@@ -8,7 +8,12 @@ import {
   SPAWN_MAX_AMOUNT,
   SPAWN_MAX_RADIUS,
   WORLD_MAX_SIZE,
+  WORLD_MAX_DEPTH,
+  WORLD_MIN_DEPTH,
   WORLD_MIN_SIZE,
+  PORTAL_KINDS,
+  PORTAL_KIND_NAMES,
+  type PortalKind,
   generateMap,
   groundColor,
   objectColor,
@@ -176,6 +181,7 @@ async function createWorld() {
       { id: "width", label: "Largura", kind: "number", value: 64, min: WORLD_MIN_SIZE, max: WORLD_MAX_SIZE },
       { id: "height", label: "Altura", kind: "number", value: 64, min: WORLD_MIN_SIZE, max: WORLD_MAX_SIZE },
       { id: "townRadius", label: "Raio da praça", kind: "number", value: 5, min: 1, max: 24 },
+      { id: "depth", label: "Andar", kind: "number", value: 0, min: WORLD_MIN_DEPTH, max: WORLD_MAX_DEPTH, hint: "0 é a superfície. −1 é o primeiro subsolo." },
       { id: "autoSpawns", label: "Espalhar monstros sozinho", kind: "check", value: false },
       { id: "published", label: "Abrir para os jogadores", kind: "check", value: true },
     ],
@@ -192,6 +198,7 @@ async function createWorld() {
         width: Number(answer.width),
         height: Number(answer.height),
         townRadius: Number(answer.townRadius),
+        depth: Number(answer.depth),
         spawnX: Math.floor(Number(answer.width) / 2),
         spawnY: Math.floor(Number(answer.height) / 2),
         autoSpawns: answer.autoSpawns === "true",
@@ -433,6 +440,7 @@ class MapEditor {
       { id: "width", label: "Largura", kind: "number", value: this.world.width, min: WORLD_MIN_SIZE, max: WORLD_MAX_SIZE },
       { id: "height", label: "Altura", kind: "number", value: this.world.height, min: WORLD_MIN_SIZE, max: WORLD_MAX_SIZE },
       { id: "townRadius", label: "Raio da praça", kind: "number", value: this.world.townRadius, min: 1, max: 24 },
+      { id: "depth", label: "Andar", kind: "number", value: this.world.depth, min: WORLD_MIN_DEPTH, max: WORLD_MAX_DEPTH, hint: "0 é a superfície. −1 é o primeiro subsolo." },
     ];
 
     box.body.append(
@@ -471,6 +479,7 @@ class MapEditor {
       width: Number(answer.width),
       height: Number(answer.height),
       townRadius: Number(answer.townRadius),
+      depth: Number(answer.depth),
     });
   }
 
@@ -954,6 +963,25 @@ class MapEditor {
         { id: "toX", label: "Chega em X", kind: "number" as const, value: current.toX ?? target.spawnX, min: 0 },
         { id: "toY", label: "Chega em Y", kind: "number" as const, value: current.toY ?? target.spawnY, min: 0 },
         { id: "minLevel", label: "Nível mínimo", kind: "number" as const, value: current.minLevel ?? 0, min: 0 },
+        {
+          id: "kind",
+          label: "Desenho da ligação",
+          kind: "select" as const,
+          options: PORTAL_KINDS.map((entry) => ({ id: entry, label: PORTAL_KIND_NAMES[entry] })),
+          value: current.kind ?? "portal",
+        },
+        // Só ao criar: num portal que já existe, mexer no par seria adivinhar qual lado mudou.
+        ...(current.id
+          ? []
+          : [
+              {
+                id: "withReturn",
+                label: "Criar a ligação de volta junto",
+                kind: "check" as const,
+                value: true,
+                hint: "Cria a volta no destino, sem nível mínimo.",
+              },
+            ]),
       ];
     }
     if (kind === "spawn") {
@@ -993,6 +1021,9 @@ class MapEditor {
         toX: Number(answer.toX),
         toY: Number(answer.toY),
         minLevel: Number(answer.minLevel),
+        kind: answer.kind as PortalKind,
+        // askForm devolve String(control.checked): "true" ou "false", nunca "1".
+        withReturn: answer.withReturn === "true",
       };
     }
     if (kind === "spawn") {
@@ -1013,11 +1044,19 @@ class MapEditor {
 
   private async savePlacement(kind: "portal" | "spawn" | "item", body: Record<string, unknown>) {
     const route = { portal: "portal", spawn: "spawn", item: "item" }[kind];
+    let aviso = "";
+    let voltou = false;
     const ok = await run(null, async () => {
-      await ask(`/api/admin/world/${route}`, { method: "POST", body: { worldId: this.world.id, ...body } });
+      const answer = await ask<{ warning?: string; returned?: { id: number } }>(`/api/admin/world/${route}`, {
+        method: "POST",
+        body: { worldId: this.world.id, ...body },
+      });
+      aviso = answer.warning ?? "";
+      voltou = Boolean(answer.returned);
     });
     if (!ok) return;
-    notify("Salvo no mapa.");
+    // O servidor avisa de andar sem saída e de volta não criada: engolir isso é pior que não avisar.
+    notify(aviso || (voltou ? "Salvo, com a ligação de volta criada." : "Salvo no mapa."));
     await this.refresh();
   }
 
