@@ -14,6 +14,7 @@ import { ensureCheckinSeed } from "./checkin.ts";
 import { ensureProgressSeed } from "./progress.ts";
 import { reloadPvp } from "./pvp.ts";
 import { ensureVipSeed } from "./vip.ts";
+import { ensureArenaSeed } from "./arena.ts";
 import { ensureVocationSeed } from "./vocations.ts";
 import { ensurePaymentSeed } from "./paymentCatalog.ts";
 import { startPaymentReconciler } from "./payments.ts";
@@ -50,6 +51,7 @@ await ensureProgressSeed();
 await ensureVocationSeed();
 await reloadPvp();
 await ensureVipSeed();
+await ensureArenaSeed();
 applyCatalogOverrides(await listItemOverrides());
 
 // ADMIN_USERS=gabriel,outro marca essas contas como administradoras ao subir o servidor.

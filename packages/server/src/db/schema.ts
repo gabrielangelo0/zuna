@@ -711,6 +711,10 @@ export const arenaStandings = pgTable(
     /** Dia das entradas gastas ("2026-10-04"): virou o dia, a conta zera. */
     entryDay: text("entry_day").notNull().default(""),
     entriesUsed: smallint("entries_used").notNull().default(0),
+    /** O prêmio desta temporada já foi entregue a este competidor. Sem isto, abrir a arena duas
+     *  vezes pagaria duas vezes — e o marcador de temporada no server_meta não resolve, porque
+     *  ele diz que a tabela foi fechada, não que esta pessoa recebeu. */
+    paid: boolean("paid").notNull().default(false),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

@@ -12,6 +12,11 @@ import {
   type ViewMessage,
   type PvpInfoEvent,
   type VipEvent,
+  type ArenaEvent,
+  type ArenaFightEvent,
+  type ArenaFightMessage,
+  type ArenaOpenMessage,
+  type ArenaOpponent,
   type VipBuyMessage,
   checkinDayKey,
   vocationById,
@@ -24,6 +29,7 @@ import {
   square,
   type MonsterSpellEvent,
   CRIT_CHANCE,
+  arenasFor,
   CRIT_MULTIPLIER,
   spellArea,
   BAG_BASE,
@@ -134,6 +140,21 @@ import {
   vipDaysLeft,
   vipPurchase,
 } from "@zuna/shared";
+import {
+  arenaBoard,
+  arenaDay,
+  arenaList,
+  arenaOpponents,
+  arenaSeason,
+  arenaSettings,
+  entriesLeft,
+  entriesTotal,
+  refreshSnapshot,
+  resolveFight,
+  selfOpponent,
+  settleSeasons,
+  standingOf,
+} from "./arena.ts";
 import { accountFromToken } from "./auth.ts";
 import { EventManager } from "./events.ts";
 import { allQuests, listQuestProgress, liveQuests, questById, saveQuestProgress } from "./quests.ts";
@@ -409,6 +430,8 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     this.onMessage(ClientMsg.View, (client, message: ViewMessage) => this.handleView(client, message));
     this.onMessage(ClientMsg.VipBuy, (client, message: VipBuyMessage) => this.handleVipBuy(client, message));
     this.onMessage(ClientMsg.VipClaim, (client) => this.handleVipClaim(client));
+    this.onMessage(ClientMsg.ArenaOpen, (client, message: ArenaOpenMessage) => this.handleArenaOpen(client, message));
+    this.onMessage(ClientMsg.ArenaFight, (client, message: ArenaFightMessage) => this.handleArenaFight(client, message));
 
     this.setPatchRate(TICK_MS);
     this.setSimulationInterval(() => this.tick(), TICK_MS);
@@ -3177,6 +3200,178 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
    * O painel mexeu nas classes: quem perdeu a classe (apagada) fica sem, e todo mundo
    * recebe os números novos na hora, com vida, mana e atalhos recalculados.
    */
+  // ------------------------------------------------------------ arena
+
+  /** A praça que o nível do jogador alcança, respeitando a que ele pediu. */
+  private arenaFor(player: PlayerSim, pedida: string) {
+    const abertas = arenasFor(arenaList(), player.state.level);
+    return abertas.find((arena) => arena.id === pedida) ?? abertas[0];
+  }
+
+  /**
+   * Abre a arena: atualiza o retrato do jogador, paga o que ficou da temporada passada e manda
+   * a lista de adversários.
+   *
+   * O retrato é gravado **aqui**, e não quando ele é escolhido como adversário: senão abrir a
+   * arena viraria uma escrita por adversário listado.
+   */
+  private handleArenaOpen(client: Client, message: ArenaOpenMessage) {
+    const player = this.players.get(client.sessionId);
+    if (!player) return;
+    void this.enqueue(player, async () => {
+      const agora = Date.now();
+      const season = arenaSeason(agora);
+      await refreshSnapshot({
+        characterId: player.characterId,
+        name: player.state.name,
+        level: player.state.level,
+        vocation: player.vocation,
+        items: player.items,
+        look: {
+          skin: player.state.skin,
+          hairColor: player.state.hairColor,
+          outfit: player.state.outfit,
+          colorPrimary: player.state.primary,
+          colorSecondary: player.state.secondary,
+          colorDetail: player.state.detail,
+        },
+      });
+      // A virada da temporada acontece aqui, na primeira abertura depois de a semana virar.
+      const premios = await settleSeasons(agora, player.characterId);
+      for (const premio of premios) {
+        if (premio.gold > 0) player.state.gold += premio.gold;
+        if (premio.diamonds > 0) player.diamonds = await addDiamonds(player.accountId, premio.diamonds);
+        if (!this.players.has(player.id)) return;
+        const partes = [premio.gold > 0 ? `${premio.gold} de ouro` : "", premio.diamonds > 0 ? `${premio.diamonds} 💎` : ""].filter(Boolean);
+        this.sendChat(client, "event", `${premio.arenaName}: você fechou a temporada ${premio.season} em ${premio.rank}º e levou ${partes.join(" e ")}.`);
+      }
+      if (premios.length > 0) this.sendProfile(player);
+      await this.sendArena(player, String(message?.arena ?? ""));
+    }).catch(() => this.sendChat(client, "system", "Não foi possível abrir a arena. Tente de novo."));
+  }
+
+  private async sendArena(player: PlayerSim, pedida: string) {
+    if (!this.players.has(player.id)) return;
+    const settings = arenaSettings();
+    const agora = Date.now();
+    const season = arenaSeason(agora);
+    const dia = arenaDay(agora);
+    const arena = this.arenaFor(player, pedida);
+    const abertas = arenasFor(arenaList(), player.state.level);
+    if (!arena) {
+      // Ninguém alcança arena nenhuma ainda: diz qual é o nível que falta, em vez de uma tela vazia.
+      const ligadas = arenaList().filter((a) => a.enabled).map((a) => a.minLevel);
+      const falta = ligadas.length > 0 ? Math.min(...ligadas) : 0;
+      player.client.send(ServerMsg.Arena, {
+        enabled: settings.enabled, arenas: [], arena: "", opponents: [], me: null, rating: 0, wins: 0, losses: 0,
+        entriesLeft: 0, entriesTotal: 0, entryPrice: 0, season, board: [], nextLevel: falta,
+      } satisfies ArenaEvent);
+      return;
+    }
+    const vipRank = this.vipOf(player)?.rank ?? 0;
+    const standing = await standingOf(arena.id, season, player.characterId);
+    const [opponents, me, board] = await Promise.all([
+      arenaOpponents(arena, player.characterId, season),
+      selfOpponent(player.characterId, arena.id, season),
+      arenaBoard(arena.id, season, player.characterId),
+    ]);
+    if (!this.players.has(player.id)) return;
+    player.client.send(ServerMsg.Arena, {
+      enabled: settings.enabled,
+      arenas: abertas,
+      arena: arena.id,
+      opponents,
+      me,
+      rating: standing.rating,
+      wins: standing.wins,
+      losses: standing.losses,
+      entriesLeft: entriesLeft(arena, standing, vipRank, dia),
+      entriesTotal: entriesTotal(arena, vipRank),
+      entryPrice: arena.entryPrice,
+      season,
+      board,
+      nextLevel: 0,
+    } satisfies ArenaEvent);
+  }
+
+  /** Desafia alguém. A luta é resolvida no servidor; o cliente recebe a reprise e anima. */
+  private handleArenaFight(client: Client, message: ArenaFightMessage) {
+    const player = this.players.get(client.sessionId);
+    if (!player) return;
+    if (!arenaSettings().enabled) {
+      this.sendChat(client, "system", "A arena está fechada agora.");
+      return;
+    }
+    const arena = this.arenaFor(player, String(message?.arena ?? ""));
+    if (!arena || arena.id !== String(message?.arena ?? "")) {
+      this.sendChat(client, "system", "Essa arena não está aberta para o seu nível.");
+      return;
+    }
+    const characterId = Math.max(0, Math.round(Number(message?.characterId) || 0));
+    const dummyId = Math.max(0, Math.round(Number(message?.dummyId) || 0));
+    if (characterId === player.characterId) {
+      this.sendChat(client, "system", "Você não pode desafiar a si mesmo.");
+      return;
+    }
+    const paid = message?.paid === true;
+    void this.enqueue(player, async () => {
+      const agora = Date.now();
+      const season = arenaSeason(agora);
+      const dia = arenaDay(agora);
+      const vipRank = this.vipOf(player)?.rank ?? 0;
+      // O adversário é relido do banco aqui: o cliente manda só o id, e quem monta os números é
+      // o servidor. Aceitar poder e pontuação vindos da tela seria deixar o cliente escolher a luta.
+      const lista = await arenaOpponents(arena, player.characterId, season, 12);
+      const alvo = lista.find((o) => (dummyId > 0 ? o.dummyId === dummyId : o.characterId === characterId));
+      if (!alvo) {
+        this.sendChat(client, "system", "Esse adversário não está mais na lista. Abra a arena de novo.");
+        await this.sendArena(player, arena.id);
+        return;
+      }
+      // A entrada avulsa é cobrada antes da luta: pagar depois deixaria quem perde sem cobrança.
+      if (paid) {
+        if (arena.entryPrice <= 0) {
+          this.sendChat(client, "system", "Essa arena não vende entrada avulsa.");
+          return;
+        }
+        if (player.diamonds < arena.entryPrice) {
+          this.sendChat(client, "system", `Faltam diamantes: a entrada custa ${arena.entryPrice} 💎.`);
+          return;
+        }
+        player.diamonds = await addDiamonds(player.accountId, -arena.entryPrice);
+      }
+      const me = await selfOpponent(player.characterId, arena.id, season);
+      if (!me) {
+        this.sendChat(client, "system", "Abra a arena antes de lutar.");
+        return;
+      }
+      const result = await resolveFight({
+        arena, season, dia, characterId: player.characterId, me, opponent: alvo, vipRank, paid,
+      });
+      if (!this.players.has(player.id)) return;
+      if (typeof result === "string") {
+        // Entrada paga e luta recusada: devolve o diamante, senão o jogador paga por nada.
+        if (paid) player.diamonds = await addDiamonds(player.accountId, arena.entryPrice);
+        this.sendChat(client, "system", result);
+        return;
+      }
+      if (result.gold > 0) player.state.gold += result.gold;
+      if (result.xp > 0) this.giveXp(player, result.xp);
+      this.sendProfile(player);
+      player.client.send(ServerMsg.ArenaResult, {
+        arena: arena.id, me, opponent: alvo, fight: result.fight, won: result.won, dummy: result.dummy,
+        ratingDelta: result.ratingDelta, rating: result.rating, gold: result.gold, xp: result.xp,
+        entriesLeft: result.entriesLeft,
+      } satisfies ArenaFightEvent);
+      await this.sendArena(player, arena.id);
+    }).catch(() => this.sendChat(client, "system", "Não foi possível resolver a luta. Tente de novo."));
+  }
+
+  /** O painel mexeu nas arenas: quem está com a tela aberta recebe a lista nova. */
+  sendArenaList() {
+    for (const player of this.players.values()) void this.sendArena(player, "");
+  }
+
   /** O painel mexeu nas regras do PvP. */
   sendPvpRules() {
     for (const player of this.players.values()) this.sendPvp(player);

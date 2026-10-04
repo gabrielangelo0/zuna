@@ -1,0 +1,1 @@
+ALTER TABLE "arena_standings" ADD COLUMN "paid" boolean DEFAULT false NOT NULL;

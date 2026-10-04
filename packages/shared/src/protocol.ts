@@ -164,7 +164,26 @@ export const ClientMsg = {
   /** VIP: comprar um passe e abrir o baú do dia. */
   VipBuy: "vipBuy",
   VipClaim: "vipClaim",
+  /** Arena: abrir a tela (e trocar de praça) e desafiar alguém. */
+  ArenaOpen: "arenaOpen",
+  ArenaFight: "arenaFight",
 } as const;
+
+/** Abrir a arena, ou trocar de praça sem fechar a tela. */
+export interface ArenaOpenMessage {
+  /** Praça escolhida ("" = a primeira que o nível dele alcança). */
+  arena?: string;
+}
+
+export interface ArenaFightMessage {
+  arena: string;
+  /** Adversário de verdade (0 quando é manequim). */
+  characterId: number;
+  /** Manequim (0 quando é gente de verdade). */
+  dummyId: number;
+  /** Pagar entrada avulsa em diamantes em vez de gastar uma de graça. */
+  paid?: boolean;
+}
 
 export interface VipBuyMessage {
   pass: string;
@@ -403,4 +422,8 @@ export const ServerMsg = {
   Pvp: "pvp",
   /** Degraus, passes e situação do VIP (só ele recebe). */
   Vip: "vip",
+  /** Arena: a praça, os adversários e a classificação (só ele recebe). */
+  Arena: "arena",
+  /** O resultado de uma luta, com a reprise inteira (só ele recebe). */
+  ArenaResult: "arenaResult",
 } as const;
