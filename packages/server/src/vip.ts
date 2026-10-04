@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, count, eq, gt, like, ne, sum } from "drizzle-orm";
 import {
   FACTORY_VIP_PASSES,
   FACTORY_VIP_TIERS,
@@ -10,7 +10,7 @@ import {
   type VipTier,
 } from "@zuna/shared";
 import { db } from "./db/index.ts";
-import { serverMeta, vipPasses, vipTiers } from "./db/schema.ts";
+import { accounts, purchases, serverMeta, vipPasses, vipTiers } from "./db/schema.ts";
 
 // Degraus e passes do VIP: ficam em memória, o painel edita e vale na hora.
 // O código só semeia o padrão de fábrica uma vez; depois disso quem manda é o painel.
@@ -97,4 +97,29 @@ export async function saveVipPass(pass: VipPass) {
 export async function removeVipPass(id: string) {
   await db().delete(vipPasses).where(eq(vipPasses.id, id));
   await reloadVip();
+}
+
+/** Quantas contas estão com cada degrau ativo agora, e quanto o VIP já rendeu em diamantes. */
+export async function vipStats(): Promise<{ active: Record<string, number>; diamonds30d: number; sold: number }> {
+  const agora = new Date();
+  const rows = await db()
+    .select({ tier: accounts.vipTier, total: count() })
+    .from(accounts)
+    .where(and(ne(accounts.vipTier, ""), gt(accounts.vipUntil, agora)))
+    .groupBy(accounts.vipTier);
+  const active: Record<string, number> = {};
+  for (const row of rows) active[row.tier] = Number(row.total);
+
+  const desde = new Date(agora.getTime() - 30 * 86_400_000);
+  const [resumo] = await db()
+    .select({ soma: sum(purchases.price), total: count() })
+    .from(purchases)
+    .where(and(like(purchases.itemId, "vip:%"), gt(purchases.createdAt, desde)));
+  return { active, diamonds30d: Number(resumo?.soma ?? 0), sold: Number(resumo?.total ?? 0) };
+}
+
+/** Contas que ainda têm este degrau. Apagar um degrau usado some com o VIP de quem pagou. */
+export async function accountsOnTier(tierId: string): Promise<number> {
+  const [row] = await db().select({ total: count() }).from(accounts).where(eq(accounts.vipTier, tierId));
+  return Number(row?.total ?? 0);
 }

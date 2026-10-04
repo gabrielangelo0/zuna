@@ -41,6 +41,8 @@ export interface LiveRoom {
   sendVocations(): void;
   /** O painel mexeu nas regras do PvP: quem está jogando precisa saber na hora. */
   sendPvpRules(): void;
+  /** O painel mexeu nos degraus ou passes do VIP. */
+  sendVipList(): void;
 }
 
 export interface LiveCharacterPatch {
@@ -215,4 +217,8 @@ export function pushVocations() {
 
 export function pushPvp() {
   for (const room of rooms) room.sendPvpRules();
+}
+
+export function pushVip() {
+  for (const room of rooms) room.sendVipList();
 }

@@ -4,6 +4,7 @@ import type { MonsterKind } from "./monsters.ts";
 import type { RankingRow } from "./protocol.ts";
 import type { GroundItemDef, PortalDef, PortalKind, SpawnDef, WorldDef } from "./world.ts";
 import type { PvpSettings } from "./pvp.ts";
+import type { VipPass, VipTier } from "./vip.ts";
 
 // Tudo que o painel de administração troca com o servidor.
 
@@ -424,4 +425,16 @@ export interface AdminPvpKill {
 export interface AdminPvpResponse {
   settings: PvpSettings;
   kills: AdminPvpKill[];
+}
+
+// ---------------------------------------------------------------- VIP
+
+export interface AdminVipResponse {
+  tiers: VipTier[];
+  passes: VipPass[];
+  /** Contas com cada degrau ativo agora, por id do degrau. */
+  active: Record<string, number>;
+  /** Diamantes gastos em VIP nos últimos 30 dias, e quantos passes saíram. */
+  diamonds30d: number;
+  sold: number;
 }

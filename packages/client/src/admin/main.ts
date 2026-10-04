@@ -11,6 +11,7 @@ import { renderQuests } from "./quests.ts";
 import { renderCheckin } from "./checkin.ts";
 import { renderProgress } from "./progress.ts";
 import { renderPvp } from "./pvp.ts";
+import { renderVip } from "./vip.ts";
 import { renderVocations } from "./vocations.ts";
 import { currentToken, fail, onSessionLost, setAdminName, setToken } from "./session.ts";
 import { renderSales } from "./sales.ts";
@@ -21,7 +22,7 @@ import { closeWorldEditor, renderWorlds } from "./worlds.ts";
 
 // Painel do mestre: cada tela é escolhida pela barra lateral ou pelas abas.
 
-type View = "overview" | "players" | "world" | "worlds" | "events" | "quests" | "checkin" | "progress" | "pvp" | "vocations" | "gear" | "shop" | "sales" | "history";
+type View = "overview" | "players" | "world" | "worlds" | "events" | "quests" | "checkin" | "progress" | "pvp" | "vip" | "vocations" | "gear" | "shop" | "sales" | "history";
 
 const VIEWS: { id: View; label: string; mark: string; render: (root: HTMLElement) => Promise<void> }[] = [
   { id: "overview", label: "Visão Geral", mark: "chart", render: renderOverview },
@@ -33,6 +34,7 @@ const VIEWS: { id: View; label: string; mark: string; render: (root: HTMLElement
   { id: "checkin", label: "Presente diário", mark: "calendar", render: renderCheckin },
   { id: "progress", label: "Progressão", mark: "level", render: renderProgress },
   { id: "pvp", label: "PvP", mark: "sword", render: renderPvp },
+  { id: "vip", label: "VIP", mark: "crown", render: renderVip },
   { id: "vocations", label: "Classes", mark: "shield", render: renderVocations },
   { id: "gear", label: "Equipamentos", mark: "sword", render: renderGear },
   { id: "shop", label: "Loja", mark: "store", render: renderShop },

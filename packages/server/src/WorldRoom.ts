@@ -3182,6 +3182,15 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     for (const player of this.players.values()) this.sendPvp(player);
   }
 
+  /** O painel mexeu nos degraus ou passes do VIP: o que mudou vale na hora. */
+  sendVipList() {
+    for (const player of this.players.values()) {
+      this.refreshVipLook(player);
+      void this.sendVip(player);
+      this.sendInventory(player);
+    }
+  }
+
   sendVocations() {
     for (const player of this.players.values()) {
       if (player.vocation && !vocationById(player.vocation)) player.vocation = "";

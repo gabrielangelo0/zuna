@@ -23,6 +23,7 @@ import { adminQuestRoutes } from "./adminQuestApi.ts";
 import { adminCheckinRoutes } from "./adminCheckinApi.ts";
 import { adminProgressRoutes } from "./adminProgressApi.ts";
 import { adminPvpRoutes } from "./adminPvpApi.ts";
+import { adminVipRoutes } from "./adminVipApi.ts";
 import { adminVocationRoutes } from "./adminVocationApi.ts";
 import { adminWorldRoutes } from "./adminWorldApi.ts";
 import { paymentRoutes } from "./payments.ts";
@@ -175,6 +176,7 @@ export const apiRouter = createRouter({
   ...adminQuestRoutes,
   ...adminCheckinRoutes,
   ...adminPvpRoutes,
+  ...adminVipRoutes,
   ...adminProgressRoutes,
   ...adminVocationRoutes,
 });
