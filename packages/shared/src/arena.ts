@@ -607,6 +607,10 @@ export interface ArenaOpponent {
   /** Número só para comparar na tela. */
   power: number;
   rating: number;
+  /** Atributos crus: a tela desenha as barras de vida da reprise com eles. */
+  maxHp: number;
+  maxDamage: number;
+  armor: number;
   look: ArenaLook;
 }
 

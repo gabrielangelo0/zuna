@@ -306,6 +306,9 @@ interface PlayerSim {
   mutedUntil: number;
   /** Portais só levam de novo depois deste instante (evita ir e voltar sem parar). */
   nextPortalAt: number;
+  /** Praça de arena que ele está vendo. Sem isto, toda atualização empurrada pelo painel o
+   *  jogaria de volta para a primeira aba, no meio de escolher adversário. */
+  arenaTab: string;
   /** Marca de agressor em PvP vence neste instante (0 = sem marca). */
   markedUntil: number;
   /** Degrau de VIP da conta ("" = não é VIP) e quando o passe termina. */
@@ -966,6 +969,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       nextPortalAt: 0,
       markedUntil: row.markedUntil ? row.markedUntil.getTime() : 0,
       attackedBy: new Map(),
+      arenaTab: "",
       vipTier: account?.vipTier ?? "",
       vipUntil: account?.vipUntil?.getTime() ?? 0,
       queue: Promise.resolve(),
@@ -3242,7 +3246,8 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
         if (premio.gold > 0) player.state.gold += premio.gold;
         if (premio.diamonds > 0) player.diamonds = await addDiamonds(player.accountId, premio.diamonds);
         if (!this.players.has(player.id)) return;
-        const partes = [premio.gold > 0 ? `${premio.gold} de ouro` : "", premio.diamonds > 0 ? `${premio.diamonds} 💎` : ""].filter(Boolean);
+        const nd = (valor: number) => valor.toLocaleString("pt-BR");
+        const partes = [premio.gold > 0 ? `${nd(premio.gold)} de ouro` : "", premio.diamonds > 0 ? `${nd(premio.diamonds)} 💎` : ""].filter(Boolean);
         this.sendChat(client, "event", `${premio.arenaName}: você fechou a temporada ${premio.season} em ${premio.rank}º e levou ${partes.join(" e ")}.`);
       }
       if (premios.length > 0) this.sendProfile(player);
@@ -3256,7 +3261,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     const agora = Date.now();
     const season = arenaSeason(agora);
     const dia = arenaDay(agora);
-    const arena = this.arenaFor(player, pedida);
+    const arena = this.arenaFor(player, pedida || player.arenaTab);
     const abertas = arenasFor(arenaList(), player.state.level);
     if (!arena) {
       // Ninguém alcança arena nenhuma ainda: diz qual é o nível que falta, em vez de uma tela vazia.
@@ -3276,6 +3281,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       arenaBoard(arena.id, season, player.characterId),
     ]);
     if (!this.players.has(player.id)) return;
+    player.arenaTab = arena.id;
     player.client.send(ServerMsg.Arena, {
       enabled: settings.enabled,
       arenas: abertas,
@@ -3367,9 +3373,9 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     }).catch(() => this.sendChat(client, "system", "Não foi possível resolver a luta. Tente de novo."));
   }
 
-  /** O painel mexeu nas arenas: quem está com a tela aberta recebe a lista nova. */
+  /** O painel mexeu nas arenas: quem está com a tela aberta recebe a lista nova, na aba dele. */
   sendArenaList() {
-    for (const player of this.players.values()) void this.sendArena(player, "");
+    for (const player of this.players.values()) void this.sendArena(player, player.arenaTab);
   }
 
   /** O painel mexeu nas regras do PvP. */

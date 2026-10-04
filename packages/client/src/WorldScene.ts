@@ -13,6 +13,10 @@ import {
   type VipEvent,
   type VipTier,
   type PvpInfoEvent,
+  type ArenaEvent,
+  type ArenaFightEvent,
+  type ArenaFightMessage,
+  type ArenaOpenMessage,
   type VipBuyMessage,
   type MilestonesEvent,
   type InventoryEvent,
@@ -65,6 +69,7 @@ import { Hud } from "./hud.ts";
 import { Inventory } from "./inventory.ts";
 import { QuestLog } from "./questLog.ts";
 import { Checkin } from "./checkin.ts";
+import { ArenaPanel } from "./arena.ts";
 import { VipPanel } from "./vip.ts";
 import { screenToTile, tileToScreen } from "./iso.ts";
 import { Grimoire } from "./grimoire.ts";
@@ -224,6 +229,11 @@ export class WorldScene extends Phaser.Scene {
   private readonly vip = new VipPanel({
     buy: (pass) => this.room?.send(ClientMsg.VipBuy, { pass } satisfies VipBuyMessage),
     claim: () => this.room?.send(ClientMsg.VipClaim, {}),
+  });
+  private readonly arena = new ArenaPanel({
+    open: (arena) => this.room?.send(ClientMsg.ArenaOpen, { arena } satisfies ArenaOpenMessage),
+    fight: (arena, characterId, dummyId, paid) =>
+      this.room?.send(ClientMsg.ArenaFight, { arena, characterId, dummyId, paid } satisfies ArenaFightMessage),
   });
   private readonly checkin = new Checkin({
     claim: () => this.room?.send(ClientMsg.CheckinClaim, {}),
@@ -397,6 +407,11 @@ export class WorldScene extends Phaser.Scene {
       for (const actor of this.actors.values()) this.syncActor(actor);
     });
     room.onMessage(ServerMsg.Pvp, (event: PvpInfoEvent) => this.hud.setPvp(event));
+    room.onMessage(ServerMsg.Arena, (event: ArenaEvent) => {
+      this.arena.setData(event);
+      this.hud.setArenaReady(event.enabled && event.entriesLeft > 0 && event.arenas.length > 0);
+    });
+    room.onMessage(ServerMsg.ArenaResult, (event: ArenaFightEvent) => this.arena.showFight(event));
     room.onMessage(ServerMsg.Checkin, (event: CheckinEvent) => {
       this.checkin.setCheckin(event);
       this.hud.setCheckinReady(this.checkin.ready);
@@ -441,6 +456,7 @@ export class WorldScene extends Phaser.Scene {
     this.hud.onQuests(() => this.questLog.toggle());
     this.hud.onCheckin(() => this.checkin.toggle());
     this.hud.onVip(() => this.vip.toggle());
+    this.hud.onArena(() => this.arena.toggle());
     // Clique no orbe (ou Q/E) toma a melhor poção que o nível permite.
     element(".orb-hp").addEventListener("click", () => room.send(ClientMsg.QuickPotion, { kind: "hp" }));
     element(".orb-mana").addEventListener("click", () => room.send(ClientMsg.QuickPotion, { kind: "mana" }));
@@ -457,6 +473,7 @@ export class WorldScene extends Phaser.Scene {
       escape: () => {
         if (this.checkin.isOpen) this.checkin.close();
         if (this.vip.isOpen) this.vip.close();
+        else if (this.arena.isOpen) this.arena.close();
         else if (this.questLog.isOpen) this.questLog.close();
         else if (this.shop.isOpen) this.shop.close();
         else if (this.grimoire.isOpen) this.grimoire.close();
@@ -480,6 +497,7 @@ export class WorldScene extends Phaser.Scene {
       toggleQuests: () => this.questLog.toggle(),
       toggleCheckin: () => this.checkin.toggle(),
       toggleVip: () => this.vip.toggle(),
+      toggleArena: () => this.arena.toggle(),
       potion: (kind) => room.send(ClientMsg.QuickPotion, { kind }),
     });
   }

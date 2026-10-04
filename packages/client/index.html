@@ -146,6 +146,7 @@
               <button id="hud-quests" type="button"><kbd>J</kbd> Missões<b id="hud-quests-badge" hidden></b></button>
               <button id="hud-checkin" type="button"><kbd>C</kbd> Presente<b id="hud-checkin-badge" hidden>!</b></button>
               <button id="hud-vip" type="button"><kbd>V</kbd> VIP<b id="hud-vip-badge" hidden>!</b></button>
+              <button id="hud-arena" type="button"><kbd>B</kbd> Arena<b id="hud-arena-badge" hidden>!</b></button>
               <button id="hud-shop" class="shop-button" type="button"><kbd>L</kbd> 💎 Comprar diamantes</button>
             </div>
           </div>
@@ -285,6 +286,15 @@
         <p class="checkin-hint">O passe vale por prazo e é pago em diamantes. Subir de degrau aproveita o que sobra do atual.</p>
         <div id="vip-body"></div>
         <div id="vip-foot"></div>
+      </section>
+
+      <section id="arena" class="card kit-panel" hidden>
+        <header class="panel-header">
+          <h2>Arena</h2>
+          <button id="arena-close" class="icon" type="button" aria-label="Fechar">✕</button>
+        </header>
+        <p class="checkin-hint">A luta é contra uma cópia do personagem do outro, controlada pela IA. Sem perder XP e sem perder item.</p>
+        <div id="arena-body"></div>
       </section>
 
       <section id="inventory" class="card kit-panel" hidden>

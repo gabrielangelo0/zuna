@@ -315,6 +315,9 @@ export async function arenaOpponents(arena: ArenaDef, characterId: number, seaso
       vocation: linha.snap.vocation,
       power: powerScore(lutador),
       rating: pontuacoes.get(linha.snap.characterId) ?? settings.startRating,
+      maxHp: lutador.maxHp,
+      maxDamage: lutador.maxDamage,
+      armor: lutador.armor,
       look: lookOfRow(linha.snap),
     };
   });
@@ -337,6 +340,9 @@ export async function arenaOpponents(arena: ArenaDef, characterId: number, seaso
         vocation: dummy.vocation,
         power: powerScore(lutador),
         rating: 0,
+        maxHp: lutador.maxHp,
+        maxDamage: lutador.maxDamage,
+        armor: lutador.armor,
         look: lookOfRow(dummy),
       });
     }
@@ -507,14 +513,18 @@ export async function selfOpponent(characterId: number, arena: string, season: s
   const retrato = await snapshotOf(characterId);
   if (!retrato) return null;
   const standing = await standingOf(arena, season, characterId);
+  const lutador = fighterOfSnapshot(retrato);
   return {
     characterId,
     dummyId: 0,
     name: retrato.name,
     level: retrato.level,
     vocation: retrato.vocation,
-    power: powerScore(fighterOfSnapshot(retrato)),
+    power: powerScore(lutador),
     rating: standing.rating,
+    maxHp: lutador.maxHp,
+    maxDamage: lutador.maxDamage,
+    armor: lutador.armor,
     look: lookOfRow(retrato),
   };
 }

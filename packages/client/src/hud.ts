@@ -44,6 +44,8 @@ export class Hud {
   private readonly checkinButton = element<HTMLButtonElement>("#hud-checkin");
   private readonly vipButton = element<HTMLButtonElement>("#hud-vip");
   private readonly vipBadge = element("#hud-vip-badge");
+  private readonly arenaButton = element<HTMLButtonElement>("#hud-arena");
+  private readonly arenaBadge = element("#hud-arena-badge");
   private readonly checkinBadge = element("#hud-checkin-badge");
   private readonly rankingButton = element<HTMLButtonElement>("#hud-ranking");
   private readonly powersButton = element<HTMLButtonElement>("#hud-powers");
@@ -260,6 +262,18 @@ export class Hud {
       handler();
       this.vipButton.blur();
     });
+  }
+
+  onArena(handler: () => void) {
+    this.arenaButton.addEventListener("click", () => {
+      handler();
+      this.arenaButton.blur();
+    });
+  }
+
+  /** Aviso no botão quando sobraram entradas de graça hoje. */
+  setArenaReady(ready: boolean) {
+    this.arenaBadge.hidden = !ready;
   }
 
   onShop(handler: () => void) {

@@ -15,6 +15,7 @@ export interface KeyboardHandlers {
   toggleQuests(): void;
   toggleCheckin(): void;
   toggleVip(): void;
+  toggleArena(): void;
 }
 
 const UP = new Set(["w", "arrowup"]);
@@ -109,6 +110,9 @@ export class KeyboardInput {
         return;
       case "v":
         this.handlers.toggleVip();
+        return;
+      case "b":
+        this.handlers.toggleArena();
         return;
     }
     if (/^[1-9]$/.test(key)) this.handlers.spell(key);
