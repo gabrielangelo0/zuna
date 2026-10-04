@@ -87,6 +87,7 @@ export type MapStyle =
   | "neve"
   | "cripta"
   | "esgoto"
+  | "montanha"
   | "vulcao"
   | "covil"
   | "abismo";
@@ -99,6 +100,7 @@ export const MAP_STYLES: readonly { id: MapStyle; name: string; description: str
   { id: "neve", name: "Montanhas Geladas", description: "Neve, pinheiros brancos, lagos e cristais." },
   { id: "cripta", name: "Cripta", description: "Salões escuros, corredores de rocha e cristais." },
   { id: "esgoto", name: "Esgoto", description: "Canais de água, passarelas de pedra, lama e cogumelos." },
+  { id: "montanha", name: "Montanha", description: "Platôs de rocha subindo, neve no alto e penhascos." },
   { id: "vulcao", name: "Vulcão", description: "Cinza, rios de lava e rochas queimadas." },
   { id: "covil", name: "Covil dos Dragões", description: "Cânions de rocha, poças de lava e cristais nas paredes." },
   { id: "abismo", name: "Abismo", description: "Pedra escura rachada de lava, cristais e árvores retorcidas." },
@@ -204,6 +206,7 @@ export function generateMap(shape: MapShape = DEFAULT_SHAPE): GameMap {
   else if (shape.style === "neve") paintSnow(map, shape, rng);
   else if (shape.style === "cripta") paintCrypt(map, shape, rng);
   else if (shape.style === "esgoto") paintSewer(map, shape, rng);
+  else if (shape.style === "montanha") paintMountain(map, shape, rng);
   else if (shape.style === "vulcao") paintVolcano(map, shape, rng);
   else if (shape.style === "covil") paintLair(map, shape, rng);
   else if (shape.style === "abismo") paintAbyss(map, shape, rng);
@@ -658,6 +661,45 @@ function paintSewer(map: GameMap, shape: MapShape, rng: () => number) {
   });
   clearings(painter, Math.round((map.width * map.height) / 700), Ground.Stone);
   carveRoads(painter, Ground.Stone);
+  fence(map, Ground.Stone, Obj.Rock);
+  clearPlaza(map, shape);
+}
+
+/**
+ * Montanha: a altitude sobe conforme afasta da praça, então terra vira pedra e pedra vira
+ * neve. Os penhascos são linhas finas de rocha de propósito — paredão largo fecharia platô e
+ * deixaria jogador sem rota.
+ */
+function paintMountain(map: GameMap, shape: MapShape, rng: () => number) {
+  const painter = { map, shape, rng };
+  const { seed } = shape;
+  const alcance = Math.max(map.width, map.height) * 0.42;
+  each(map, (x, y, i) => {
+    const subida = Math.min(1, fromPlaza(shape, x, y) / alcance);
+    const altura = subida * 0.75 + fbm(x / 13, y / 13, seed + 29) * 0.45;
+    map.ground[i] = altura > 0.72 ? Ground.Snow : altura > 0.38 ? Ground.Stone : Ground.Dirt;
+    if (fromPlaza(shape, x, y) < shape.townRadius + 3) return;
+    // 0,032 é medido: 0,055 fechava platô e dava 72% de alcançabilidade. Mexer exige medir.
+    if (Math.abs(fbm(x / 9, y / 9, seed + 53) - 0.5) < 0.032) {
+      map.objects[i] = Obj.Rock;
+      return;
+    }
+    const r = rng();
+    if (map.ground[i] === Ground.Snow) {
+      if (r < 0.1) map.objects[i] = Obj.SnowPine;
+      else if (r < 0.125) map.objects[i] = Obj.Crystal;
+      return;
+    }
+    if (map.ground[i] === Ground.Stone) {
+      if (r < 0.08) map.objects[i] = Obj.Rock;
+      else if (r < 0.095) map.objects[i] = Obj.Crystal;
+      return;
+    }
+    if (r < 0.16) map.objects[i] = Obj.Pine;
+    else if (r < 0.19) map.objects[i] = Obj.Fern;
+  });
+  clearings(painter, Math.round((map.width * map.height) / 800), null);
+  carveRoads(painter, Ground.Dirt);
   fence(map, Ground.Stone, Obj.Rock);
   clearPlaza(map, shape);
 }

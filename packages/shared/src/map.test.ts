@@ -62,6 +62,7 @@ const PISO: Partial<Record<MapStyle, number>> = {
   neve: 0.93,
   cripta: 0.88,
   esgoto: 0.82,
+  montanha: 0.9,
   vulcao: 0.7,
   covil: 0.72,
   abismo: 0.64,
