@@ -31,6 +31,10 @@ export const PlayerState = schema(
     looks: t.string(),
     /** Marcado como agressor em PvP: quem está perto vê a caveira em cima dele. */
     marked: t.boolean(),
+    /** Degrau de VIP ativo (0 = não é VIP). É o que faz o VIP ser visto pelos outros. */
+    vip: t.uint8(),
+    /** Título do degrau, acima do nome. */
+    title: t.string(),
   },
   "Player",
 );

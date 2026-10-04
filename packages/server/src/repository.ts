@@ -9,9 +9,12 @@ import {
   type CharacterSummary,
   type RankingBoard,
   type RankingRow,
+  vipPurchase,
+  type VipPass,
+  type VipTier,
 } from "@zuna/shared";
 import { db } from "./db/index.ts";
-import { accounts, characters, purchases, unlocks } from "./db/schema.ts";
+import { accounts, characters, purchases, unlocks, accountVip} from "./db/schema.ts";
 
 export type AccountRow = typeof accounts.$inferSelect;
 export type CharacterRow = typeof characters.$inferSelect;
@@ -278,4 +281,79 @@ export async function accountBan(accountId: number): Promise<{ banned: boolean; 
     .where(eq(accounts.id, accountId))
     .limit(1);
   return { banned: row?.banned === true, reason: row?.reason ?? "" };
+}
+
+// ---------------------------------------------------------------- VIP
+
+export type VipPurchaseResult =
+  | { ok: true; tier: string; untilMs: number; diamonds: number }
+  | { ok: false; message: string };
+
+/**
+ * Compra de passe de VIP com diamantes. Tudo numa transação: o desconto e o prazo novo andam
+ * juntos, e o saldo é descontado com a mesma guarda atômica de `purchaseItem` (nada de ler
+ * antes de escrever, nada de corrida entre duas abas).
+ */
+export async function purchaseVip(params: {
+  accountId: number;
+  characterId: number;
+  pass: VipPass;
+  tiers: readonly VipTier[];
+  now: number;
+}): Promise<VipPurchaseResult> {
+  const { pass, tiers, now } = params;
+  return db().transaction(async (tx): Promise<VipPurchaseResult> => {
+    const [atual] = await tx
+      .select({ tier: accounts.vipTier, until: accounts.vipUntil })
+      .from(accounts)
+      .where(eq(accounts.id, params.accountId))
+      .limit(1);
+    if (!atual) return { ok: false, message: "Conta não encontrada." };
+
+    const decidido = vipPurchase({ tier: atual.tier, untilMs: atual.until?.getTime() ?? 0 }, tiers, pass, now);
+    if (typeof decidido === "string") return { ok: false, message: decidido };
+
+    const [conta] = await tx
+      .update(accounts)
+      .set({
+        diamonds: sql`${accounts.diamonds} - ${pass.priceDiamonds}`,
+        vipTier: decidido.tier,
+        vipUntil: new Date(decidido.untilMs),
+      })
+      .where(and(eq(accounts.id, params.accountId), gte(accounts.diamonds, pass.priceDiamonds)))
+      .returning({ diamonds: accounts.diamonds });
+    if (!conta) return { ok: false, message: "Diamantes insuficientes." };
+
+    // `purchases` já guarda todo gasto: o painel conta a receita do VIP sem tabela nova.
+    await tx.insert(purchases).values({
+      accountId: params.accountId,
+      characterId: params.characterId,
+      itemId: `vip:${pass.id}`,
+      currency: "diamonds",
+      price: pass.priceDiamonds,
+    });
+    return { ok: true, tier: decidido.tier, untilMs: decidido.untilMs, diamonds: conta.diamonds };
+  });
+}
+
+/** Marca o baú do dia como pego. Falso quando a conta já pegou o de hoje. */
+export async function claimVipChest(accountId: number, dayKey: string): Promise<boolean> {
+  return db().transaction(async (tx): Promise<boolean> => {
+    const [linha] = await tx.select().from(accountVip).where(eq(accountVip.accountId, accountId)).limit(1);
+    if (linha?.lastChestDay === dayKey) return false;
+    await tx
+      .insert(accountVip)
+      .values({ accountId, lastChestDay: dayKey, totalChests: 1 })
+      .onConflictDoUpdate({
+        target: accountVip.accountId,
+        set: { lastChestDay: dayKey, totalChests: sql`${accountVip.totalChests} + 1`, updatedAt: new Date() },
+      });
+    return true;
+  });
+}
+
+/** Quando a conta pegou o último baú, para a tela saber se já pode. */
+export async function vipChestDay(accountId: number): Promise<string> {
+  const [linha] = await db().select().from(accountVip).where(eq(accountVip.accountId, accountId)).limit(1);
+  return linha?.lastChestDay ?? "";
 }

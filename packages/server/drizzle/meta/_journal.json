@@ -127,6 +127,13 @@
       "when": 1791127876779,
       "tag": "0017_burly_centennial",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791128440762,
+      "tag": "0018_small_triathlon",
+      "breakpoints": true
     }
   ]
 }

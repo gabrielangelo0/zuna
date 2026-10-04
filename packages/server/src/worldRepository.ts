@@ -1,3 +1,4 @@
+import { vipTiersAll } from "./vip.ts";
 import { and, count, eq, or, sql } from "drizzle-orm";
 import {
   MAP_H,
@@ -615,6 +616,7 @@ export async function publicWorlds(): Promise<WorldsResponse> {
       catalog: await listItemOverrides(),
       gear: gearList(),
       vocations: liveVocations(),
+      vipTiers: vipTiersAll(),
     };
   }
   return worldsCache;

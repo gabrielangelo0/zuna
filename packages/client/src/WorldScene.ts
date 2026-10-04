@@ -68,6 +68,7 @@ import { Minimap } from "./minimap.ts";
 import { Ranking } from "./ranking.ts";
 import { KeyboardInput } from "./keyboard.ts";
 import { ChunkGrid } from "./chunks.ts";
+import { setVipTiers, vipColorOf, vipTitleOf } from "./vipLook.ts";
 import { SpriteTextures, loadSheet } from "./sprites.ts";
 import { GROUND_FRAMES, TILE_CELL_H, TILE_CELL_W, createTextures, type GroundFrameName } from "./textures.ts";
 import { DiamondShop } from "./shop.ts";
@@ -972,6 +973,10 @@ export class WorldScene extends Phaser.Scene {
 
   private syncActor(actor: Actor) {
     actor.sync();
+    if (actor.isPlayer) {
+      const data = actor.data as PlayerData;
+      actor.setAdornments(data.marked === true, vipColorOf(data), vipTitleOf(data));
+    }
     if (actor.id !== this.localId) return;
     this.hud.updatePlayer(actor.data as PlayerData);
     this.grimoire.setLevel((actor.data as PlayerData).level);

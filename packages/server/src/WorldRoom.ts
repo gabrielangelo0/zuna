@@ -11,6 +11,9 @@ import {
   type VocationMessage,
   type ViewMessage,
   type PvpInfoEvent,
+  type VipEvent,
+  type VipBuyMessage,
+  checkinDayKey,
   vocationById,
   vocationFamilies,
   vocationStats,
@@ -127,6 +130,9 @@ import {
   hasProtection,
   PROTECTION_ITEM,
   type Fighter,
+  type VipTier,
+  vipDaysLeft,
+  vipPurchase,
 } from "@zuna/shared";
 import { accountFromToken } from "./auth.ts";
 import { EventManager } from "./events.ts";
@@ -134,6 +140,7 @@ import { allQuests, listQuestProgress, liveQuests, questById, saveQuestProgress 
 import { checkinDaysAll, checkinSettings, checkinStateFor, claimCheckin } from "./checkin.ts";
 import { claimMilestones, levelRewardsAll, pendingMilestones, takenMilestones, xpRate } from "./progress.ts";
 import { pvpSettings, recordPvpKill } from "./pvp.ts";
+import { rankOf, vipPass, vipPassesOnSale, vipTier, vipTiersAll } from "./vip.ts";
 import { chargeDiamonds, saveCharacterVocation, vocationChangeCost, vocationSettings } from "./vocations.ts";
 import {
   addCharacterItem,
@@ -166,6 +173,9 @@ import {
   saveCharacter,
   type CharacterRow,
   type CharacterSnapshot,
+  purchaseVip,
+  claimVipChest,
+  vipChestDay,
 } from "./repository.ts";
 import { StateView } from "@colyseus/schema";
 import { LootState, MonsterState, PlayerState, WorldState } from "./schema.ts";
@@ -277,6 +287,9 @@ interface PlayerSim {
   nextPortalAt: number;
   /** Marca de agressor em PvP vence neste instante (0 = sem marca). */
   markedUntil: number;
+  /** Degrau de VIP da conta ("" = não é VIP) e quando o passe termina. */
+  vipTier: string;
+  vipUntil: number;
   /** Quando cada outro jogador bateu neste aqui pela última vez: é o que define revide. */
   attackedBy: Map<string, number>;
   /** Operações de banco deste personagem, em fila: nunca duas ao mesmo tempo. */
@@ -394,6 +407,8 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     this.onMessage(ClientMsg.ItemSell, (client, message: ItemSellMessage) => this.handleItemSell(client, message));
     this.onMessage(ClientMsg.ItemBuy, (client, message: ItemBuyMessage) => this.handleItemBuy(client, message));
     this.onMessage(ClientMsg.View, (client, message: ViewMessage) => this.handleView(client, message));
+    this.onMessage(ClientMsg.VipBuy, (client, message: VipBuyMessage) => this.handleVipBuy(client, message));
+    this.onMessage(ClientMsg.VipClaim, (client) => this.handleVipClaim(client));
 
     this.setPatchRate(TICK_MS);
     this.setSimulationInterval(() => this.tick(), TICK_MS);
@@ -892,6 +907,8 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       mounted: mount !== "" && row.mounted,
       looks: looksOf(items),
       marked: (row.markedUntil?.getTime() ?? 0) > Date.now(),
+      vip: rankOf(account?.vipTier ?? "", account?.vipUntil?.getTime() ?? 0),
+      title: vipTier(account?.vipTier ?? "")?.title ?? "",
     });
 
     const player: PlayerSim = {
@@ -926,6 +943,8 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       nextPortalAt: 0,
       markedUntil: row.markedUntil ? row.markedUntil.getTime() : 0,
       attackedBy: new Map(),
+      vipTier: account?.vipTier ?? "",
+      vipUntil: account?.vipUntil?.getTime() ?? 0,
       queue: Promise.resolve(),
     };
     this.players.set(client.sessionId, player);
@@ -940,6 +959,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
 
     this.settleBag(player);
     this.sendPvp(player);
+    void this.sendVip(player);
     this.sendQuests(player);
     void this.sendCheckin(player);
     void this.grantMilestones(player);
@@ -1357,6 +1377,12 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     if (id) {
       const item = catalogItem(id);
       if (!item || item.kind !== kind || !ownsItem(item, player.unlocks)) return;
+      const exigido = item.vip ?? 0;
+      if (exigido > 0 && (this.vipOf(player)?.rank ?? 0) < exigido) {
+        const tier = vipTiersAll().find((entry) => entry.rank === exigido);
+        this.sendChat(client, "system", `${item.name} é exclusivo do ${tier?.name ?? "VIP"}.`);
+        return;
+      }
     } else if (kind === "outfit") {
       return;
     }
@@ -1388,6 +1414,12 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
     const item = catalogItem(String(message?.id ?? ""));
     if (!item || item.price === 0 || item.enabled === false) {
       this.sendPurchase(player, false, "", "Item indisponível.");
+      return;
+    }
+    const exigido = item.vip ?? 0;
+    if (exigido > 0 && (this.vipOf(player)?.rank ?? 0) < exigido) {
+      const tier = vipTiersAll().find((entry) => entry.rank === exigido);
+      this.sendPurchase(player, false, item.id, `${item.name} é exclusivo do ${tier?.name ?? "VIP"}.`);
       return;
     }
 
@@ -1625,9 +1657,22 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
   }
 
   /** Bônus do mascote e da montaria. A velocidade da montaria só vale montado. */
+  /** Degrau de VIP ativo da conta, ou undefined. Um lugar só: todo benefício lê a linha daqui. */
+  private vipOf(player: PlayerSim): VipTier | undefined {
+    const tier = vipTier(player.vipTier);
+    return tier && player.vipUntil > Date.now() ? tier : undefined;
+  }
+
   private bonusesOf(player: PlayerSim): Bonuses {
     const s = player.state;
     const bonuses: Bonuses = { xp: 0, gold: 0, stepFactor: 1 };
+    // O VIP soma no mesmo ponto que pet e montaria, e por isso vale só para XP de monstro.
+    // Estender a missão e o baú dobraria prêmio que o painel calibrou sem contar com isto.
+    const vip = this.vipOf(player);
+    if (vip) {
+      bonuses.xp += vip.bonusXp;
+      bonuses.gold += vip.bonusGold;
+    }
     for (const id of [s.pet, s.mount]) {
       const bonus = id ? catalogItem(id)?.bonus : undefined;
       if (!bonus) continue;
@@ -2143,7 +2188,9 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
   private killPlayer(player: PlayerSim, killer: Combatant) {
     const s = player.state;
     const levelFloor = xpForLevel(s.level);
-    const xpLost = Math.max(0, Math.min(Math.round(s.xp * DEATH_XP_LOSS), s.xp - levelFloor));
+    // O VIP reduz ou zera a perda: é o benefício que mais se sente, porque dói na hora.
+    const perda = DEATH_XP_LOSS * (this.vipOf(player)?.deathXpFactor ?? 1);
+    const xpLost = Math.max(0, Math.min(Math.round(s.xp * perda), s.xp - levelFloor));
     s.xp -= xpLost;
 
     const porJogador = isPlayerSim(killer);
@@ -2214,6 +2261,15 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       // E a janela de revide, para o mapa não crescer sem fim numa sessão longa.
       if (player.attackedBy.size > 0) {
         for (const [id, quando] of player.attackedBy) if (agora - quando > janela) player.attackedBy.delete(id);
+      }
+
+      // O VIP vence aqui também: nada de conferir prazo a cada tick.
+      if (player.vipTier && player.vipUntil > 0 && player.vipUntil <= agora && s.vip > 0) {
+        const nome = vipTier(player.vipTier)?.name ?? "VIP";
+        this.refreshVipLook(player);
+        this.sendChat(player.client, "event", `Seu ${nome} terminou.`);
+        this.sendInventory(player);
+        void this.sendVip(player);
       }
     }
   }
@@ -2378,7 +2434,7 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
   // ------------------------------------------------------------ mochila e equipamentos
 
   private capacity(player: PlayerSim): number {
-    return bagCapacity(player.items);
+    return bagCapacity(player.items, this.vipOf(player)?.bagSlots ?? 0);
   }
 
   private bagItems(player: PlayerSim): OwnedItem[] {
@@ -2997,6 +3053,110 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
       `Presente do dia ${result.state.day}: você recebeu ${rewards.join(", ") || "nada"}. Sequência: ${streak} dia${streak === 1 ? "" : "s"}.`,
     );
     void this.sendCheckin(player);
+  }
+
+  // ------------------------------------------------------------ VIP
+
+  /** Situação do VIP e o que está à venda. Só o dono recebe. */
+  private async sendVip(player: PlayerSim) {
+    if (!this.players.has(player.id)) return;
+    const hoje = checkinDayKey(Date.now(), checkinSettings().offsetHours);
+    const pego = await vipChestDay(player.accountId).catch(() => "");
+    if (!this.players.has(player.id)) return;
+    player.client.send(ServerMsg.Vip, {
+      tier: this.vipOf(player)?.id ?? "",
+      untilMs: player.vipUntil,
+      tiers: vipTiersAll(),
+      passes: vipPassesOnSale(),
+      chestReady: this.vipOf(player) !== undefined && pego !== hoje,
+    } satisfies VipEvent);
+  }
+
+  /** Reflete no estado visível o degrau e o título: é como os outros enxergam o VIP. */
+  private refreshVipLook(player: PlayerSim) {
+    const tier = this.vipOf(player);
+    player.state.vip = tier?.rank ?? 0;
+    player.state.title = tier?.title ?? "";
+  }
+
+  private handleVipBuy(client: Client, message: VipBuyMessage) {
+    const player = this.players.get(client.sessionId);
+    if (!player) return;
+    const passe = vipPass(String(message?.pass ?? ""));
+    if (!passe) {
+      this.sendChat(client, "system", "Esse passe não existe mais.");
+      return;
+    }
+    // Na fila do personagem, como toda compra: nunca duas operações de banco ao mesmo tempo.
+    void this.enqueue(player, async () => {
+      const result = await purchaseVip({
+        accountId: player.accountId,
+        characterId: player.characterId,
+        pass: passe,
+        tiers: vipTiersAll(),
+        now: Date.now(),
+      });
+      if (!this.players.has(player.id)) return;
+      if (!result.ok) {
+        this.sendChat(client, "system", result.message);
+        return;
+      }
+      player.vipTier = result.tier;
+      player.vipUntil = result.untilMs;
+      player.diamonds = result.diamonds;
+      this.refreshVipLook(player);
+      const tier = this.vipOf(player);
+      const dias = vipDaysLeft(result.untilMs, Date.now());
+      this.sendProfile(player);
+      this.sendInventory(player);
+      void this.sendVip(player);
+      this.sendChat(client, "event", `${tier?.name ?? "VIP"} ativo por ${dias} dia${dias === 1 ? "" : "s"}.`);
+      this.broadcastChat("event", `${player.state.name} entrou para o ${tier?.name ?? "VIP"}!`);
+    }).catch(() => this.sendChat(client, "system", "Não foi possível concluir a compra. Tente de novo."));
+  }
+
+  private handleVipClaim(client: Client) {
+    const player = this.players.get(client.sessionId);
+    if (!player) return;
+    const tier = this.vipOf(player);
+    if (!tier) {
+      this.sendChat(client, "system", "O baú diário é dos assinantes VIP.");
+      return;
+    }
+    // O baú do VIP vira na mesma hora do presente diário: um horário só na cabeça do jogador.
+    const hoje = checkinDayKey(Date.now(), checkinSettings().offsetHours);
+    void this.enqueue(player, async () => {
+      const pegou = await claimVipChest(player.accountId, hoje);
+      if (!this.players.has(player.id)) return;
+      if (!pegou) {
+        this.sendChat(client, "system", "Você já abriu o baú VIP de hoje. Volte amanhã!");
+        void this.sendVip(player);
+        return;
+      }
+      const premios: string[] = [];
+      if (tier.chestGold > 0) {
+        player.state.gold += tier.chestGold;
+        premios.push(`${tier.chestGold.toLocaleString("pt-BR")} de ouro`);
+      }
+      if (tier.chestXp > 0) {
+        this.giveXp(player, Math.round(tier.chestXp));
+        premios.push(`${Math.round(tier.chestXp).toLocaleString("pt-BR")} de XP`);
+      }
+      if (tier.chestDiamonds > 0) {
+        player.diamonds = await addDiamonds(player.accountId, tier.chestDiamonds);
+        premios.push(`${tier.chestDiamonds.toLocaleString("pt-BR")} diamantes`);
+      }
+      if (tier.chestItem) {
+        const item = gearItem(tier.chestItem);
+        const got = item ? this.grantItem(player, item.id, tier.chestItemCount) : 0;
+        if (item && got > 0) premios.push(got > 1 ? `${got}× ${item.name}` : item.name);
+        else if (item) this.itemNotice(player, false, `A mochila estava cheia: ${item.name} não coube.`);
+      }
+      void this.persist(player);
+      this.sendProfile(player);
+      void this.sendVip(player);
+      this.sendChat(client, "event", `Baú ${tier.name}: você recebeu ${premios.join(", ") || "nada"}.`);
+    }).catch(() => this.sendChat(client, "system", "Não foi possível abrir o baú. Tente de novo."));
   }
 
   // ------------------------------------------------------------ missões

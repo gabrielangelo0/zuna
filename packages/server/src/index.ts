@@ -13,6 +13,7 @@ import { reloadQuests } from "./quests.ts";
 import { ensureCheckinSeed } from "./checkin.ts";
 import { ensureProgressSeed } from "./progress.ts";
 import { reloadPvp } from "./pvp.ts";
+import { ensureVipSeed } from "./vip.ts";
 import { ensureVocationSeed } from "./vocations.ts";
 import { ensurePaymentSeed } from "./paymentCatalog.ts";
 import { startPaymentReconciler } from "./payments.ts";
@@ -48,6 +49,7 @@ await ensureCheckinSeed();
 await ensureProgressSeed();
 await ensureVocationSeed();
 await reloadPvp();
+await ensureVipSeed();
 applyCatalogOverrides(await listItemOverrides());
 
 // ADMIN_USERS=gabriel,outro marca essas contas como administradoras ao subir o servidor.

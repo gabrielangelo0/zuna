@@ -34,6 +34,12 @@ export interface PlayerData {
   mounted: boolean;
   /** Aparência do que está vestido (ícones em VISIBLE_SLOTS, separados por vírgula). */
   looks: string;
+  /** Marcado como agressor em PvP: quem está perto vê a caveira em cima dele. */
+  marked: boolean;
+  /** Degrau de VIP ativo (0 = não é VIP). A cor e o título saem da tabela de degraus. */
+  vip: number;
+  /** Título do degrau, mostrado acima do nome. */
+  title: string;
 }
 
 export interface MonsterData {

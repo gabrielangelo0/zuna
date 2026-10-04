@@ -351,11 +351,18 @@ export function describeStats(stats: GearStats & Partial<Pick<GearDef, "heal" | 
   return lines;
 }
 
-/** Espaços da mochila com a bolsa equipada. */
-export function bagCapacity(items: readonly OwnedItem[]): number {
+/**
+ * Espaços da mochila com a bolsa equipada, mais os que o VIP dá.
+ *
+ * Os espaços do VIP levantam o **teto** junto com o piso. Somá-los dentro do `Math.min(BAG_MAX, …)`
+ * faria o degrau mais caro (+40) bater exatamente em BAG_MAX, e aí o bônus da bolsa equipada
+ * valeria zero — quem pagasse mais e usasse a melhor bolsa do jogo perderia o bônus dela, sem
+ * aviso nenhum.
+ */
+export function bagCapacity(items: readonly OwnedItem[], vipSlots = 0): number {
   const backpack = items.find((item) => item.equipped === "backpack");
   const extra = backpack ? (gearItem(backpack.itemId)?.bagSlots ?? 0) : 0;
-  return Math.min(BAG_MAX, BAG_BASE + extra);
+  return Math.min(BAG_MAX + vipSlots, BAG_BASE + extra + vipSlots);
 }
 
 /** Aparência do que está vestido nos espaços visíveis, na ordem de VISIBLE_SLOTS ("helm_knight_gold,,sword,…"). */

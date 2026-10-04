@@ -195,6 +195,14 @@ export class Actor {
   private readonly pet: Layer;
   private readonly label: Phaser.GameObjects.Text;
   private readonly hpBar: Phaser.GameObjects.Graphics;
+  // Adornos: criados sob demanda, porque a esmagadora maioria dos atores não tem nenhum e um
+  // objeto de Phaser por ator a mais custaria caro numa tela cheia.
+  private markText: Phaser.GameObjects.Text | null = null;
+  private titleText: Phaser.GameObjects.Text | null = null;
+  private aura: Phaser.GameObjects.Image | null = null;
+  private marked = false;
+  private vipColor = "";
+  private vipTitle = "";
   private readonly phase = Math.random() * 2000;
   private readonly spawnedAt: number;
 
@@ -255,6 +263,70 @@ export class Actor {
 
     if (!isPlayer) this.body.set(`monster_${(data as MonsterData).kind}`);
     this.sync();
+  }
+
+  /**
+   * Caveira de agressor e adornos de VIP. Chamado a cada sincronização: só mexe no que mudou.
+   *
+   * O VIP precisa ser visto pelos outros, senão não gera a segunda venda; e a caveira precisa
+   * ser vista por todos, senão a punição do PvP não existe socialmente.
+   */
+  setAdornments(marked: boolean, vipColor: string, vipTitle: string) {
+    if (marked !== this.marked) {
+      this.marked = marked;
+      if (marked && !this.markText) {
+        this.markText = this.scene.add
+          .text(0, 0, "☠", {
+            fontFamily: GAME_FONT,
+            fontSize: "15px",
+            color: "#ff5a4a",
+            stroke: "#2a0a06",
+            strokeThickness: 4,
+            resolution: TEXT_RESOLUTION,
+          })
+          .setOrigin(0.5, 1)
+          .setDepth(DEPTH_OVERLAY + 2);
+      } else if (!marked && this.markText) {
+        this.markText.destroy();
+        this.markText = null;
+      }
+    }
+
+    if (vipTitle !== this.vipTitle || vipColor !== this.vipColor) {
+      this.vipTitle = vipTitle;
+      this.vipColor = vipColor;
+      if (vipTitle && !this.titleText) {
+        this.titleText = this.scene.add
+          .text(0, 0, "", {
+            fontFamily: GAME_FONT,
+            fontSize: "10px",
+            fontStyle: "bold",
+            color: vipColor || "#e8b13a",
+            stroke: "#000000",
+            strokeThickness: 3,
+            resolution: TEXT_RESOLUTION,
+          })
+          .setOrigin(0.5, 1)
+          .setDepth(DEPTH_OVERLAY + 1);
+      }
+      if (this.titleText) {
+        if (vipTitle) this.titleText.setText(`✦ ${vipTitle} ✦`).setColor(vipColor || "#e8b13a").setVisible(true);
+        else this.titleText.setVisible(false);
+      }
+      // Aura no chão: é o que faz o VIP ser notado de longe, antes de dar para ler o nome.
+      if (vipColor && !this.aura) {
+        this.aura = this.scene.add
+          .image(0, 0, "fx_glow")
+          .setBlendMode(Phaser.BlendModes.ADD)
+          .setOrigin(0.5, 0.5)
+          .setScale(0.95, 0.34);
+      }
+      if (this.aura) {
+        if (vipColor) this.aura.setTint(Number.parseInt(vipColor.replace("#", ""), 16)).setVisible(true);
+        else this.aura.setVisible(false);
+      }
+      this.drawHpBar();
+    }
   }
 
   /** Mostra a fala do jogador acima da cabeça. */
@@ -384,6 +456,9 @@ export class Actor {
     this.action = null;
     this.label.setVisible(false);
     this.hpBar.setVisible(false);
+    this.markText?.setVisible(false);
+    this.titleText?.setVisible(false);
+    this.aura?.setVisible(false);
   }
 
   /** O monstro saiu do estado: o corpo fica no chão por um tempo e depois some. */
@@ -456,6 +531,22 @@ export class Actor {
     this.bubble?.update(x, top - 21, time, alpha);
     this.label.setPosition(x, top - 7).setAlpha(alpha);
     this.hpBar.setPosition(x, top - 5).setAlpha(alpha);
+    if (this.titleText?.visible) this.titleText.setPosition(x, top - 20).setAlpha(alpha);
+    if (this.markText) {
+      // Balança e pulsa: parado em cima da cabeça, a caveira passaria por enfeite.
+      const t = (time + this.phase) / 260;
+      this.markText.setPosition(x + 15, top - 18 + Math.sin(t) * 2.5).setAlpha(alpha);
+      this.markText.setScale(1 + Math.sin(t * 1.7) * 0.12);
+    }
+    if (this.aura?.visible) {
+      const t = (time + this.phase) / 1000;
+      this.aura
+        .setPosition(x, y + 3)
+        .setDepth(y - 2)
+        .setRotation(t * 0.6)
+        .setAlpha(alpha * (0.34 + Math.sin(t * 2.1) * 0.12))
+        .setScale(0.95 + Math.sin(t * 1.3) * 0.07, 0.34 + Math.sin(t * 1.3) * 0.025);
+    }
     if (this.isPlayer) this.updatePet(x, y, time, delta, alpha);
   }
 
@@ -463,6 +554,9 @@ export class Actor {
     for (const layer of [this.body, this.mount, this.front, this.pet, ...this.parts.values()]) layer.destroy();
     this.label.destroy();
     this.hpBar.destroy();
+    this.markText?.destroy();
+    this.titleText?.destroy();
+    this.aura?.destroy();
     this.bubble?.destroy();
   }
 
@@ -517,6 +611,7 @@ export class Actor {
     this.hpBar.fillRect(-width / 2 - 1, -1, width + 2, 6);
     this.hpBar.fillStyle(color, 1);
     this.hpBar.fillRect(-width / 2, 0, Math.max(1, width * ratio), 4);
-    this.label.setColor(`#${color.toString(16).padStart(6, "0")}`);
+    // O nome do VIP fica na cor do degrau; o dos outros continua contando a vida.
+    this.label.setColor(this.vipColor || `#${color.toString(16).padStart(6, "0")}`);
   }
 }

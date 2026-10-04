@@ -19,6 +19,8 @@ export interface CatalogItem {
   price: number;
   currency: Currency;
   bonus?: ItemBonus;
+  /** Degrau mínimo de VIP para usar (0 ou ausente = livre). */
+  vip?: number;
   /** Fora da loja quando falso. Quem já tem continua com o item. */
   enabled?: boolean;
 }

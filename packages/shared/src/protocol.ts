@@ -5,6 +5,7 @@ import type { MonsterKind } from "./monsters.ts";
 import type { SpellElement, SpellId } from "./spells.ts";
 import type { VocationDef } from "./vocations.ts";
 import type { WorldBlueprint } from "./world.ts";
+import type { VipPass, VipTier } from "./vip.ts";
 
 // ---------------------------------------------------------------- API HTTP
 
@@ -55,6 +56,8 @@ export interface WorldsResponse {
   gear: GearDef[];
   /** Classes abertas, para a tela de criação. */
   vocations: VocationDef[];
+  /** Degraus de VIP: o cliente resolve a cor e o título de quem aparece na tela. */
+  vipTiers: VipTier[];
 }
 
 // ---------------------------------------------------------------- cliente → servidor (sala)
@@ -158,7 +161,26 @@ export const ClientMsg = {
   Vocation: "vocation",
   /** Tamanho da janela visível do jogador, para o servidor mandar só o que cabe nela. */
   View: "view",
+  /** VIP: comprar um passe e abrir o baú do dia. */
+  VipBuy: "vipBuy",
+  VipClaim: "vipClaim",
 } as const;
+
+export interface VipBuyMessage {
+  pass: string;
+}
+
+/** Situação do VIP do jogador e o que está à venda. */
+export interface VipEvent {
+  /** "" = não é VIP. */
+  tier: string;
+  /** 0 = não é VIP. */
+  untilMs: number;
+  tiers: VipTier[];
+  passes: VipPass[];
+  /** O baú de hoje ainda não foi aberto. */
+  chestReady: boolean;
+}
 
 /** Ajustes do PvP em vigor, para o cliente avisar e explicar antes de o jogador tentar. */
 export interface PvpInfoEvent {
@@ -379,4 +401,6 @@ export const ServerMsg = {
   Milestones: "milestones",
   /** Regras do PvP e a marca do jogador (só ele recebe). */
   Pvp: "pvp",
+  /** Degraus, passes e situação do VIP (só ele recebe). */
+  Vip: "vip",
 } as const;

@@ -33,6 +33,10 @@ export const accounts = pgTable("accounts", {
   spentCents: integer("spent_cents").notNull().default(0),
   /** Cliente desta conta na Asaas. O CPF fica só lá, nunca aqui. */
   payerId: text("payer_id").notNull().default(""),
+  /** Degrau de VIP ativo ("" = não é VIP). Vale para todos os personagens da conta. */
+  vipTier: text("vip_tier").notNull().default(""),
+  /** Quando o passe termina. */
+  vipUntil: timestamp("vip_until", { withTimezone: true }),
   createdAt: createdAt(),
 });
 
@@ -538,6 +542,61 @@ export const pvpKills = pgTable(
   },
   (table) => [index("pvp_kills_victim_idx").on(table.victimId), index("pvp_kills_at_idx").on(table.createdAt)],
 );
+
+// ---------------------------------------------------------------- VIP
+
+/** O que cada degrau dá. Nasce da lista de fábrica e depois é editado no painel. */
+export const vipTiers = pgTable("vip_tiers", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description").notNull().default(""),
+  /** Para comparar degraus: subir, descer e trancar montaria exclusiva. */
+  rank: smallint("rank").notNull().default(1),
+  /** O único número que a conversão de degrau usa. */
+  diamondsPerDay: integer("diamonds_per_day").notNull().default(9),
+  bonusXp: doublePrecision("bonus_xp").notNull().default(0),
+  bonusGold: doublePrecision("bonus_gold").notNull().default(0),
+  /** Multiplica a perda de XP na morte (0,5 = metade; 0 = nenhuma). */
+  deathXpFactor: doublePrecision("death_xp_factor").notNull().default(1),
+  bagSlots: smallint("bag_slots").notNull().default(0),
+  color: text("color").notNull().default("#e8b13a"),
+  title: text("title").notNull().default(""),
+  chestGold: integer("chest_gold").notNull().default(0),
+  chestDiamonds: integer("chest_diamonds").notNull().default(0),
+  chestXp: doublePrecision("chest_xp").notNull().default(0),
+  chestItem: text("chest_item").notNull().default(""),
+  chestItemCount: integer("chest_item_count").notNull().default(1),
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: createdAt(),
+});
+
+/**
+ * O que está à venda. Tabela separada do degrau de propósito: senão criar "Ouro 90 dias com
+ * desconto" obrigaria a duplicar as dez colunas de benefício, e duplicata de regra é onde
+ * nasce a divergência silenciosa.
+ */
+export const vipPasses = pgTable("vip_passes", {
+  id: text("id").primaryKey(),
+  /** Referência a vip_tiers.id, sem cascata: o painel recusa apagar degrau que ainda vende. */
+  tier: text("tier").notNull(),
+  days: smallint("days").notNull().default(30),
+  priceDiamonds: integer("price_diamonds").notNull().default(275),
+  tag: text("tag").notNull().default(""),
+  enabled: boolean("enabled").notNull().default(true),
+  sort: smallint("sort").notNull().default(0),
+  createdAt: createdAt(),
+});
+
+/** Baú diário do VIP: em que dia cada conta pegou o último. */
+export const accountVip = pgTable("account_vip", {
+  accountId: integer("account_id")
+    .primaryKey()
+    .references(() => accounts.id, { onDelete: "cascade" }),
+  /** Chave do último dia pego ("2026-10-04"), no mesmo fuso do check-in. */
+  lastChestDay: text("last_chest_day").notNull().default(""),
+  totalChests: integer("total_chests").notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const vocations = pgTable("vocations", {
   id: text("id").primaryKey(),
