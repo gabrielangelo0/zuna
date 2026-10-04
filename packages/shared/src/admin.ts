@@ -2,7 +2,7 @@ import type { CatalogItem, CatalogOverride, ItemKind } from "./cosmetics.ts";
 import type { EventDef } from "./events.ts";
 import type { MonsterKind } from "./monsters.ts";
 import type { RankingRow } from "./protocol.ts";
-import type { GroundItemDef, PortalDef, SpawnDef, WorldDef } from "./world.ts";
+import type { GroundItemDef, PortalDef, PortalKind, SpawnDef, WorldDef } from "./world.ts";
 
 // Tudo que o painel de administração troca com o servidor.
 
@@ -324,6 +324,7 @@ export interface AdminWorldPatch {
   published?: boolean;
   autoSpawns?: boolean;
   isDefault?: boolean;
+  depth?: number;
 }
 
 /** Um tile do pincel. `reset` devolve o tile ao que o gerador tinha feito. */
@@ -353,6 +354,10 @@ export interface AdminPlacementRequest {
   toY?: number;
   name?: string;
   minLevel?: number;
+  /** Desenho da ligação (escada, rampa, buraco). */
+  kind?: PortalKind;
+  /** Cria junto a ligação de volta no destino. Só vale ao criar. */
+  withReturn?: boolean;
   /** Ninho. */
   monster?: MonsterKind;
   amount?: number;

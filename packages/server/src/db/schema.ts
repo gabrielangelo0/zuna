@@ -173,6 +173,10 @@ export const worlds = pgTable("worlds", {
   autoSpawns: boolean("auto_spawns").notNull().default(false),
   /** Onde os personagens novos nascem. Só um mundo é o padrão. */
   isDefault: boolean("is_default").notNull().default(false),
+  /** Andar relativo: 0 = superfície, negativo = subsolo. Só rótulo na tela. */
+  depth: smallint("depth").notNull().default(0),
+  /** off ou open. Sem efeito nenhum até o spec do PvP. */
+  pvp: text("pvp").notNull().default("off"),
   createdAt: createdAt(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -204,6 +208,8 @@ export const portals = pgTable(
     name: text("name").notNull().default(""),
     /** Nível mínimo para atravessar (0 = livre). */
     minLevel: smallint("min_level").notNull().default(0),
+    /** portal, stairsDown, stairsUp, ladderDown, ladderUp ou hole. Só o desenho. */
+    kind: text("kind").notNull().default("portal"),
     createdAt: createdAt(),
   },
   (table) => [index("portals_world_idx").on(table.worldId)],

@@ -18,6 +18,60 @@ export const WORLD_MAX_ITEMS = 200;
 export const SPAWN_MAX_AMOUNT = 12;
 export const SPAWN_MAX_RADIUS = 12;
 
+/** Andar mais fundo e mais alto que o painel aceita. */
+export const WORLD_MIN_DEPTH = -20;
+export const WORLD_MAX_DEPTH = 20;
+
+/**
+ * Desenho da ligação. Só muda o sprite e a cor no minimapa: `enterPortal` não olha para isto.
+ * É um campo no portal, e não um objeto novo na paleta, porque com objeto o administrador
+ * teria que pintar a escada *e* colocar o portal em cima — duas coisas que divergem no
+ * primeiro descuido, e escada sem destino ou buraco sem volta é jogador preso para sempre.
+ */
+export type PortalKind = "portal" | "stairsDown" | "stairsUp" | "ladderDown" | "ladderUp" | "hole";
+
+export const PORTAL_KINDS: readonly PortalKind[] = ["portal", "stairsDown", "stairsUp", "ladderDown", "ladderUp", "hole"];
+
+export const PORTAL_KIND_NAMES: Readonly<Record<PortalKind, string>> = {
+  portal: "Portal",
+  stairsDown: "Escada para baixo",
+  stairsUp: "Escada para cima",
+  ladderDown: "Rampa para baixo",
+  ladderUp: "Rampa para cima",
+  hole: "Buraco (mão única)",
+};
+
+/** O sentido contrário, para a escada de volta. Por buraco não se sobe: a volta dele é escada. */
+export function returnKind(kind: PortalKind): PortalKind {
+  switch (kind) {
+    case "stairsDown":
+      return "stairsUp";
+    case "stairsUp":
+      return "stairsDown";
+    case "ladderDown":
+      return "ladderUp";
+    case "ladderUp":
+      return "ladderDown";
+    case "hole":
+      return "stairsUp";
+    default:
+      return "portal";
+  }
+}
+
+export function clampDepth(value: unknown): number {
+  const depth = Math.round(Number(value));
+  if (!Number.isFinite(depth)) return 0;
+  return Math.min(WORLD_MAX_DEPTH, Math.max(WORLD_MIN_DEPTH, depth));
+}
+
+/** "Esgoto de Zuna · −1". O andar 0 é a superfície e não leva sufixo. */
+export function floorLabel(name: string, depth: number): string {
+  if (depth === 0) return name;
+  // Sinal de menos de verdade (U+2212), não hífen: alinha com os dígitos na fonte da HUD.
+  return `${name} · ${depth > 0 ? "+" : "−"}${Math.abs(depth)}`;
+}
+
 export interface WorldDef extends MapShape {
   id: number;
   /** Chave curta, sem acento: aparece na URL e no histórico do painel. */
@@ -29,6 +83,10 @@ export interface WorldDef extends MapShape {
   published: boolean;
   /** Espalha ninhos de monstro sozinho pelo terreno, como no mundo original. */
   autoSpawns: boolean;
+  /** Andar relativo: 0 = superfície, −1 = subsolo, +2 = pico. Só rótulo, não muda regra. */
+  depth: number;
+  /** Zona de PvP. Nasce sem efeito e sem tela no painel: o comportamento é do spec do PvP. */
+  pvp: "off" | "open";
 }
 
 /** Ligação entre dois pontos do mesmo mundo ou de mundos diferentes. */
@@ -43,6 +101,8 @@ export interface PortalDef {
   name: string;
   /** Nível mínimo para atravessar (0 = livre). */
   minLevel: number;
+  /** Desenho da ligação (escada, rampa, buraco). Não muda a regra de travessia. */
+  kind: PortalKind;
 }
 
 /** Ninho: mantém até `amount` monstros vivos num raio em volta do ponto. */

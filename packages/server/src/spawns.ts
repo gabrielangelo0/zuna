@@ -76,6 +76,22 @@ const STYLE_ZONES: Partial<Record<MapStyle, Zone[]>> = {
     { kind: "skeletonMage", count: 14, minDist: 26, maxDist: 52 },
     { kind: "necroLord", count: 1, minDist: 40, maxDist: 72 },
   ],
+  // Esgoto: bicho de água parada. As chaves não batem com os nomes mostrados —
+  // rat é "Slime Rosa", spikyBlob é "Gosma Espinhenta", glub é "Glub do Brejo".
+  esgoto: [
+    { kind: "rat", count: 24, minDist: 8, maxDist: 28 },
+    { kind: "spikyBlob", count: 16, minDist: 12, maxDist: 34 },
+    { kind: "frog", count: 12, minDist: 18, maxDist: 42 },
+    { kind: "glub", count: 8, minDist: 26, maxDist: 52 },
+  ],
+  // Montanha: sobe de dificuldade com a altitude. troll é "Yeti" e golem é "Morcego do Musgo".
+  // O chefe é o mesmo das Montanhas Geladas por ora; o painel troca quando houver um do pico.
+  montanha: [
+    { kind: "wolf", count: 20, minDist: 9, maxDist: 30 },
+    { kind: "golem", count: 14, minDist: 16, maxDist: 40 },
+    { kind: "troll", count: 12, minDist: 24, maxDist: 50 },
+    { kind: "yetiElder", count: 1, minDist: 44, maxDist: 72 },
+  ],
   covil: [
     { kind: "dragonGreen", count: 22, minDist: 9, maxDist: 36 },
     { kind: "dragonIce", count: 16, minDist: 18, maxDist: 46 },

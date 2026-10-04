@@ -13,6 +13,7 @@ import {
   MAX_GROUND,
   MAX_OBJECT,
   MONSTERS,
+  PORTAL_KINDS,
   PORTAL_NAME_MAX,
   SPAWN_MAX_AMOUNT,
   SPAWN_MAX_RADIUS,
@@ -26,7 +27,12 @@ import {
   CATALOG,
   catalogItem,
   catalogList,
+  buildWorldMap,
+  clampDepth,
+  isWalkable,
+  returnKind,
   validateWorldName,
+  type PortalKind,
   type AdminEventsResponse,
   type AdminItemRow,
   type AdminItemsResponse,
@@ -61,6 +67,8 @@ import {
   listEvents,
   listItemOverrides,
   listWorlds,
+  loadPortals,
+  loadTiles,
   loadWorldContent,
   resetItemOverride,
   saveEvent,
@@ -167,6 +175,7 @@ const adminWorldSave = createEndpoint("/api/admin/world/save", { method: "POST" 
   if (body.townRadius !== undefined) patch.townRadius = clamp(body.townRadius, 1, 24);
   if (body.published !== undefined) patch.published = body.published === true;
   if (body.autoSpawns !== undefined) patch.autoSpawns = body.autoSpawns === true;
+  if (body.depth !== undefined) patch.depth = clampDepth(body.depth);
 
   // O centro precisa caber no tamanho novo.
   const width = patch.width ?? existing?.width ?? WORLD_MIN_SIZE;
@@ -196,6 +205,7 @@ const adminWorldSave = createEndpoint("/api/admin/world/save", { method: "POST" 
       townRadius: patch.townRadius ?? 6,
       published: patch.published ?? true,
       autoSpawns: patch.autoSpawns ?? false,
+      depth: patch.depth ?? 0,
     });
   }
 
@@ -322,11 +332,57 @@ const adminPortal = createEndpoint("/api/admin/world/portal", { method: "POST" }
     toY: to.y,
     name: text(body.name, PORTAL_NAME_MAX),
     minLevel: clamp(body.minLevel ?? 0, 0, ADMIN_MAX_LEVEL) ?? 0,
+    kind: PORTAL_KINDS.includes(body.kind as PortalKind) ? (body.kind as PortalKind) : "portal",
   };
   const saved = await savePortal(portal);
-  await logAdminAction({ accountId: admin.id, action: id ? "portal" : "criou portal", detail: saved });
+
+  // Escada de volta. Só ao criar: num portal que já existe, mexer no par seria adivinhar qual
+  // dos dois lados o administrador quis mudar.
+  let returned: PortalDef | undefined;
+  let warning = "";
+  if (!id && body.withReturn === true) {
+    const lá = await loadPortals(target.id);
+    const destino = buildWorldMap({ world: target, tiles: await loadTiles(target), portals: [] });
+    if (!isWalkable(destino, saved.toX, saved.toY)) {
+      // O travel usa findFreeTile e o jogador não ficaria preso, mas a escada de volta nasceria
+      // longe de onde ele caiu, e isso se lê como defeito. Melhor recusar os dois.
+      await deletePortal(saved.id);
+      throw ctx.error("BAD_REQUEST", {
+        message: "O destino não é caminhável, então a escada de volta nasceria fora do lugar. Escolha outro ponto de chegada.",
+      });
+    }
+    if (lá.some((entry: PortalDef) => entry.x === saved.toX && entry.y === saved.toY)) {
+      warning = "Já existe uma ligação nesse ponto do destino, então a volta não foi criada.";
+    } else if (lá.length >= WORLD_MAX_PORTALS) {
+      warning = `${target.name} já tem ${WORLD_MAX_PORTALS} ligações, então a volta não foi criada.`;
+    } else {
+      returned = await savePortal({
+        worldId: target.id,
+        x: saved.toX,
+        y: saved.toY,
+        toWorldId: world.id,
+        toX: saved.x,
+        toY: saved.y,
+        name: `Volta para ${world.name}`,
+        // Nunca cobra nível. Ida com nível 50 e volta com nível 50 tranca quem entrou de 50 e
+        // morreu para 49 lá dentro.
+        minLevel: 0,
+        kind: returnKind(saved.kind),
+      });
+      await publishWorld(target.id, false);
+    }
+  }
+
+  // Aviso, não recusa: o administrador monta o andar em duas sessões — cria a descida hoje, a
+  // subida amanhã. Recusar travaria o trabalho dele; calar deixaria um andar sem volta no ar.
+  if (!returned && !warning && saved.toWorldId !== world.id) {
+    const saídas = await loadPortals(target.id);
+    if (saídas.length === 0) warning = `${target.name} não tem nenhuma saída: quem entrar fica preso lá.`;
+  }
+
+  await logAdminAction({ accountId: admin.id, action: id ? "portal" : "criou portal", detail: { ...saved, returned: returned?.id } });
   await publishWorld(world.id, false);
-  return ctx.json({ ok: true, portal: saved });
+  return ctx.json({ ok: true, portal: saved, returned, warning });
 });
 
 const adminSpawn = createEndpoint("/api/admin/world/spawn", { method: "POST" }, async (ctx) => {

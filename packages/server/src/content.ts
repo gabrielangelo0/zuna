@@ -209,6 +209,7 @@ async function ensureRealms() {
       toY: arrival.y,
       name: realm.name,
       minLevel: realm.minLevel,
+      kind: "portal",
     });
     await savePortal({
       worldId: world.id,
@@ -218,6 +219,7 @@ async function ensureRealms() {
       toX: hub.spawnX,
       toY: hub.spawnY + 2,
       name: "Volta para Zuna",
+      kind: "portal",
       minLevel: 0,
     });
 

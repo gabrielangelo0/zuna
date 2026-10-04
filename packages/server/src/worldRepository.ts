@@ -20,6 +20,8 @@ import {
   type SpawnDef,
   type WorldBlueprint,
   type WorldDef,
+  PORTAL_KINDS,
+  type PortalKind,
   type WorldsResponse,
   gearList,
   liveVocations,
@@ -60,6 +62,8 @@ function worldFromRow(row: WorldRow): WorldDef {
     published: row.published,
     autoSpawns: row.autoSpawns,
     isDefault: row.isDefault,
+    depth: row.depth,
+    pvp: row.pvp === "open" ? "open" : "off",
   };
 }
 
@@ -127,6 +131,8 @@ export async function loadPortals(worldId: number): Promise<PortalDef[]> {
     toY: row.toY,
     name: row.name,
     minLevel: row.minLevel,
+    // No banco é texto livre: o que não for um desenho conhecido vira portal comum.
+    kind: PORTAL_KINDS.includes(row.kind as PortalKind) ? (row.kind as PortalKind) : "portal",
   }));
 }
 
@@ -199,6 +205,8 @@ export interface WorldWrite {
   townRadius: number;
   published: boolean;
   autoSpawns: boolean;
+  depth?: number;
+  pvp?: "off" | "open";
 }
 
 /** Chave livre a partir do nome ("Ilha", "ilha-2", "ilha-3"...). */
@@ -366,6 +374,7 @@ export async function savePortal(portal: Omit<PortalDef, "id"> & { id?: number }
     toY: portal.toY,
     name: portal.name,
     minLevel: portal.minLevel,
+    kind: portal.kind,
   };
   if (portal.id) {
     const [row] = await db().update(portals).set(values).where(eq(portals.id, portal.id)).returning();
