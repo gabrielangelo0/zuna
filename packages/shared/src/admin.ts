@@ -3,6 +3,7 @@ import type { EventDef } from "./events.ts";
 import type { MonsterKind } from "./monsters.ts";
 import type { RankingRow } from "./protocol.ts";
 import type { GroundItemDef, PortalDef, PortalKind, SpawnDef, WorldDef } from "./world.ts";
+import type { PvpSettings } from "./pvp.ts";
 
 // Tudo que o painel de administração troca com o servidor.
 
@@ -325,6 +326,7 @@ export interface AdminWorldPatch {
   autoSpawns?: boolean;
   isDefault?: boolean;
   depth?: number;
+  pvp?: "off" | "open";
 }
 
 /** Um tile do pincel. `reset` devolve o tile ao que o gerador tinha feito. */
@@ -404,4 +406,22 @@ export interface AdminItemsResponse {
 export interface AdminItemRequest extends CatalogOverride {
   /** Desfaz as mudanças e volta ao preço de fábrica. */
   reset?: boolean;
+}
+
+// ---------------------------------------------------------------- PvP
+
+export interface AdminPvpKill {
+  id: number;
+  killerName: string;
+  victimName: string;
+  worldId: number;
+  markedKiller: boolean;
+  /** Ids dos equipamentos que caíram, separados por vírgula. */
+  droppedItems: string;
+  createdAt: string;
+}
+
+export interface AdminPvpResponse {
+  settings: PvpSettings;
+  kills: AdminPvpKill[];
 }

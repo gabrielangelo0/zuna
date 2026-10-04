@@ -3017,6 +3017,11 @@ export class WorldRoom extends Room<{ state: WorldState }> implements LiveRoom {
    * O painel mexeu nas classes: quem perdeu a classe (apagada) fica sem, e todo mundo
    * recebe os números novos na hora, com vida, mana e atalhos recalculados.
    */
+  /** O painel mexeu nas regras do PvP. */
+  sendPvpRules() {
+    for (const player of this.players.values()) this.sendPvp(player);
+  }
+
   sendVocations() {
     for (const player of this.players.values()) {
       if (player.vocation && !vocationById(player.vocation)) player.vocation = "";

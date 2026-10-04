@@ -182,6 +182,17 @@ async function createWorld() {
       { id: "height", label: "Altura", kind: "number", value: 64, min: WORLD_MIN_SIZE, max: WORLD_MAX_SIZE },
       { id: "townRadius", label: "Raio da praça", kind: "number", value: 5, min: 1, max: 24 },
       { id: "depth", label: "Andar", kind: "number", value: 0, min: WORLD_MIN_DEPTH, max: WORLD_MAX_DEPTH, hint: "0 é a superfície. −1 é o primeiro subsolo." },
+      {
+        id: "pvp",
+        label: "Zona de PvP",
+        kind: "select",
+        options: [
+          { id: "off", label: "Não — ninguém ataca ninguém" },
+          { id: "open", label: "Sim — jogadores podem se atacar fora da praça" },
+        ],
+        value: "off",
+        hint: "A praça continua segura. As regras (nível mínimo, faixa e queda de item) ficam na aba PvP.",
+      },
       { id: "autoSpawns", label: "Espalhar monstros sozinho", kind: "check", value: false },
       { id: "published", label: "Abrir para os jogadores", kind: "check", value: true },
     ],
@@ -199,6 +210,7 @@ async function createWorld() {
         height: Number(answer.height),
         townRadius: Number(answer.townRadius),
         depth: Number(answer.depth),
+        pvp: answer.pvp === "open" ? "open" : "off",
         spawnX: Math.floor(Number(answer.width) / 2),
         spawnY: Math.floor(Number(answer.height) / 2),
         autoSpawns: answer.autoSpawns === "true",
@@ -441,6 +453,17 @@ class MapEditor {
       { id: "height", label: "Altura", kind: "number", value: this.world.height, min: WORLD_MIN_SIZE, max: WORLD_MAX_SIZE },
       { id: "townRadius", label: "Raio da praça", kind: "number", value: this.world.townRadius, min: 1, max: 24 },
       { id: "depth", label: "Andar", kind: "number", value: this.world.depth, min: WORLD_MIN_DEPTH, max: WORLD_MAX_DEPTH, hint: "0 é a superfície. −1 é o primeiro subsolo." },
+      {
+        id: "pvp",
+        label: "Zona de PvP",
+        kind: "select",
+        options: [
+          { id: "off", label: "Não — ninguém ataca ninguém" },
+          { id: "open", label: "Sim — jogadores podem se atacar fora da praça" },
+        ],
+        value: this.world.pvp,
+        hint: "A praça continua segura. As regras (nível mínimo, faixa e queda de item) ficam na aba PvP.",
+      },
     ];
 
     box.body.append(
@@ -456,6 +479,12 @@ class MapEditor {
           h("b", { text: this.world.autoSpawns ? "sim" : "não" }),
         ),
         h("div", { class: "mini-line" }, h("span", { text: "Situação" }), h("b", { text: this.world.published ? "aberto" : "fechado" })),
+        h(
+          "div",
+          { class: "mini-line" },
+          h("span", { text: "Zona de PvP" }),
+          h("b", { text: this.world.pvp === "open" ? "sim" : "não" }),
+        ),
       ),
       h(
         "div",
@@ -480,6 +509,7 @@ class MapEditor {
       height: Number(answer.height),
       townRadius: Number(answer.townRadius),
       depth: Number(answer.depth),
+      pvp: answer.pvp === "open" ? "open" : "off",
     });
   }
 

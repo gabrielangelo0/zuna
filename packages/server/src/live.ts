@@ -39,6 +39,8 @@ export interface LiveRoom {
   sendMilestoneList(): void;
   /** O painel mexeu nas classes. */
   sendVocations(): void;
+  /** O painel mexeu nas regras do PvP: quem está jogando precisa saber na hora. */
+  sendPvpRules(): void;
 }
 
 export interface LiveCharacterPatch {
@@ -209,4 +211,8 @@ export function pushMilestones() {
 
 export function pushVocations() {
   for (const room of rooms) room.sendVocations();
+}
+
+export function pushPvp() {
+  for (const room of rooms) room.sendPvpRules();
 }

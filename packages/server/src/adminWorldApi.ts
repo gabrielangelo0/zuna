@@ -176,6 +176,7 @@ const adminWorldSave = createEndpoint("/api/admin/world/save", { method: "POST" 
   if (body.published !== undefined) patch.published = body.published === true;
   if (body.autoSpawns !== undefined) patch.autoSpawns = body.autoSpawns === true;
   if (body.depth !== undefined) patch.depth = clampDepth(body.depth);
+  if (body.pvp !== undefined) patch.pvp = body.pvp === "open" ? "open" : "off";
 
   // O centro precisa caber no tamanho novo.
   const width = patch.width ?? existing?.width ?? WORLD_MIN_SIZE;
@@ -206,6 +207,7 @@ const adminWorldSave = createEndpoint("/api/admin/world/save", { method: "POST" 
       published: patch.published ?? true,
       autoSpawns: patch.autoSpawns ?? false,
       depth: patch.depth ?? 0,
+      pvp: patch.pvp ?? "off",
     });
   }
 
