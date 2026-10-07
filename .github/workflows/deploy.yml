@@ -25,11 +25,11 @@ jobs:
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
-          VPS_DIR: ${{ secrets.VPS_DIR }}
+          VPS_STACK: ${{ secrets.VPS_STACK }}
         run: |
-          if [ -z "$VPS_HOST" ] || [ -z "$VPS_USER" ] || [ -z "$VPS_DIR" ]; then
+          if [ -z "$VPS_HOST" ] || [ -z "$VPS_USER" ] || [ -z "$VPS_STACK" ]; then
             echo "pronto=nao" >> "$GITHUB_OUTPUT"
-            echo "::warning::Deploy automático ainda não configurado: faltam os segredos VPS_HOST, VPS_USER, VPS_DIR, VPS_SERVICE, VPS_SSH_KEY e VPS_KNOWN_HOSTS. Nada foi publicado."
+            echo "::warning::Deploy automático ainda não configurado: faltam os segredos VPS_HOST, VPS_USER, VPS_STACK, VPS_SSH_KEY e VPS_KNOWN_HOSTS. Nada foi publicado."
           else
             echo "pronto=sim" >> "$GITHUB_OUTPUT"
           fi
@@ -54,13 +54,13 @@ jobs:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
           VPS_PORT: ${{ secrets.VPS_PORT }}
-          VPS_DIR: ${{ secrets.VPS_DIR }}
+          VPS_STACK: ${{ secrets.VPS_STACK }}
           VPS_SERVICE: ${{ secrets.VPS_SERVICE }}
         run: |
-          # O script que roda é o que já está na VPS (o git pull acontece dentro dele).
+          # O script que roda é o que já está no clone da VPS (o git pull acontece dentro dele).
           # Quando tools/deploy.sh mudar, o deploy seguinte é que passa a usar a versão nova.
           ssh -i ~/.ssh/deploy -p "${VPS_PORT:-22}" "$VPS_USER@$VPS_HOST" \
-            "ZUNA_DIR='$VPS_DIR' ZUNA_SERVICE='$VPS_SERVICE' bash '$VPS_DIR/tools/deploy.sh'"
+            "ZUNA_STACK='$VPS_STACK' ZUNA_SERVICE='${VPS_SERVICE:-zuna}' bash '$VPS_STACK/src/zuna/tools/deploy.sh'"
 
       - name: Conferir que o site respondeu
         if: steps.conf.outputs.pronto == 'sim'
